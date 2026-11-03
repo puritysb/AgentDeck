@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: APME maintainers
-reviewed: 2026-10-31
-revision: 2026-10-31
+reviewed: 2026-11-03
+revision: 2026-11-03
 source_of_truth: docs/apme.md
 validators: [pnpm test]
 ---
@@ -426,7 +426,8 @@ d9f2d409 을 풀었다** — 1.05 잔여 잘림의 전부다. 즉 차이는 반�
 
 ### 같은 설정 파일, 같은 판정 — 두 데몬 사이의 갈라짐
 
-두 데몬 모두 9120 을 잡을 수 있고 같은 `~/.agentdeck/settings.json` 을 읽는다. 그래서 여기서
+Node와 서명하지 않은 개발용 Swift 데몬은 9120을 사용할 수 있고 같은 CLI 프로필을 읽는다.
+App Store macOS 앱은 별도 샌드박스 프로필을 사용한다. 설정 규칙이 여기서
 갈라지면 **같은 사용자 설정이 어느 데몬이 응답했느냐에 따라 다른 점수를 낸다** — 그리고 어느 쪽
 로그에도 그 사실이 남지 않는다. #299 에서 정리한 것들:
 
@@ -447,6 +448,26 @@ d9f2d409 을 풀었다** — 1.05 잔여 잘림의 전부다. 즉 차이는 반�
 아직 갈라진 채로 남은 것은 없다: JSON 모드 사다리 격차는 #299 item 1 로(위), 분류기
 (`task_category`)의 백엔드·프롬프트·`max_tokens`·타임아웃·폴백은 `shared/src/apme-classifier-rules.ts`
 로 합쳤다 — 아래 "LLM fallback" 절.
+
+### Remote judge API-key storage
+
+Shipped Apple apps keep the remote judge API key in a noninteractive, device-local Keychain item,
+excluded from synchronization and restricted to this device. `UserDefaults` and the sandbox
+`settings.json` retain non-secret judge configuration only. The in-process OpenAI and Anthropic
+adapters resolve the secure credential before making a request; an unavailable secure store never
+falls back to a plaintext key. An explicitly supplied `ANTHROPIC_API_KEY` environment variable retains
+its existing priority for the Anthropic adapter.
+
+Migration acknowledges the secure write before removing legacy copies. A failed migration preserves
+the original and displays a settings notice. Clearing a key retains an empty secure item so an old
+profile restored later cannot revive the credential. Malformed configuration is preserved rather
+than overwritten. Tests inject storage and temporary profiles; they do not access a login Keychain.
+
+Unsandboxed development builds retain the Node CLI contract: an explicitly configured
+`apme.judge.apiKey` may remain in `AgentDeckPaths.settingsJson`, written by this settings path through
+an exclusive temporary file with mode `0600` and an atomic replacement. They stop duplicating it in
+`UserDefaults`. This development-file compatibility path is separate from the shipped apps' secure
+storage and does not make keys portable between the CLI and the App Store sandbox.
 
 ### judge-health — 닫힌 작업이 실제로 판정을 받았는가
 

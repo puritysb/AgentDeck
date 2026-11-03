@@ -1,12 +1,12 @@
 {
-  "capturedAt": "2026-11-03T13:26:32.945091+00:00",
+  "capturedAt": "2026-11-03T14:21:37.225290+00:00",
   "masterCommit": "05a9bef69d9ec8e5a89a50153412c92595f657d9",
   "analysisRun": 41642410793,
   "analysisJobs": [
     {
       "name": "CodeQL (swift-ios)",
-      "status": "in_progress",
-      "conclusion": null
+      "status": "completed",
+      "conclusion": "success"
     },
     {
       "name": "CodeQL (java-kotlin)",
@@ -15,8 +15,8 @@
     },
     {
       "name": "CodeQL (swift-macos)",
-      "status": "queued",
-      "conclusion": null
+      "status": "completed",
+      "conclusion": "success"
     },
     {
       "name": "CodeQL (python)",
@@ -50,11 +50,6 @@
     "open": 186,
     "dismissed": 3
   },
-  "allDefaultBranchStates": {
-    "open": 195,
-    "dismissed": 8,
-    "fixed": 82
-  },
   "candidateMapFixIds": [
     266,
     267,
@@ -63,7 +58,7 @@
     270
   ],
   "pendingManualClosure": {
-    "count": 182,
+    "count": 188,
     "alertIds": [
       31,
       32,
@@ -246,12 +241,69 @@
       260,
       261,
       263,
-      302
+      302,
+      304,
+      305,
+      306,
+      307,
+      312,
+      313
     ],
     "status": "open; explicit approval required after automatic approval review rejected bulk dismissal"
   },
-  "scope": "This dated post-merge checkpoint preserves actual states. Completed PR analysis is not a substitute for default-branch analysis; native master jobs may still be pending. Fixed and dismissed counts are distinct. No bulk dismissal performed.",
+  "scope": "Completed eight-category full default-branch checkpoint at master 05a9bef6. Baseline counts compare the original 266 reviewed IDs only. Repository totals also include historical alerts and five individually dismissed PR-introduced fingerprints; they are not a product-vulnerability count. Candidate source changes in #721 are not counted as fixed here. Manual closures remain open.",
   "alerts": [
+    {
+      "id": 313,
+      "rule": "swift/unsafe-js-eval",
+      "severity": "critical",
+      "githubState": "open",
+      "location": {
+        "path": "apple/AgentDeck/Daemon/Modules/PixooBakedRenderer.swift",
+        "start_line": 33,
+        "end_line": 33,
+        "start_column": 100,
+        "end_column": 101
+      },
+      "sourceCommit": "05a9bef69d9ec8e5a89a50153412c92595f657d9",
+      "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/313",
+      "disposition": "reviewed-manual-proposal-remains-open",
+      "reason": "Intentional JavaScriptCore evaluation of the fixed generated pixoo-baked.generated.js application-bundle resource. Production constructs the renderer without an injected source; the source override is used by a standalone regression fixture only. Peer state is bounded JSON passed as function arguments and parsed as data, never concatenated into evaluated source. The context exposes no native file/network callbacks or remote script-loading route. Existing bundled-renderer/cache/activity/bounds and cross-language pixel-parity tests exercise this boundary. This is a source trust-policy review, not proof against maliciously replaced application code."
+    },
+    {
+      "id": 312,
+      "rule": "swift/unsafe-js-eval",
+      "severity": "critical",
+      "githubState": "open",
+      "location": {
+        "path": "apple/AgentDeck/Daemon/Modules/PixooBakedRenderer.swift",
+        "start_line": 24,
+        "end_line": 24,
+        "start_column": 100,
+        "end_column": 101
+      },
+      "sourceCommit": "05a9bef69d9ec8e5a89a50153412c92595f657d9",
+      "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/312",
+      "disposition": "reviewed-manual-proposal-remains-open",
+      "reason": "Intentional JavaScriptCore evaluation of the fixed generated pixoo-baked.generated.js application-bundle resource. Production constructs the renderer without an injected source; the source override is used by a standalone regression fixture only. Peer state is bounded JSON passed as function arguments and parsed as data, never concatenated into evaluated source. The context exposes no native file/network callbacks or remote script-loading route. Existing bundled-renderer/cache/activity/bounds and cross-language pixel-parity tests exercise this boundary. This is a source trust-policy review, not proof against maliciously replaced application code."
+    },
+    {
+      "id": 311,
+      "rule": "swift/cleartext-storage-preferences",
+      "severity": "high",
+      "githubState": "open",
+      "location": {
+        "path": "apple/AgentDeck/App/AppPreferences.swift",
+        "start_line": 189,
+        "end_line": 189,
+        "start_column": 26,
+        "end_column": 27
+      },
+      "sourceCommit": "05a9bef69d9ec8e5a89a50153412c92595f657d9",
+      "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/311",
+      "disposition": "source-change-awaiting-reanalysis",
+      "reason": "Remove API-key writes to UserDefaults. Shipped sandbox macOS/iOS apps use noninteractive device-local Keychain storage; migration acknowledges secure persistence before removing legacy defaults/profile copies. Empty secure tombstones prevent stale profile resurrection, and unavailable secure storage never falls back to plaintext for provider requests. Unsandboxed development retains the explicit Node CLI JSON contract with exclusive atomic 0600 writes. Injected migration/provider-resolution regressions cover failure and clear/restart; real Keychain access and shipped-client acceptance were not performed."
+    },
     {
       "id": 310,
       "rule": "java/relative-path-command",
@@ -266,8 +318,8 @@
       },
       "sourceCommit": "05a9bef69d9ec8e5a89a50153412c92595f657d9",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/310",
-      "disposition": "historical-or-additional-alert",
-      "reason": ""
+      "disposition": "source-change-awaiting-reanalysis",
+      "reason": "Pin the monitor-service wake executable to /system/bin/input, with fixed keyevent arguments; do not resolve an executable through PATH. Android compile/unit tests pass; no device power or shared service state changed."
     },
     {
       "id": 309,
@@ -283,8 +335,8 @@
       },
       "sourceCommit": "05a9bef69d9ec8e5a89a50153412c92595f657d9",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/309",
-      "disposition": "historical-or-additional-alert",
-      "reason": ""
+      "disposition": "source-change-awaiting-reanalysis",
+      "reason": "Pin the Android wake input executable to /system/bin/input while preserving argument-array execution and existing wake-lock fallback. Android compile/unit tests pass; physical device wake acceptance remains separate."
     },
     {
       "id": 308,
@@ -300,8 +352,8 @@
       },
       "sourceCommit": "05a9bef69d9ec8e5a89a50153412c92595f657d9",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/308",
-      "disposition": "historical-or-additional-alert",
-      "reason": ""
+      "disposition": "source-change-awaiting-reanalysis",
+      "reason": "Replace saved/discovered full-URL debug logging with the canonical host/port endpoint projection. Token query, URL user-info and path are not included. Android compile and 577 unit tests pass; no real paired URL or logcat secrets were collected."
     },
     {
       "id": 307,
@@ -317,8 +369,8 @@
       },
       "sourceCommit": "05a9bef69d9ec8e5a89a50153412c92595f657d9",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/307",
-      "disposition": "historical-or-additional-alert",
-      "reason": ""
+      "disposition": "reviewed-manual-proposal-remains-open",
+      "reason": "The official GitHub updater retains standard CA/hostname checks using patched OkHttp 4.12.1, and independently verifies the downloaded APK signer against the installed application. Leaf-certificate pinning of rotating GitHub certificates is not the chosen trust policy. This does not claim that TLS or supply-chain attacks are impossible."
     },
     {
       "id": 306,
@@ -334,8 +386,8 @@
       },
       "sourceCommit": "05a9bef69d9ec8e5a89a50153412c92595f657d9",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/306",
-      "disposition": "historical-or-additional-alert",
-      "reason": ""
+      "disposition": "reviewed-manual-proposal-remains-open",
+      "reason": "Pairing connects to the user-selected daemon. No permissive trust manager or hostname verifier was introduced; standard TLS verification applies to HTTPS endpoints. The product has no pre-established certificate for every self-hosted daemon. Certificate enrollment/rotation requires a separate protocol decision. Pairing on plain HTTP has a transport-confidentiality limitation."
     },
     {
       "id": 305,
@@ -351,8 +403,8 @@
       },
       "sourceCommit": "05a9bef69d9ec8e5a89a50153412c92595f657d9",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/305",
-      "disposition": "historical-or-additional-alert",
-      "reason": ""
+      "disposition": "reviewed-manual-proposal-remains-open",
+      "reason": "User-configured daemon endpoint, not a single vendor HTTPS service. Standard OkHttp certificate and hostname verification is retained for TLS. Hardcoding a vendor certificate would break self-hosted endpoints and is not an authentication fix for intentional plain LAN ws/http. Pairing authorization and transport confidentiality are distinct; unencrypted LAN transport remains a limitation."
     },
     {
       "id": 304,
@@ -368,8 +420,8 @@
       },
       "sourceCommit": "05a9bef69d9ec8e5a89a50153412c92595f657d9",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/304",
-      "disposition": "historical-or-additional-alert",
-      "reason": ""
+      "disposition": "reviewed-manual-proposal-remains-open",
+      "reason": "Intentional user-confirmed updater. Its only current UI caller receives an app-owned cache file from the bounded downloader, which verifies the official release asset URL, SHA-256/size, exact package name, newer version code, and a nonempty signer set equal to the installed app before returning it. The system installer still requires user approval. Static source and existing updater regressions reviewed; no arbitrary downloaded APK was installed."
     },
     {
       "id": 303,
@@ -385,8 +437,8 @@
       },
       "sourceCommit": "05a9bef69d9ec8e5a89a50153412c92595f657d9",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/303",
-      "disposition": "historical-or-additional-alert",
-      "reason": ""
+      "disposition": "source-change-awaiting-reanalysis",
+      "reason": "Disable manifest backup and explicitly exclude all app storage domains from legacy backup, Android 12+ cloud backup and device transfer. Packaged-manifest/resource regression and 577 Android unit tests pass. OEM physical backup/restore is not tested."
     },
     {
       "id": 302,
@@ -505,8 +557,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/271",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 replaces dynamic coordination attribute keys with an allow-list and OTEL attribute accumulators with null-prototype objects plus dangerous-key rejection. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 replaces dynamic coordination attribute keys with an allow-list and OTEL attribute accumulators with null-prototype objects plus dangerous-key rejection. Default-branch closure remains to be verified."
     },
     {
       "id": 270,
@@ -608,8 +659,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/265",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Candidate removes shell interpolation where data/path arguments belong; Windows reference instructions use PowerShell literal quoting. Subprocess regressions use mocks and never execute an injected command. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Candidate removes shell interpolation where data/path arguments belong; Windows reference instructions use PowerShell literal quoting. Subprocess regressions use mocks and never execute an injected command. Master analysis pending."
     },
     {
       "id": 264,
@@ -626,8 +676,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/264",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 removes cmd/start report launch; execFile receives a file URL as one native-handler argument. Hostile-path/platform regressions pass. Not yet asserted fixed by a master scan.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 removes cmd/start report launch; execFile receives a file URL as one native-handler argument. Hostile-path/platform regressions pass. Not yet asserted fixed by a master scan."
     },
     {
       "id": 263,
@@ -661,8 +710,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/262",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Candidate removes shell interpolation where data/path arguments belong; Windows reference instructions use PowerShell literal quoting. Subprocess regressions use mocks and never execute an injected command. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Candidate removes shell interpolation where data/path arguments belong; Windows reference instructions use PowerShell literal quoting. Subprocess regressions use mocks and never execute an injected command. Master analysis pending."
     },
     {
       "id": 261,
@@ -815,8 +863,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/253",
       "disposition": "reviewed-intended-flow",
-      "reason": "Initial review: Reviewed network-result persistence: fixed application cache/diagnostic paths or an explicit operator output directory. The query tracks file contents, not an attacker-controlled pathname. Apple analytics filenames use safeName plus processing-date metadata; development benchmark outputs use private exclusive files. Candidate additionally makes application history/usage/diagnostic writes atomic/private. Downloads are intended writes, not a general unauthenticated remote file-write API.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Reviewed network-result persistence: fixed application cache/diagnostic paths or an explicit operator output directory. The query tracks file contents, not an attacker-controlled pathname. Apple analytics filenames use safeName plus processing-date metadata; development benchmark outputs use private exclusive files. Candidate additionally makes application history/usage/diagnostic writes atomic/private. Downloads are intended writes, not a general unauthenticated remote file-write API."
     },
     {
       "id": 252,
@@ -833,8 +880,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/252",
       "disposition": "reviewed-intended-flow",
-      "reason": "Initial review: Reviewed network-result persistence: fixed application cache/diagnostic paths or an explicit operator output directory. The query tracks file contents, not an attacker-controlled pathname. Apple analytics filenames use safeName plus processing-date metadata; development benchmark outputs use private exclusive files. Candidate additionally makes application history/usage/diagnostic writes atomic/private. Downloads are intended writes, not a general unauthenticated remote file-write API.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Reviewed network-result persistence: fixed application cache/diagnostic paths or an explicit operator output directory. The query tracks file contents, not an attacker-controlled pathname. Apple analytics filenames use safeName plus processing-date metadata; development benchmark outputs use private exclusive files. Candidate additionally makes application history/usage/diagnostic writes atomic/private. Downloads are intended writes, not a general unauthenticated remote file-write API."
     },
     {
       "id": 251,
@@ -851,8 +897,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/251",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Private mkdtemp/exclusive 0600 writes or same-directory UUID temporary files replace predictable writable temporaries. Transcript reading is read-only, regular-file checked and bounded with no-follow/nonblocking flags. Byte/perms/cleanup/symlink regressions pass. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Private mkdtemp/exclusive 0600 writes or same-directory UUID temporary files replace predictable writable temporaries. Transcript reading is read-only, regular-file checked and bounded with no-follow/nonblocking flags. Byte/perms/cleanup/symlink regressions pass. Master analysis pending."
     },
     {
       "id": 250,
@@ -886,8 +931,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/249",
       "disposition": "reviewed-intended-flow",
-      "reason": "Initial review: Reviewed network-result persistence: fixed application cache/diagnostic paths or an explicit operator output directory. The query tracks file contents, not an attacker-controlled pathname. Apple analytics filenames use safeName plus processing-date metadata; development benchmark outputs use private exclusive files. Candidate additionally makes application history/usage/diagnostic writes atomic/private. Downloads are intended writes, not a general unauthenticated remote file-write API.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Reviewed network-result persistence: fixed application cache/diagnostic paths or an explicit operator output directory. The query tracks file contents, not an attacker-controlled pathname. Apple analytics filenames use safeName plus processing-date metadata; development benchmark outputs use private exclusive files. Candidate additionally makes application history/usage/diagnostic writes atomic/private. Downloads are intended writes, not a general unauthenticated remote file-write API."
     },
     {
       "id": 248,
@@ -904,8 +948,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/248",
       "disposition": "reviewed-intended-flow",
-      "reason": "Initial review: Reviewed network-result persistence: fixed application cache/diagnostic paths or an explicit operator output directory. The query tracks file contents, not an attacker-controlled pathname. Apple analytics filenames use safeName plus processing-date metadata; development benchmark outputs use private exclusive files. Candidate additionally makes application history/usage/diagnostic writes atomic/private. Downloads are intended writes, not a general unauthenticated remote file-write API.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Reviewed network-result persistence: fixed application cache/diagnostic paths or an explicit operator output directory. The query tracks file contents, not an attacker-controlled pathname. Apple analytics filenames use safeName plus processing-date metadata; development benchmark outputs use private exclusive files. Candidate additionally makes application history/usage/diagnostic writes atomic/private. Downloads are intended writes, not a general unauthenticated remote file-write API."
     },
     {
       "id": 247,
@@ -922,8 +965,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/247",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Private mkdtemp/exclusive 0600 writes or same-directory UUID temporary files replace predictable writable temporaries. Transcript reading is read-only, regular-file checked and bounded with no-follow/nonblocking flags. Byte/perms/cleanup/symlink regressions pass. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Private mkdtemp/exclusive 0600 writes or same-directory UUID temporary files replace predictable writable temporaries. Transcript reading is read-only, regular-file checked and bounded with no-follow/nonblocking flags. Byte/perms/cleanup/symlink regressions pass. Master analysis pending."
     },
     {
       "id": 246,
@@ -940,8 +982,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/246",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Private mkdtemp/exclusive 0600 writes or same-directory UUID temporary files replace predictable writable temporaries. Transcript reading is read-only, regular-file checked and bounded with no-follow/nonblocking flags. Byte/perms/cleanup/symlink regressions pass. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Private mkdtemp/exclusive 0600 writes or same-directory UUID temporary files replace predictable writable temporaries. Transcript reading is read-only, regular-file checked and bounded with no-follow/nonblocking flags. Byte/perms/cleanup/symlink regressions pass. Master analysis pending."
     },
     {
       "id": 245,
@@ -958,8 +999,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/245",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Private mkdtemp/exclusive 0600 writes or same-directory UUID temporary files replace predictable writable temporaries. Transcript reading is read-only, regular-file checked and bounded with no-follow/nonblocking flags. Byte/perms/cleanup/symlink regressions pass. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Private mkdtemp/exclusive 0600 writes or same-directory UUID temporary files replace predictable writable temporaries. Transcript reading is read-only, regular-file checked and bounded with no-follow/nonblocking flags. Byte/perms/cleanup/symlink regressions pass. Master analysis pending."
     },
     {
       "id": 244,
@@ -1010,8 +1050,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/242",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Private mkdtemp/exclusive 0600 writes or same-directory UUID temporary files replace predictable writable temporaries. Transcript reading is read-only, regular-file checked and bounded with no-follow/nonblocking flags. Byte/perms/cleanup/symlink regressions pass. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Private mkdtemp/exclusive 0600 writes or same-directory UUID temporary files replace predictable writable temporaries. Transcript reading is read-only, regular-file checked and bounded with no-follow/nonblocking flags. Byte/perms/cleanup/symlink regressions pass. Master analysis pending."
     },
     {
       "id": 241,
@@ -2099,8 +2138,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/178",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Bounded reads check the opened regular descriptor, cap allocation and avoid an unbounded whole-file fallback. Metadata async reads stay asynchronous; intentional local config symlinks remain supported. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Bounded reads check the opened regular descriptor, cap allocation and avoid an unbounded whole-file fallback. Metadata async reads stay asynchronous; intentional local config symlinks remain supported. Master analysis pending."
     },
     {
       "id": 177,
@@ -2117,8 +2155,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/177",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Bounded reads check the opened regular descriptor, cap allocation and avoid an unbounded whole-file fallback. Metadata async reads stay asynchronous; intentional local config symlinks remain supported. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Bounded reads check the opened regular descriptor, cap allocation and avoid an unbounded whole-file fallback. Metadata async reads stay asynchronous; intentional local config symlinks remain supported. Master analysis pending."
     },
     {
       "id": 176,
@@ -2152,8 +2189,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/175",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Bounded reads check the opened regular descriptor, cap allocation and avoid an unbounded whole-file fallback. Metadata async reads stay asynchronous; intentional local config symlinks remain supported. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Bounded reads check the opened regular descriptor, cap allocation and avoid an unbounded whole-file fallback. Metadata async reads stay asynchronous; intentional local config symlinks remain supported. Master analysis pending."
     },
     {
       "id": 174,
@@ -2170,8 +2206,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/174",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Bounded reads check the opened regular descriptor, cap allocation and avoid an unbounded whole-file fallback. Metadata async reads stay asynchronous; intentional local config symlinks remain supported. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Bounded reads check the opened regular descriptor, cap allocation and avoid an unbounded whole-file fallback. Metadata async reads stay asynchronous; intentional local config symlinks remain supported. Master analysis pending."
     },
     {
       "id": 173,
@@ -2239,8 +2274,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/170",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Bounded reads check the opened regular descriptor, cap allocation and avoid an unbounded whole-file fallback. Metadata async reads stay asynchronous; intentional local config symlinks remain supported. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Bounded reads check the opened regular descriptor, cap allocation and avoid an unbounded whole-file fallback. Metadata async reads stay asynchronous; intentional local config symlinks remain supported. Master analysis pending."
     },
     {
       "id": 169,
@@ -2274,8 +2308,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/168",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Both alternatives are anchored as one group; real suggested text containing Did you know is retained by a regression. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Both alternatives are anchored as one group; real suggested text containing Did you know is retained by a regression. Master analysis pending."
     },
     {
       "id": 167,
@@ -2292,8 +2325,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/167",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Both alternatives are anchored as one group; real suggested text containing Did you know is retained by a regression. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Both alternatives are anchored as one group; real suggested text containing Did you know is retained by a regression. Master analysis pending."
     },
     {
       "id": 166,
@@ -3670,8 +3702,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/86",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Candidate replaces the flagged backtracking patterns with bounded or linear scans; existing behavior and 10,000 deterministic private comparisons checked. Shared mirror pins reviewed. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Candidate replaces the flagged backtracking patterns with bounded or linear scans; existing behavior and 10,000 deterministic private comparisons checked. Shared mirror pins reviewed. Master analysis pending."
     },
     {
       "id": 85,
@@ -3688,8 +3719,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/85",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Candidate replaces the flagged backtracking patterns with bounded or linear scans; existing behavior and 10,000 deterministic private comparisons checked. Shared mirror pins reviewed. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Candidate replaces the flagged backtracking patterns with bounded or linear scans; existing behavior and 10,000 deterministic private comparisons checked. Shared mirror pins reviewed. Master analysis pending."
     },
     {
       "id": 84,
@@ -3706,8 +3736,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/84",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Candidate replaces the flagged backtracking patterns with bounded or linear scans; existing behavior and 10,000 deterministic private comparisons checked. Shared mirror pins reviewed. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Candidate replaces the flagged backtracking patterns with bounded or linear scans; existing behavior and 10,000 deterministic private comparisons checked. Shared mirror pins reviewed. Master analysis pending."
     },
     {
       "id": 83,
@@ -3724,8 +3753,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/83",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Candidate replaces the flagged backtracking patterns with bounded or linear scans; existing behavior and 10,000 deterministic private comparisons checked. Shared mirror pins reviewed. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Candidate replaces the flagged backtracking patterns with bounded or linear scans; existing behavior and 10,000 deterministic private comparisons checked. Shared mirror pins reviewed. Master analysis pending."
     },
     {
       "id": 82,
@@ -3742,8 +3770,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/82",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Candidate replaces the flagged backtracking patterns with bounded or linear scans; existing behavior and 10,000 deterministic private comparisons checked. Shared mirror pins reviewed. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Candidate replaces the flagged backtracking patterns with bounded or linear scans; existing behavior and 10,000 deterministic private comparisons checked. Shared mirror pins reviewed. Master analysis pending."
     },
     {
       "id": 81,
@@ -3760,8 +3787,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/81",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Candidate replaces the flagged backtracking patterns with bounded or linear scans; existing behavior and 10,000 deterministic private comparisons checked. Shared mirror pins reviewed. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Candidate replaces the flagged backtracking patterns with bounded or linear scans; existing behavior and 10,000 deterministic private comparisons checked. Shared mirror pins reviewed. Master analysis pending."
     },
     {
       "id": 80,
@@ -3778,8 +3804,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/80",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Candidate replaces the flagged backtracking patterns with bounded or linear scans; existing behavior and 10,000 deterministic private comparisons checked. Shared mirror pins reviewed. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Candidate replaces the flagged backtracking patterns with bounded or linear scans; existing behavior and 10,000 deterministic private comparisons checked. Shared mirror pins reviewed. Master analysis pending."
     },
     {
       "id": 79,
@@ -3796,8 +3821,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/79",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Candidate replaces the flagged backtracking patterns with bounded or linear scans; existing behavior and 10,000 deterministic private comparisons checked. Shared mirror pins reviewed. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Candidate replaces the flagged backtracking patterns with bounded or linear scans; existing behavior and 10,000 deterministic private comparisons checked. Shared mirror pins reviewed. Master analysis pending."
     },
     {
       "id": 78,
@@ -3814,8 +3838,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/78",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Candidate replaces the flagged backtracking patterns with bounded or linear scans; existing behavior and 10,000 deterministic private comparisons checked. Shared mirror pins reviewed. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Candidate replaces the flagged backtracking patterns with bounded or linear scans; existing behavior and 10,000 deterministic private comparisons checked. Shared mirror pins reviewed. Master analysis pending."
     },
     {
       "id": 77,
@@ -3832,8 +3855,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/77",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Candidate replaces the flagged backtracking patterns with bounded or linear scans; existing behavior and 10,000 deterministic private comparisons checked. Shared mirror pins reviewed. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Candidate replaces the flagged backtracking patterns with bounded or linear scans; existing behavior and 10,000 deterministic private comparisons checked. Shared mirror pins reviewed. Master analysis pending."
     },
     {
       "id": 76,
@@ -3850,8 +3872,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/76",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Candidate replaces the flagged backtracking patterns with bounded or linear scans; existing behavior and 10,000 deterministic private comparisons checked. Shared mirror pins reviewed. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Candidate replaces the flagged backtracking patterns with bounded or linear scans; existing behavior and 10,000 deterministic private comparisons checked. Shared mirror pins reviewed. Master analysis pending."
     },
     {
       "id": 75,
@@ -3868,8 +3889,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/75",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Candidate replaces the flagged backtracking patterns with bounded or linear scans; existing behavior and 10,000 deterministic private comparisons checked. Shared mirror pins reviewed. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Candidate replaces the flagged backtracking patterns with bounded or linear scans; existing behavior and 10,000 deterministic private comparisons checked. Shared mirror pins reviewed. Master analysis pending."
     },
     {
       "id": 74,
@@ -3886,8 +3906,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/74",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Candidate replaces the flagged backtracking patterns with bounded or linear scans; existing behavior and 10,000 deterministic private comparisons checked. Shared mirror pins reviewed. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Candidate replaces the flagged backtracking patterns with bounded or linear scans; existing behavior and 10,000 deterministic private comparisons checked. Shared mirror pins reviewed. Master analysis pending."
     },
     {
       "id": 73,
@@ -3972,8 +3991,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/69",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Candidate removes shell interpolation where data/path arguments belong; Windows reference instructions use PowerShell literal quoting. Subprocess regressions use mocks and never execute an injected command. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Candidate removes shell interpolation where data/path arguments belong; Windows reference instructions use PowerShell literal quoting. Subprocess regressions use mocks and never execute an injected command. Master analysis pending."
     },
     {
       "id": 68,
@@ -3990,8 +4008,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/68",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Candidate removes shell interpolation where data/path arguments belong; Windows reference instructions use PowerShell literal quoting. Subprocess regressions use mocks and never execute an injected command. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Candidate removes shell interpolation where data/path arguments belong; Windows reference instructions use PowerShell literal quoting. Subprocess regressions use mocks and never execute an injected command. Master analysis pending."
     },
     {
       "id": 67,
@@ -4059,8 +4076,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/64",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: HTTP routes retain exceptions in internal diagnostics and return stable generic failures; structured SurfaceProtocolError responses keep their documented contract. Actual APME route regression confirms storage-path details are not returned. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: HTTP routes retain exceptions in internal diagnostics and return stable generic failures; structured SurfaceProtocolError responses keep their documented contract. Actual APME route regression confirms storage-path details are not returned. Master analysis pending."
     },
     {
       "id": 63,
@@ -4077,8 +4093,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/63",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: HTTP routes retain exceptions in internal diagnostics and return stable generic failures; structured SurfaceProtocolError responses keep their documented contract. Actual APME route regression confirms storage-path details are not returned. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: HTTP routes retain exceptions in internal diagnostics and return stable generic failures; structured SurfaceProtocolError responses keep their documented contract. Actual APME route regression confirms storage-path details are not returned. Master analysis pending."
     },
     {
       "id": 62,
@@ -4095,8 +4110,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/62",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: HTTP routes retain exceptions in internal diagnostics and return stable generic failures; structured SurfaceProtocolError responses keep their documented contract. Actual APME route regression confirms storage-path details are not returned. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: HTTP routes retain exceptions in internal diagnostics and return stable generic failures; structured SurfaceProtocolError responses keep their documented contract. Actual APME route regression confirms storage-path details are not returned. Master analysis pending."
     },
     {
       "id": 61,
@@ -4113,8 +4127,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/61",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: HTTP routes retain exceptions in internal diagnostics and return stable generic failures; structured SurfaceProtocolError responses keep their documented contract. Actual APME route regression confirms storage-path details are not returned. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: HTTP routes retain exceptions in internal diagnostics and return stable generic failures; structured SurfaceProtocolError responses keep their documented contract. Actual APME route regression confirms storage-path details are not returned. Master analysis pending."
     },
     {
       "id": 60,
@@ -4131,8 +4144,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/60",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: HTTP routes retain exceptions in internal diagnostics and return stable generic failures; structured SurfaceProtocolError responses keep their documented contract. Actual APME route regression confirms storage-path details are not returned. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: HTTP routes retain exceptions in internal diagnostics and return stable generic failures; structured SurfaceProtocolError responses keep their documented contract. Actual APME route regression confirms storage-path details are not returned. Master analysis pending."
     },
     {
       "id": 59,
@@ -4166,8 +4178,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/58",
       "disposition": "reviewed-intended-flow",
-      "reason": "Initial review: Transcript paths originate in an authenticated host hook/session-observation contract; parsing selected local transcript files is intended, including relocated CLI configuration. There is no directory allow-list and this review does not claim one. Candidate rejects UNC paths before reader/watchdog I/O, refuses nonregular/final-symlink transcript files, and bounds reads. Structured transcript parsing is not a general arbitrary-file download endpoint.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Transcript paths originate in an authenticated host hook/session-observation contract; parsing selected local transcript files is intended, including relocated CLI configuration. There is no directory allow-list and this review does not claim one. Candidate rejects UNC paths before reader/watchdog I/O, refuses nonregular/final-symlink transcript files, and bounds reads. Structured transcript parsing is not a general arbitrary-file download endpoint."
     },
     {
       "id": 57,
@@ -4184,8 +4195,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/57",
       "disposition": "reviewed-intended-flow",
-      "reason": "Initial review: Transcript paths originate in an authenticated host hook/session-observation contract; parsing selected local transcript files is intended, including relocated CLI configuration. There is no directory allow-list and this review does not claim one. Candidate rejects UNC paths before reader/watchdog I/O, refuses nonregular/final-symlink transcript files, and bounds reads. Structured transcript parsing is not a general arbitrary-file download endpoint.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Transcript paths originate in an authenticated host hook/session-observation contract; parsing selected local transcript files is intended, including relocated CLI configuration. There is no directory allow-list and this review does not claim one. Candidate rejects UNC paths before reader/watchdog I/O, refuses nonregular/final-symlink transcript files, and bounds reads. Structured transcript parsing is not a general arbitrary-file download endpoint."
     },
     {
       "id": 56,
@@ -4202,8 +4212,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/56",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 removes cmd/start report launch; execFile receives a file URL as one native-handler argument. Hostile-path/platform regressions pass. Not yet asserted fixed by a master scan.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 removes cmd/start report launch; execFile receives a file URL as one native-handler argument. Hostile-path/platform regressions pass. Not yet asserted fixed by a master scan."
     },
     {
       "id": 55,
@@ -4220,8 +4229,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/55",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 removes cmd/start report launch; execFile receives a file URL as one native-handler argument. Hostile-path/platform regressions pass. Not yet asserted fixed by a master scan.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 removes cmd/start report launch; execFile receives a file URL as one native-handler argument. Hostile-path/platform regressions pass. Not yet asserted fixed by a master scan."
     },
     {
       "id": 54,
@@ -4272,8 +4280,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/52",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Only own dictionary keys may supply authored translation markup; unknown DOM keys use textContent, including prototype names. Malicious-looking unknown-key regression passes. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Only own dictionary keys may supply authored translation markup; unknown DOM keys use textContent, including prototype names. Malicious-looking unknown-key regression passes. Master analysis pending."
     },
     {
       "id": 51,
@@ -4392,8 +4399,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/45",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Authenticated legacy hook server has a fixed bounded 200-request/second admission counter before body parsing, 16 SSE clients and 2 active transcription jobs. Actual loopback regressions verify rejection and recovery. Custom guard may need a reasoned manual CodeQL disposition after re-scan.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Authenticated legacy hook server has a fixed bounded 200-request/second admission counter before body parsing, 16 SSE clients and 2 active transcription jobs. Actual loopback regressions verify rejection and recovery. Custom guard may need a reasoned manual CodeQL disposition after re-scan."
     },
     {
       "id": 44,
@@ -4427,8 +4433,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/43",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: Static layout dispatcher now checks own allow-listed builder keys before touching the DOM. Master analysis pending.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: Static layout dispatcher now checks own allow-listed builder keys before touching the DOM. Master analysis pending."
     },
     {
       "id": 42,
@@ -4649,8 +4654,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/30",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 29,
@@ -4667,8 +4671,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/29",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 28,
@@ -4685,8 +4688,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/28",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 27,
@@ -4703,8 +4705,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/27",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 26,
@@ -4721,8 +4722,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/26",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 25,
@@ -4739,8 +4739,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/25",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 24,
@@ -4757,8 +4756,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/24",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 23,
@@ -4775,8 +4773,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/23",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 22,
@@ -4793,8 +4790,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/22",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 21,
@@ -4811,8 +4807,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/21",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 20,
@@ -4829,8 +4824,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/20",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 19,
@@ -4847,8 +4841,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/19",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 18,
@@ -4865,8 +4858,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/18",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 17,
@@ -4883,8 +4875,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/17",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 16,
@@ -4901,8 +4892,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/16",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 15,
@@ -4919,8 +4909,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/15",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 14,
@@ -4937,8 +4926,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/14",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 13,
@@ -4955,8 +4943,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/13",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 12,
@@ -4973,8 +4960,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/12",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 11,
@@ -4991,8 +4977,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/11",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 10,
@@ -5009,8 +4994,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/10",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 9,
@@ -5027,8 +5011,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/9",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 8,
@@ -5045,8 +5028,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/8",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 7,
@@ -5063,8 +5045,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/7",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 6,
@@ -5081,8 +5062,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/6",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 5,
@@ -5099,8 +5079,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/5",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 4,
@@ -5117,8 +5096,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/4",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 3,
@@ -5135,8 +5113,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/3",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 2,
@@ -5153,8 +5130,7 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/2",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     },
     {
       "id": 1,
@@ -5171,8 +5147,50 @@
       "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
       "url": "https://github.com/puritysb/AgentDeck/security/code-scanning/1",
       "disposition": "implemented-awaiting-master-analysis",
-      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified.",
-      "statusEvidence": "Default-branch CodeQL marked this fingerprint fixed; no manual dismissal."
+      "reason": "Initial review: PR #712 pins remote Actions to immutable same-version commits and supplies explicit minimum permissions; hosted Actions analysis passes on the PR. Default-branch closure remains to be verified."
     }
-  ]
+  ],
+  "repositoryAlertStates": {
+    "open": 198,
+    "dismissed": 8,
+    "fixed": 82
+  },
+  "candidateNativeFixIds": [
+    303,
+    308,
+    309,
+    310,
+    311
+  ],
+  "nativeFindingsIds": [
+    303,
+    304,
+    305,
+    306,
+    307,
+    308,
+    309,
+    310,
+    311,
+    312,
+    313
+  ],
+  "scheduledEvidence": {
+    "dependencyScan": {
+      "run": 41625000788,
+      "event": "schedule",
+      "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
+      "conclusion": "success",
+      "scope": "npm, Python, Rust"
+    },
+    "codeql": {
+      "run": 41626812174,
+      "event": "schedule",
+      "sourceCommit": "a37e87ab2b13b82bf431cb052ab2ea4707956398",
+      "conclusion": "success",
+      "scope": "original five languages only; no native-category cron proof"
+    },
+    "hourlyHealthCron": "not yet observed",
+    "limit": "Earlier-head scheduled success proves those triggers ran, not that latest source/native fixes have passed a scheduled run."
+  }
 }

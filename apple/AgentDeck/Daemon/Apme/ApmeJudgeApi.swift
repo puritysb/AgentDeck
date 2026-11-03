@@ -5,19 +5,9 @@
 // default. The user must explicitly pick "api" in Settings AND have a key
 // available. Both conditions fail → return nil → caller skips the eval.
 //
-// Key lookup order:
-//   1. `ANTHROPIC_API_KEY` environment variable
-//   2. AgentDeck settings.json — resolved via `AgentDeckPaths.settingsJson`
-//      so App Store builds read from the sandbox data container and CLI/dev
-//      builds read from `~/.agentdeck/settings.json`. Same file
-//      format either way; the Node bridge writes to its own `~/.agentdeck/`
-//      path so a user running both stacks needs to either stick with one or
-//      keep both keys in sync.
-//
-// No Keychain — Keychain access for the shared settings.json key would
-// require `keychain-access-groups` coordination with a future helper.
-// settings.json via the sandbox data container is good enough and avoids the
-// permission prompt.
+// Explicit environment keys take priority. Shipped apps use the noninteractive
+// device-local Keychain; unsandboxed development retains CLI settings.json.
+// A missing or unavailable secure item never falls back to a plaintext file.
 //
 // Sandbox: api.anthropic.com is reached via `com.apple.security.network.client`
 // which is already granted. No ATS exception needed (HTTPS).
@@ -203,7 +193,10 @@ enum ApmeJudgeApi {
            !env.isEmpty {
             return env
         }
-        let path = AuthManager.agentDeckDir.appendingPathComponent("settings.json").path
+        if let storage = ApmeAPIKeyStorage.current {
+            return try? ApmeAPIKeyStorage.resolve(configured: nil, storage: storage)
+        }
+        let path = AgentDeckPaths.settingsJson.path
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let apme = json["apme"] as? [String: Any],

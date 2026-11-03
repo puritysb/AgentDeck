@@ -345,7 +345,7 @@ dismissed and 186 still open on `05a9bef6`. Six of the original 185 manual
 proposals were automatically marked fixed after source changes, so they are
 removed from the current proposal list. Two reviewed intentional/custom-limiter
 paths and the new SSE fingerprint #302 are included; the current manual proposal
-contains 182 open IDs. No bulk dismissal was performed.
+contained 182 open IDs at that checkpoint. No bulk dismissal was performed.
 
 Five remaining OTLP dynamic-write findings receive a Map container follow-up.
 The earlier null-prototype object and reserved-name checks mitigate pollution,
@@ -355,3 +355,39 @@ precedence. Quick checks passed with 7,562 tests and 42 skips. Default-branch
 scanner closure of those five candidates remains to be read after merge.
 Native master analysis is tracked separately from the completed eight-category
 PR analysis; the checkpoint retains each job's actual state.
+
+### First full native inventory
+
+The first full master Android/iOS analyses on `05a9bef6` produced nine additional
+fingerprints, despite zero PR-diff results. The [native response ledger](../security/reports/2026-11-03-native-response.json)
+records each finding separately. #721 disables credential-bearing Android backup
+and device transfer, projects connection logs to host/port, pins two wake commands
+to `/system/bin/input`, and removes Apple judge-key persistence in UserDefaults.
+Shipped Apple apps use device-local Keychain storage with acknowledged migration
+and no plaintext fallback; unsandboxed developer profiles retain the private Node
+CLI JSON contract. See [the APME credential contract](apme.md#remote-judge-api-key-storage).
+
+Four native findings receive an individual policy review: the verified,
+user-confirmed APK updater and three certificate-pinning queries. Their ledger
+records existing signer/hash/version checks, standard TLS verification,
+self-hosted endpoints and plain-LAN confidentiality limits. They remain open;
+the manual proposal grew to 186 IDs including these four. No review decision is
+counted as a source fix. Actual native reanalysis and installed/OEM acceptance
+remain separate evidence.
+
+The completed macOS full analysis then added #312/#313, both evaluating a fixed, generated
+Pixoo bundle script. Production never accepts a peer-provided
+script; bounded JSON is passed as function arguments without source interpolation.
+The injected-source seam belongs to a standalone test fixture. These two reviewed
+findings remain open too, bringing the exact manual proposal to **188 IDs**.
+All eight full master categories completed successfully in run 41642410793;
+completion and zero findings are different assertions.
+
+Actual scheduled events were subsequently observed: dependency scan
+[41625000788](https://github.com/puritysb/AgentDeck/actions/runs/41625000788) and
+five-language CodeQL
+[41626812174](https://github.com/puritysb/AgentDeck/actions/runs/41626812174)
+completed successfully on earlier head `a37e87ab`. These prove the existing cron
+triggers ran, not latest-source acceptance or native-category cron coverage.
+The hourly health workflow's first scheduled event remains unobserved; its
+push/PR checks and deterministic freshness-policy regressions are separate.

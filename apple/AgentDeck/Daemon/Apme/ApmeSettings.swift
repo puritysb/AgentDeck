@@ -163,8 +163,9 @@ enum ApmeSettings {
     /// Load APME config from ~/.agentdeck/settings.json.
     /// Returns defaults on any failure — the daemon must keep booting.
     static func load() -> ApmeConfig {
-        guard let data = readSettingsDataBounded() else { return ApmeConfig() }
-        return parse(data)
+        var config = readSettingsDataBounded().map(parse) ?? ApmeConfig()
+        config.judge.apiKey = try? ApmeAPIKeyStorage.resolve(configured: config.judge.apiKey)
+        return config
     }
 
     /// The parse, split from the file read so the validation rules can be

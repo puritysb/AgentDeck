@@ -179,15 +179,18 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
         }
     }
 
-    /// Bearer key for a remote openai endpoint (OpenRouter etc.) or the
-    /// Anthropic `api` backend. Mirrored into `apme.judge.apiKey`. Optional for
-    /// local servers. Stored in UserDefaults like the rest of the judge config;
-    /// the daemon reads it from settings.json. (A future hardening could move
-    /// this to the Keychain — parity with the OpenClaw token path.)
+    /// Remote judge credentials use the device-local Keychain in shipped apps.
+    /// Unsandboxed developer builds retain the private CLI profile contract.
+    @Published var apmeJudgeCredentialNotice = ""
     @Published var apmeJudgeApiKey: String {
         didSet {
-            defaults.set(apmeJudgeApiKey, forKey: Keys.apmeJudgeApiKey)
-            writeApmeJudgeConfigToSettingsJson()
+            do {
+                try apmeCredentialProfile.save(apmeJudgeApiKey, backend: apmeJudgeBackend,
+                                               endpoint: apmeJudgeEndpoint, model: apmeJudgeModel)
+                apmeJudgeCredentialNotice = ""
+            } catch {
+                apmeJudgeCredentialNotice = "Could not finish saving the API key and judge settings. Unlock this device and try again."
+            }
         }
     }
 
@@ -351,9 +354,13 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
     }
 
     private let defaults: UserDefaults
+    private let apmeCredentialProfile: ApmeCredentialProfile
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard,
+         apmeKeyStorage: ApmeAPIKeyStorage? = .current,
+         apmeSettingsURL: URL? = ApmeCredentialProfile.currentURL) {
         self.defaults = defaults
+        self.apmeCredentialProfile = ApmeCredentialProfile(defaults: defaults, storage: apmeKeyStorage, url: apmeSettingsURL)
         self.dashboardType = DashboardType(rawValue: defaults.string(forKey: "prefs.dashboardType") ?? "") ?? .standard
         let storedPort = defaults.object(forKey: Keys.daemonPort) as? Int
         self.daemonPort = Self.clampPort(storedPort ?? Self.defaultDaemonPort)
@@ -381,7 +388,7 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
         self.apmeJudgeBackend = defaults.string(forKey: Keys.apmeJudgeBackend) ?? "foundationModels"
         self.apmeJudgeEndpoint = defaults.string(forKey: Keys.apmeJudgeEndpoint) ?? ""
         self.apmeJudgeModel = defaults.string(forKey: Keys.apmeJudgeModel) ?? ""
-        self.apmeJudgeApiKey = defaults.string(forKey: Keys.apmeJudgeApiKey) ?? ""
+        self.apmeJudgeApiKey = ""
         self.timelineSummaryProvider = defaults.string(forKey: Keys.timelineSummaryProvider) ?? "auto"
         self.displaySleepDimEnabled = defaults.object(forKey: Keys.displaySleepDimEnabled) as? Bool ?? true
         self.displaySleepDimMode = defaults.string(forKey: Keys.displaySleepDimMode) ?? "off"
@@ -399,6 +406,8 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
         self.hasSeenOnboarding = defaults.object(forKey: Keys.hasSeenOnboarding) as? Bool ?? false
         self.openCodeMonitoringEnabled = defaults.object(forKey: Keys.openCodeMonitoringEnabled) as? Bool ?? false
         self.openCodeServerURL = defaults.string(forKey: Keys.openCodeServerURL) ?? "http://127.0.0.1:4096"
+        do { self.apmeJudgeApiKey = try apmeCredentialProfile.migrate() }
+        catch { self.apmeJudgeCredentialNotice = "The API key could not be loaded or migrated. Unlock this device and try again." }
     }
 
     /// Merge the new backend choice into settings.json without clobbering
@@ -406,37 +415,10 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
     /// file half-parsed. The path resolves via AgentDeckPaths so signed
     /// builds land in the App Store sandbox container.
     private func writeApmeJudgeConfigToSettingsJson() {
-        #if os(macOS)
-        let url = AgentDeckPaths.settingsJson
-
-        // Load existing JSON (or start blank). Silently ignore parse errors —
-        // a malformed file will be rewritten fresh with just our keys.
-        var root: [String: Any] = [:]
-        if let data = try? Data(contentsOf: url),
-           let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            root = parsed
-        }
-
-        var apme = (root["apme"] as? [String: Any]) ?? [:]
-        var judge = (apme["judge"] as? [String: Any]) ?? [:]
-        judge["backend"] = apmeJudgeBackend
-        // endpoint/model/apiKey are backend-specific — write when non-empty,
-        // clear when blank so a switch away from openai doesn't leave a stale
-        // endpoint the loader would try to use.
-        let ep = apmeJudgeEndpoint.trimmingCharacters(in: .whitespaces)
-        if ep.isEmpty { judge.removeValue(forKey: "endpoint") } else { judge["endpoint"] = ep }
-        let mdl = apmeJudgeModel.trimmingCharacters(in: .whitespaces)
-        if mdl.isEmpty { judge.removeValue(forKey: "model") } else { judge["model"] = mdl }
-        let key = apmeJudgeApiKey.trimmingCharacters(in: .whitespaces)
-        if key.isEmpty { judge.removeValue(forKey: "apiKey") } else { judge["apiKey"] = key }
-        apme["judge"] = judge
-        root["apme"] = apme
-
-        guard let out = try? JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys]) else { return }
-        // AgentDeckPaths.baseDirectory eagerly creates the parent on first use,
-        // so we only need to write the file here.
-        try? out.write(to: url, options: [.atomic])
-        #endif
+        do {
+            try apmeCredentialProfile.writeConfiguration(key: apmeJudgeApiKey, backend: apmeJudgeBackend,
+                                                         endpoint: apmeJudgeEndpoint, model: apmeJudgeModel)
+        } catch { apmeJudgeCredentialNotice = "Judge settings could not be saved. Try again." }
     }
 
     /// Mirror the timeline-summary backend selection into settings.json.
@@ -1020,7 +1002,6 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
         static let apmeJudgeBackend = "prefs.apmeJudgeBackend"
         static let apmeJudgeEndpoint = "prefs.apmeJudgeEndpoint"
         static let apmeJudgeModel = "prefs.apmeJudgeModel"
-        static let apmeJudgeApiKey = "prefs.apmeJudgeApiKey"
         static let timelineSummaryProvider = "prefs.timelineSummaryProvider"
         static let displaySleepDimEnabled = "prefs.displaySleepDimEnabled"
         static let displaySleepDimMode = "prefs.displaySleepDimMode"

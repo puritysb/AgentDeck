@@ -112,8 +112,9 @@ enum ApmeJudgeOpenAI {
     /// omission — see `ApmeJudgeMlx.judge`, the leg that DOES send it.
     static func judgeThrowing(prompt: String, config: ApmeJudgeConfig) async throws -> String {
         guard let endpoint = config.endpoint, !endpoint.isEmpty else { throw JudgeError.noEndpoint }
+        let apiKey = try ApmeAPIKeyStorage.resolve(configured: config.apiKey)
         let b = base(endpoint)
-        let model = try await resolveModel(base: b, apiKey: config.apiKey, configured: config.model)
+        let model = try await resolveModel(base: b, apiKey: apiKey, configured: config.model)
         LastResolvedModel.set(model)
         guard let url = URL(string: chatURL(endpoint)) else { throw JudgeError.noEndpoint }
 
@@ -121,7 +122,7 @@ enum ApmeJudgeOpenAI {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            if let k = config.apiKey, !k.isEmpty { request.setValue("Bearer \(k)", forHTTPHeaderField: "Authorization") }
+            if let k = apiKey, !k.isEmpty { request.setValue("Bearer \(k)", forHTTPHeaderField: "Authorization") }
             request.timeoutInterval = 90
             var body: [String: Any] = [
                 "model": model,

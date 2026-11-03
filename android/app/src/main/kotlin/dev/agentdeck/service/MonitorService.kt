@@ -369,7 +369,7 @@ class MonitorService : Service() {
         if (!pm.isInteractive) {
             // Use input keyevent — more reliable than wake locks on devices that block them
             try {
-                Runtime.getRuntime().exec(arrayOf("input", "keyevent", "KEYCODE_WAKEUP"))
+                Runtime.getRuntime().exec(arrayOf("/system/bin/input", "keyevent", "KEYCODE_WAKEUP"))
                 Log.d(TAG, "Sent KEYCODE_WAKEUP to wake screen")
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to send KEYCODE_WAKEUP: ${e.message}")
