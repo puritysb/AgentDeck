@@ -96,7 +96,8 @@
     "generate-daemon-parity": "pnpm --filter @agentdeck/shared build && node scripts/generate-daemon-parity.mjs",
     "generate-glance-policy": "node scripts/generate-glance-policy.mjs",
     "generate-pocket-policy": "pnpm --filter @agentdeck/shared build && node scripts/generate-pocket-policy.mjs",
-    "generate-pocket-vectors": "pnpm build && node scripts/generate-pocket-vectors.mjs"
+    "generate-pocket-vectors": "pnpm build && node scripts/generate-pocket-vectors.mjs",
+    "security:audit": "node scripts/security-audit.mjs"
   },
   "engines": {
     "node": "22.x || 24.x || 26.x",
@@ -107,7 +108,7 @@
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.9.2",
     "@types/w3c-web-serial": "^1.0.8",
-    "@vitest/coverage-v8": "^4.1.8",
+    "@vitest/coverage-v8": "^4.1.12",
     "ajv": "^8.20.0",
     "eslint": "^10.4.1",
     "eslint-config-prettier": "^10.1.8",
@@ -116,11 +117,11 @@
     "prettier": "^3.8.3",
     "quicktype": "^23.2.6",
     "serialport": "^13.0.0",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.5",
     "ts-json-schema-generator": "^2.9.0",
     "tsx": "^4.23.12",
     "typescript-eslint": "^8.60.1",
-    "vite": "^8.0.16",
-    "vitest": "^4.1.8"
+    "vite": "^8.3.5",
+    "vitest": "^4.1.12"
   }
 }
