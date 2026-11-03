@@ -618,3 +618,20 @@ Rough totals: **P0 ≈ 9 days**, **P1 ≈ 7.5 days**, **P2 ≈ 2.5 days**.
    broadcast module can be deleted rather than defaulted off.
 3. **What is the enterprise actually deploying — the CLI, the App Store app, or both?**
    The Swift work (items 12, and half of 2 and 4) is only needed for the app.
+
+
+### ADB reverse collision policy
+
+Node startup and polling inspect `adb reverse --list` before creating Android
+`tcp:9120`. An exact target is reused; a different target or unreadable listing is
+left unchanged with a warning. A missing entry is created using
+[`--no-rebind`](https://android.googlesource.com/platform/packages/modules/adb/+/882334464c178849d2322711424d2836d4593fe4/client/commandline.cpp),
+so an intervening writer cannot be overwritten. ADB exposes endpoints rather than
+OS-user ownership, so the warning says another daemon or user *may* own it.
+
+Shutdown leaves mappings intact: ADB has no conditional compare-and-remove, and a
+probe followed by removal could delete another user's replacement. A later daemon
+on the same port can reuse the tunnel. A port change can leave a stale conflicting
+tunnel that needs an explicit operator decision after checking its owner; automatic
+startup/polling never clears it. Tests use a fake ADB process interface and do not
+query or alter connected devices.
