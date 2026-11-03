@@ -4,7 +4,7 @@ import { realpathSync, readFileSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { beforeSwap, detachedEnv, hasAppStoreReceipt, installMacApp, pruneAppBackups, validateCheckout, waitForDaemonHealth } from '../deploy-local-main.mjs';
+import { beforeSwap, detachedEnv, hasAppStoreReceipt, installMacApp, launchInstalledApp, pruneAppBackups, validateCheckout, waitForDaemonHealth } from '../deploy-local-main.mjs';
 
 const roots: string[] = [];
 function fixture() {
@@ -62,6 +62,33 @@ describe('local deployment checkout ownership', () => {
 });
 
 describe('local deployment runtime handover', () => {
+  it('requests a new instance of the exact installed app without inheriting runner cleanup', () => {
+    const run = vi.fn();
+    const env = { RUNNER_TRACKING_ID: 'github_1234', PATH: '/usr/bin' };
+    const probe = vi.fn(() => { throw Object.assign(new Error('no match'), { status: 1 }); });
+    launchInstalledApp('/Applications/AgentDeck.app', run, env, probe);
+    expect(probe).toHaveBeenCalledWith('pgrep', ['-f', '^/Applications/AgentDeck\\.app/Contents/MacOS/AgentDeck$'],
+      { encoding: 'utf8', timeout: 5_000 });
+    expect(run).toHaveBeenCalledExactlyOnceWith('open-app', 'open',
+      ['-n', '/Applications/AgentDeck.app'], 60_000,
+      { PATH: '/usr/bin', RUNNER_TRACKING_ID: '' });
+    expect(env.RUNNER_TRACKING_ID).toBe('github_1234');
+  });
+
+  it('keeps the exact installed process during recovery from a quit timeout', () => {
+    const run = vi.fn();
+    launchInstalledApp('/Applications/AgentDeck.app', run, {}, () => '42\n');
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('refuses a new instance when the installed-process probe is unreadable', () => {
+    const run = vi.fn();
+    const denied = Object.assign(new Error('probe denied'), { status: 2 });
+    expect(() => launchInstalledApp('/Applications/AgentDeck.app', run, {}, () => { throw denied; })).toThrow(denied);
+    expect(() => launchInstalledApp('/Applications/AgentDeck.app', run, {}, () => '')).toThrow('no valid PID');
+    expect(run).not.toHaveBeenCalled();
+  });
+
   it('launches the app outside the runner job so job cleanup cannot kill it', () => {
     const env = detachedEnv({ RUNNER_TRACKING_ID: 'github_1234', PATH: '/usr/bin' });
     expect(env.RUNNER_TRACKING_ID).toBe('');
