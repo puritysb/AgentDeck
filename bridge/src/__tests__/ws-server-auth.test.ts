@@ -134,3 +134,13 @@ describe('WsServer request URL isolation', () => {
     }
   });
 });
+
+
+it('disconnects existing sockets when credentials require reauthentication', async () => {
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/?token=machine-token`);
+  await new Promise<void>((resolve,reject) => {ws.once('open',resolve);ws.once('error',reject);});
+  const closed = new Promise<number>(resolve => ws.once('close',resolve));
+  server.reauthenticateClients();
+  expect(await closed).toBe(1006);
+  expect((await attempt('?token=machine-token')).ok).toBe(true);
+});

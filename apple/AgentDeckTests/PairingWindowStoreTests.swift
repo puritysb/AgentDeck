@@ -22,6 +22,20 @@ final class PairingWindowStoreTests: XCTestCase {
         return store
     }
 
+    func testCodeCannotOutliveItsCredentialGeneration() async {
+        let store = freshStore(), phase = PairingGenerationProbe()
+        await store.setCredentialGeneration { phase.read() }
+        _ = await store.open()
+        let first = await store.isOpen(); XCTAssertTrue(first)
+        phase.set("1:first")
+        let retired = await store.isOpen(); XCTAssertFalse(retired)
+        _ = await store.open()
+        let second = await store.isOpen(); XCTAssertTrue(second)
+        phase.set("2:second")
+        let retiredAgain = await store.isOpen(); XCTAssertFalse(retiredAgain)
+        await store.resetForTests()
+    }
+
     // MARK: - Shape rules (parity with the TS SSOT)
 
     func testCodeShapeMatchesTheSharedRules() async {
@@ -280,5 +294,11 @@ final class PairingWindowStoreTests: XCTestCase {
         XCTAssertEqual(redemption?["name"] as? String, "unnamed device")
         XCTAssertEqual(redemption?["kind"] as? String, "unknown")
     }
+}
+private final class PairingGenerationProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: String?
+    func read() -> String? { lock.lock(); defer { lock.unlock() }; return value }
+    func set(_ next: String) { lock.lock(); value = next; lock.unlock() }
 }
 #endif

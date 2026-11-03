@@ -50,10 +50,16 @@ static CRGB buildDisconnectMsg(char* out, size_t outSize) {
 
     lockState();
     uint32_t lastMs = g_state.lastMessageMs;
+    const bool pairingRequired = g_state.pairingRequired;
     unlockState();
 
     bool everGotData = (lastMs != 0);
     const CRGB grey = CRGB(40, 40, 45);  // cool neutral grey
+
+    if (pairingRequired) {
+        snprintf(out, outSize, "USB PAIR");
+        return CRGB(ProductPalette::UiAttn);
+    }
 
     // Previously connected — daemon went away. Show OFFLINE regardless of
     // WiFi state (serial-only devices don't need WiFi to work).

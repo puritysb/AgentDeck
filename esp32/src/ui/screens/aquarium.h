@@ -6,6 +6,7 @@ enum class ConnOverlayStatus {
     HIDDEN,         // 연결됨 — 오버레이 숨김
     NO_WIFI,        // WiFi 미연결 (스피너 없음)
     SEARCHING,      // WiFi OK, 브리지 탐색 중
+    PAIRING_REQUIRED, // A confirmed auth refusal; retries need trusted provisioning.
     RECONNECTING,   // 연결 끊김 후 재연결 중
 };
 

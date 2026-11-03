@@ -2465,9 +2465,36 @@
       ],
       "type": "object"
     },
+    "VoiceDeliveryStatus": {
+      "enum": [
+        "delivered",
+        "held",
+        "refused",
+        "denied",
+        "expired",
+        "dropped",
+        "submitted",
+        "unavailable"
+      ],
+      "type": "string"
+    },
     "VoiceStateEvent": {
       "additionalProperties": false,
       "properties": {
+        "deliveryReason": {
+          "type": "string"
+        },
+        "deliveryStatus": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/VoiceDeliveryStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Capture and peer delivery are separate axes. Null clears an older receipt."
+        },
         "error": {
           "type": "string"
         },

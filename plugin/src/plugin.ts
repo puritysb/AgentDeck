@@ -476,10 +476,10 @@ connMgr.on('session_settings', (ev: import('@agentdeck/shared').SessionSettingsE
 // design: the daemon parks on 'error' after a failed capture, and without the
 // reset the key would read "no speech" forever.
 let voiceErrorResetTimer: ReturnType<typeof setTimeout> | null = null;
-connMgr.on('voice_state', (ev: { type: 'voice_state'; state: 'idle' | 'recording' | 'transcribing' | 'error'; text?: string; error?: string }) => {
+connMgr.on('voice_state', (ev: { type: 'voice_state'; state: 'idle' | 'recording' | 'transcribing' | 'error'; text?: string; error?: string; deliveryStatus?: import('@agentdeck/shared').VoiceDeliveryStatus | null; sessionId?: string }) => {
   dlog('Plugin', `voice_state: ${ev.state}${ev.text ? ` "${ev.text.slice(0, 40)}"` : ''}${ev.error ? ` (${ev.error})` : ''}`);
   if (voiceErrorResetTimer) { clearTimeout(voiceErrorResetTimer); voiceErrorResetTimer = null; }
-  const changed = getSessionSlotManager().updateVoiceState(ev.state);
+  const changed = getSessionSlotManager().updateVoiceState(ev.state,ev.deliveryStatus,ev.sessionId);
   if (ev.state === 'error') {
     voiceErrorResetTimer = setTimeout(() => {
       voiceErrorResetTimer = null;
@@ -576,6 +576,7 @@ connMgr.on('stale-changed', (stale: boolean) => {
 });
 
 connMgr.on('disconnected', () => {
+  getSessionSlotManager().updateVoiceState('idle',null);
   getSessionSlotManager().disconnectSettings();
   dinfo('Plugin', `disconnected (agentType=${proxiedAgentType} prevState=${currentState})`);
   setDaemonConnected(false);

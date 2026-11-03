@@ -110,6 +110,8 @@ static void networkTask(void* param) {
     Net::BridgeInfo bridge;
     char currentBridgeIp[16] = {0};  // IP we're currently trying to connect to
     uint16_t currentBridgePort = 0;
+    char pairedBridgeIp[16] = {};
+    uint16_t pairedBridgePort = 0;
     uint32_t lastMdnsRefreshMs = 0;
 
 #if defined(BOARD_T_DISPLAY_PRO)
@@ -142,26 +144,29 @@ static void networkTask(void* param) {
         }
     }
 
-#if defined(BOARD_IPS10)
-    if (Net::wifiConnected()) {
-        char savedBridgeIp[16] = {0};
-        char savedToken[40] = {0};
+    {
+        char savedBridgeIp[sizeof(g_state.bridgeIp)] = {};
+        char savedToken[sizeof(g_state.authToken)] = {};
         uint16_t savedBridgePort = 0;
-        if (Net::wifiLoadProvisionedBridge(savedBridgeIp, sizeof(savedBridgeIp),
-                                           &savedBridgePort, savedToken, sizeof(savedToken))) {
-            Serial.printf("[Net] IPS10 saved bridge endpoint: %s:%d\n",
-                          savedBridgeIp, savedBridgePort);
-            strncpy(currentBridgeIp, savedBridgeIp, sizeof(currentBridgeIp) - 1);
-            currentBridgePort = savedBridgePort;
+        if (Net::wifiLoadProvisionedBridge(savedBridgeIp,sizeof(savedBridgeIp),&savedBridgePort,savedToken,sizeof(savedToken))) {
             lockState();
-            strncpy(g_state.bridgeIp, savedBridgeIp, sizeof(g_state.bridgeIp) - 1);
-            g_state.bridgePort = savedBridgePort;
-            strncpy(g_state.authToken, savedToken, sizeof(g_state.authToken) - 1);
+            snprintf(g_state.bridgeIp,sizeof(g_state.bridgeIp),"%s",savedBridgeIp);
+            g_state.bridgePort=savedBridgePort;
+            snprintf(g_state.authToken,sizeof(g_state.authToken),"%s",savedToken);
             unlockState();
-            Net::wsConnect(savedBridgeIp, savedBridgePort, savedToken);
+            snprintf(currentBridgeIp,sizeof(currentBridgeIp),"%s",savedBridgeIp);
+            currentBridgePort=savedBridgePort;
+#if defined(BOARD_IPS10)
+            if (Net::wifiConnected()) Net::wsConnect(savedBridgeIp,savedBridgePort,savedToken);
+#endif
+        } else {
+            lockState(); const bool unboundCredential=g_state.authToken[0] != '\0'; unlockState();
+            if (unboundCredential || Net::wifiPairingStoreUnavailable()) {
+                Serial.println("[Net] Pairing endpoint unavailable; connect USB to re-pair");
+                Net::wsRequirePairing();
+            }
         }
     }
-#endif
 
     while (true) {
         // === Always poll serial (USB JSON from bridge) ===
@@ -238,40 +243,33 @@ static void networkTask(void* param) {
         // Keep WS available even when USB serial is attached. Serial remains
         // the primary state transport, but WiFi OTA needs an addressable WS
         // socket while boards are still on the bench.
-        if (!Net::wifiRadioParked() && Net::wifiConnected() && !Net::wsConnected() && !Net::wsConnecting() && Net::mdnsPoll(bridge)) {
+        if (!Net::wsConnected() && !Net::wsConnecting()) {
+            lockState();
+            snprintf(pairedBridgeIp, sizeof(pairedBridgeIp), "%s", g_state.bridgeIp);
+            pairedBridgePort = g_state.bridgePort;
+            unlockState();
+        }
+        lockState(); const bool needsPairing=g_state.pairingRequired; unlockState();
+        if (!needsPairing && !Net::wifiRadioParked() && Net::wifiConnected() && !Net::wsConnected() && !Net::wsConnecting() && Net::mdnsPoll(bridge, pairedBridgeIp, pairedBridgePort)) {
             bool ipChanged = (strcmp(currentBridgeIp, bridge.ip) != 0) || (currentBridgePort != bridge.port);
             if (ipChanged || !Net::wsConnected()) {
-                // Discovery answers WHERE the daemon is, never WHAT the token is.
-                // Since the daemon stopped advertising its pairing token over
-                // multicast (GitHub #145), `bridge.token` is empty against any
-                // current daemon — and an empty field means "no information",
-                // not "the token is now empty". Adopting it verbatim wiped the
-                // credential this board was provisioned with over serial, so
-                // every reconnect dialed tokenless and the daemon closed the
-                // socket 4001. Keep what we hold unless discovery actually
-                // carries one (a pre-#145 daemon still does).
-                char authToken[sizeof(g_state.authToken)] = {0};
+                // Discovery supplies endpoint hints, never pairing credentials.
+                char authToken[sizeof(g_state.authToken)] = {};
                 lockState();
-                strncpy(authToken, g_state.authToken, sizeof(authToken) - 1);
+                snprintf(authToken,sizeof(authToken),"%s",g_state.authToken);
                 unlockState();
-                if (bridge.token[0] != '\0') {
-                    strncpy(authToken, bridge.token, sizeof(authToken) - 1);
-                    authToken[sizeof(authToken) - 1] = '\0';
-                }
 
                 if (ipChanged) {
                     Serial.printf("[Net] Bridge (re)discovered via mDNS: %s:%d\n", bridge.ip, bridge.port);
                     strncpy(currentBridgeIp, bridge.ip, sizeof(currentBridgeIp) - 1);
                     currentBridgePort = bridge.port;
-                    // Self-heal the persisted endpoint: 67934f94 saved the bridge
-                    // IP to NVS but never refreshed it, so a board whose daemon
-                    // moved (DHCP drift, host IP change) reloads the STALE saved
-                    // IP on every reboot and loops on "connection reset by peer".
-                    // Persisting the freshly-discovered endpoint here lets the
-                    // board recover across reboots. No-op on non-IPS10 boards.
-                    // The token passed here is the retained one, so an endpoint
-                    // self-heal can never cost the board its credential.
-                    Net::wifiSaveProvisionedBridge(bridge.ip, bridge.port, authToken);
+                    // Bind the selected endpoint on every board before dialing.
+                    // Selection never moves an existing preference to another
+                    // host; address changes require trusted re-provisioning.
+                    if (!Net::wifiSaveProvisionedBridge(bridge.ip, bridge.port, authToken)) {
+                        Net::wsRequirePairing();
+                        continue;
+                    }
                     // New endpoint: tear down old WS so wsConnect rebinds cleanly
                     if (Net::wsConnected()) Net::wsDisconnect();
                 }
@@ -977,7 +975,10 @@ static void uiTask(void* param) {
                 if (!Net::wifiConnected() && !Net::serialConnected()) {
                     Screens::splashSetStatus("No WiFi");
                 } else {
-                    Screens::splashSetStatus("Searching for AgentDeck...");
+                    lockState();
+                    const bool needsPairing = g_state.pairingRequired;
+                    unlockState();
+                    Screens::splashSetStatus(needsPairing ? "Pairing required - connect USB" : "Searching for AgentDeck...");
                 }
             }
         }
@@ -989,11 +990,16 @@ static void uiTask(void* param) {
         // resets lastOverlayStatus) and self-healing (a scrim that ever diverges
         // from the real state is corrected on the next frame) — unlike the old
         // edge-triggered logic, which could leave the scrim stuck.
+        lockState();
+        const bool pairingRequired = g_state.pairingRequired;
+        unlockState();
         bool wifiNow = Net::wifiConnected();
         bool serialNow = Net::serialConnected();
         ConnOverlayStatus desiredOverlay;
         if (showConnected) {
             desiredOverlay = ConnOverlayStatus::HIDDEN;
+        } else if (pairingRequired) {
+            desiredOverlay = ConnOverlayStatus::PAIRING_REQUIRED;
         } else if (everConnected) {
             // Was connected before — daemon went away (regardless of WiFi state)
             desiredOverlay = ConnOverlayStatus::RECONNECTING;

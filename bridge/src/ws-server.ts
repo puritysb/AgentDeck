@@ -1,5 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { randomUUID } from 'node:crypto';
+import { TRANSPORT_AUTH_POLICY } from './transport-auth-policy.generated.js';
 import { performance } from 'node:perf_hooks';
 import type { Server, IncomingMessage } from 'http';
 import type { BridgeEvent, PluginCommand } from './types.js';
@@ -179,7 +180,7 @@ export class WsServer {
         // same-machine address would hand local trust to every page.
         if (!validateToken(url.searchParams.get('token') || '')) {
           logLocalTrustRefusal('WebSocket', localTrust, req);
-          ws.close(4001, 'Unauthorized');
+          ws.close(TRANSPORT_AUTH_POLICY.websocketUnauthorized, 'Unauthorized');
           return;
         }
         debug('WS', 'Same-machine web page authenticated with the pairing token');
@@ -284,7 +285,7 @@ export class WsServer {
           // this counts the attempts the operator is shown.
           this.pairingApproval?.record(remoteIp, deviceId, token.length > 0);
           this.logUnauthorized(remoteIp, token.length > 0, peerKind, board);
-          ws.close(4001, 'Unauthorized');
+          ws.close(TRANSPORT_AUTH_POLICY.websocketUnauthorized, 'Unauthorized');
           return;
         }
         debug('WS', `Remote client authenticated from ${remoteIp}`);
@@ -617,6 +618,10 @@ export class WsServer {
       ? `[agentdeck] Rejected ${who}: pairing token not accepted${repeated}. `
         + `A provisioned device looping here needs its token re-armed over USB serial.`
       : `[agentdeck] Rejected ${who}: no pairing token${repeated}. ${howToFix}`);
+  }
+
+  reauthenticateClients(): void {
+    for (const client of [...this.wss.clients]) client.terminate();
   }
 
   close(): void {

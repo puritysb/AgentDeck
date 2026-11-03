@@ -6,14 +6,25 @@ import LocalAuthentication
 struct CalendarConfiguration: Codable, Sendable, Equatable {
     var urls: [String]
     var timeZone: String?
+    var normalized: Self? {
+        let sources = urls.compactMap(Self.normalizeURL)
+        guard !sources.isEmpty, sources.count == urls.count, sources.count <= CalendarPolicy.maxSources,
+              timeZone == nil || TimeZone(identifier: timeZone!) != nil else { return nil }
+        return .init(urls: sources, timeZone: timeZone)
+    }
     var valid: Bool { !urls.isEmpty && urls.count <= CalendarPolicy.maxSources && urls.allSatisfy(Self.validURL) && (timeZone == nil || TimeZone(identifier: timeZone!) != nil) }
     static func validURL(_ raw: String) -> Bool {
+        normalizeURL(raw) != nil
+    }
+    static func normalizeURL(_ input: String) -> String? {
+        let raw = input.hasPrefix(CalendarPolicy.subscriptionScheme)
+            ? CalendarPolicy.subscriptionTransport + input.dropFirst(CalendarPolicy.subscriptionScheme.count) : input
         guard raw.utf8.count <= CalendarPolicy.maxUrlBytes, !raw.isEmpty,
               !raw.contains("\\"), !raw.contains("#"), raw.range(of: #"%(?![0-9a-fA-F]{2})"#, options: .regularExpression) == nil,
               !raw.unicodeScalars.contains(where: { $0.value <= 32 || $0.value == 127 || CharacterSet.whitespacesAndNewlines.contains($0) }),
               let c = URLComponents(string: raw), let host = c.host, !host.isEmpty, c.user == nil, c.password == nil,
-              c.url != nil else { return false }
-        return c.scheme == "https" || (c.scheme == "http" && ["127.0.0.1","localhost","[::1]","::1"].contains(host))
+              c.url != nil else { return nil }
+        return c.scheme == "https" || (c.scheme == "http" && ["127.0.0.1","localhost","[::1]","::1"].contains(host)) ? raw : nil
     }
 }
 struct CalendarSecretStorage: Sendable {
@@ -87,8 +98,8 @@ actor CalendarConnection {
             let expected = grant.value
             if storage.consent() {
                 guard let data = try storage.load() else { throw CalendarICS.Failure.invalid }
-                let record = try JSONDecoder().decode(CalendarConfiguration.self, from: data)
-                guard record.valid else { throw CalendarICS.Failure.invalid }
+                let decoded = try JSONDecoder().decode(CalendarConfiguration.self, from: data)
+                guard let record = decoded.normalized else { throw CalendarICS.Failure.invalid }
                 guard grant.activate(expected) else { loaded = true; config = nil; return (grant.value, nil) }
                 config = record
             }
@@ -101,8 +112,7 @@ actor CalendarConnection {
         let expected = expectedRevision ?? grant.value
         guard expected == grant.value else { throw CancellationError() }
         guard consent else { throw CalendarICS.Failure.invalid }
-        let record = CalendarConfiguration(urls: urls)
-        guard record.valid else { throw CalendarICS.Failure.invalid }
+        guard let record = CalendarConfiguration(urls: urls).normalized else { throw CalendarICS.Failure.invalid }
         try storage.save(JSONEncoder().encode(record))
         guard grant.activate(expected, before: { [storage] in storage.setConsent(true) }) else { throw CancellationError() }
         config = record; loaded = true

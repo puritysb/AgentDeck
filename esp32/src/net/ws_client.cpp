@@ -32,11 +32,11 @@
 #include "../ui/widgets/hud_bar.h"
 #include <esp_heap_caps.h>
 #endif
-#include <WebSocketsClient.h>
+#include "auth_websocket_client.h"
 #include <Arduino.h>
 #include <mbedtls/base64.h>
 
-static WebSocketsClient ws;
+static AuthWebSocketsClient ws;
 static bool connected = false;
 static bool connecting = false;
 static uint32_t reconnectMs = WS_RECONNECT_MIN_MS;
@@ -1089,10 +1089,10 @@ void pumpOutbound() {
 }
 
 void wsConnect(const char* ip, uint16_t port, const char* token) {
+    if (ws.authentication.required) return;
     if (connected || connecting) {
         return;
     }
-    connecting = true;
 
     // Disconnect any existing attempt before beginning a new one
     ws.disconnect();
@@ -1118,6 +1118,7 @@ void wsConnect(const char* ip, uint16_t port, const char* token) {
         snprintf(path, sizeof(path), "/?clientType=esp32&board=%s", agentdeckBoardName());
     }
 
+    connecting = true;
     ws.begin(ip, port, path);
     ws.onEvent(onWsEvent);
     ws.setReconnectInterval(reconnectMs);
@@ -1133,6 +1134,13 @@ void wsDisconnect() {
 }
 
 void wsLoop() {
+    if (ws.authentication.required) {
+        if (connected || connecting) wsDisconnect();
+        lockState();
+        g_state.pairingRequired = true;
+        unlockState();
+        return;
+    }
     if (!WiFi.isConnected()) {
         if (connected || connecting) {
             ws.disconnect();
@@ -1143,6 +1151,14 @@ void wsLoop() {
     }
 
     ws.loop();
+    if (ws.authentication.required) {
+        Serial.println("[WS] Pairing required: credential refused; re-pair over trusted USB provisioning");
+        wsDisconnect();
+        lockState();
+        g_state.pairingRequired = true;
+        unlockState();
+        return;
+    }
 
     // Exponential backoff reconnection. The library's internal reconnect timer
     // is driven by setReconnectInterval(); we must push updated values into it
@@ -1174,6 +1190,20 @@ bool wsConnected() {
 
 bool wsConnecting() {
     return connecting;
+}
+
+void wsAuthenticationProvisioned() {
+    ws.authentication.provisioned();
+    lockState();
+    g_state.pairingRequired = false;
+    unlockState();
+}
+
+void wsRequirePairing() {
+    ws.authentication.required = true;
+    lockState();
+    g_state.pairingRequired = true;
+    unlockState();
 }
 
 void wsSend(const char* json) {

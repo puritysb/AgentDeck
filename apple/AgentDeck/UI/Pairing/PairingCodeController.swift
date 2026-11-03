@@ -203,6 +203,37 @@ final class PairingCodeController: ObservableObject {
         await refreshKnocks()
     }
 
+    @Published private(set) var renewalBusy = false
+    @Published private(set) var renewalStatus: String?
+
+    func renewPairingToken() async {
+        guard !renewalBusy else { return }
+        renewalBusy = true; renewalStatus = nil
+        defer { renewalBusy = false }
+        do {
+            guard AuthManager.shared.rotationAvailable else { throw PairingError.badPayload }
+            let health = try await get("/health")
+            guard let pid = health["pid"] as? Int, LocalPeerOwnership.of(pid: pid) == .sameUser,
+                  let supported = health["pairingRotation"] as? NSNumber,
+                  CFGetTypeID(supported) == CFBooleanGetTypeID(), supported.boolValue else { throw PairingError.badPayload }
+            let floor = try PairingCredentialRules.metadata(health["pairingRetirement"]).revision
+            let response = try await post("/pair/rotate", body: ["confirm": true, "minimumRevision": floor])
+            guard response["scope"] as? String == PairingCredentialRules.rotationScope,
+                  response["globalRevocation"] as? String == PairingCredentialRules.globalRevocation,
+                  let confirmed = response["rotated"] as? NSNumber,
+                  CFGetTypeID(confirmed) == CFBooleanGetTypeID(), confirmed.boolValue else { throw PairingError.badPayload }
+            let receipt = try PairingCredentialRules.metadata(response["pairingRetirement"])
+            guard receipt.revision > floor else { throw PairingError.badPayload }
+            let current = try await get("/health")
+            let observed = try PairingCredentialRules.metadata(current["pairingRetirement"])
+            guard current["pid"] as? Int == pid, observed.revision >= receipt.revision,
+                  observed.revision != receipt.revision || observed.eventId == receipt.eventId else { throw PairingError.badPayload }
+            renewalStatus = "Active host token renewed. Pair its devices again. Global revocation is incomplete: offline or older hosts may still accept previous tokens."
+        } catch {
+            renewalStatus = "Renewal could not be confirmed. Check the active host before trying again."
+        }
+    }
+
     // MARK: - Transport
 
     private func url(_ path: String) -> URL? {

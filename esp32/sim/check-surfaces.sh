@@ -7,6 +7,10 @@ for board in box_86 ips35 amoled ttgo; do
   mkdir -p "$audit_out/$board"
   ".pio/build/$board/program" --verify-habitat --page terrarium --outdir "$audit_out/$board"
 done
+for board in trmnl_75 nm_epd_420_preview lilygo_epd47_notouch_preview lilygo_epd47_preview; do
+  mkdir -p "$audit_out/$board"
+  ".pio/build/$board/program" --scene pairing-required --out "$audit_out/$board/pairing-required.png"
+done
 for board in ips10 t_embed t_display_pro; do
   mkdir -p "$audit_out/$board"
   ".pio/build/$board/program" --verify-interactions --outdir "$audit_out/$board"

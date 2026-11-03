@@ -400,11 +400,15 @@ export interface UserPromptEvent {
   text: string;
 }
 
+export type VoiceDeliveryStatus = 'delivered' | 'held' | 'refused' | 'denied' | 'expired' | 'dropped' | 'submitted' | 'unavailable';
 export interface VoiceStateEvent {
   type: 'voice_state';
   state: 'idle' | 'recording' | 'transcribing' | 'error';
   text?: string;
   error?: string;
+  /** Capture and peer delivery are separate axes. Null clears an older receipt. */
+  deliveryStatus?: VoiceDeliveryStatus | null;
+  deliveryReason?: string;
   /** Which session the capture targets, for daemon host push-to-talk. Absent
    *  on the legacy session-bridge voice path (implicitly that bridge's own
    *  session). */

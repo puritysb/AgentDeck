@@ -331,6 +331,9 @@ void aquariumSetConnectionStatus(ConnOverlayStatus status) {
     lv_obj_clear_flag(connScrim, LV_OBJ_FLAG_HIDDEN);
 
     switch (status) {
+        case ConnOverlayStatus::PAIRING_REQUIRED:
+            lv_label_set_text(connStatusLabel, "Pairing required\nConnect USB to re-pair");
+            break;
         case ConnOverlayStatus::NO_WIFI:
             lv_label_set_text(connStatusLabel, "No WiFi");
             break;

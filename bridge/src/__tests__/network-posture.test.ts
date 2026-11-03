@@ -69,13 +69,19 @@ describe('daemonModuleConfigs', () => {
   const loopback = { loopbackOnly: true, noDeviceModules: false };
   const local = { loopbackOnly: false, noDeviceModules: true };
 
-  it('leaves everything enabled in the default posture', () => {
+  it('keeps mDNS and devices enabled but legacy UDP disabled by default', () => {
     const c = daemonModuleConfigs(open, 'auto');
     expect(c.mdns).toBe(true);
-    expect(c.broadcast).toBe(true);
+    expect(c.broadcast).toBe(false);
     expect(c.pixoo).toBe('auto');
     expect(c.idotmatrix).toBe('auto');
     expect(c.serial).toBe('auto');
+  });
+
+  it('allows explicit UDP opt-in only in the LAN posture', () => {
+    expect(daemonModuleConfigs(open, 'auto', true).broadcast).toBe(true);
+    expect(daemonModuleConfigs(loopback, 'auto', true).broadcast).toBe(false);
+    expect(daemonModuleConfigs(local, 'auto', true).broadcast).toBe(false);
   });
 
   it('loopback silences every module that touches the network', () => {

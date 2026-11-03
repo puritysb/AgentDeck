@@ -379,3 +379,18 @@ describe('operator status', () => {
     expect(status.secondsRemaining).toBeLessThanOrEqual(PAIRING_WINDOW_MS / 1000);
   });
 });
+
+
+it('invalidates an already-open code when its credential generation changes', async () => {
+  const window = await import('../pairing-window.js');
+  let generation: string | undefined;
+  window.setPairingCredentialGeneration(() => generation);
+  try {
+    window.openPairingWindow(); expect(window.pairingWindowOpen()).toBe(true);
+    generation = '1:'+'a'.repeat(32);
+    expect(window.pairingWindowOpen()).toBe(false);
+    window.openPairingWindow(); expect(window.pairingWindowOpen()).toBe(true);
+    generation = '2:'+'b'.repeat(32);
+    expect(window.pairingWindowOpen()).toBe(false);
+  } finally { window.closePairingWindow();window.setPairingCredentialGeneration(() => undefined); }
+});

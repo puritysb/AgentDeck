@@ -13,7 +13,9 @@ struct CalendarSettings: View {
             Text("Calendar schedule").font(.headline)
             Text("Show the remaining schedule on paired Pocket and Glance displays. Private calendar addresses stay in this Mac’s Keychain.")
                 .font(.caption).foregroundStyle(TerrariumHUD.subtext)
-            SecureField("Private HTTPS ICS URLs, separated by spaces", text: $sources).textFieldStyle(.roundedBorder)
+            SecureField("Private HTTPS or webcal ICS URLs, separated by spaces", text: $sources).textFieldStyle(.roundedBorder)
+            Text("webcal addresses use HTTPS. Calendar servers must support a secure connection.")
+                .font(.caption).foregroundStyle(TerrariumHUD.subtext)
             Toggle("Allow AgentDeck to fetch these sources and share event titles and times with paired Pocket and Glance displays", isOn: $consent).font(.caption)
             HStack {
                 Button("Save calendars") { save() }.disabled(busy || !consent || sources.isEmpty)
@@ -44,7 +46,7 @@ struct CalendarSettings: View {
             do {
                 try await CalendarConnection.shared.connect(urls: urls, consent: agreed, expectedRevision: revision)
                 guard ticket == operation else { return }; await refresh()
-            } catch { if ticket == operation { self.error = "Calendars could not be saved. Check the HTTPS addresses and Keychain access." } }
+            } catch { if ticket == operation { self.error = "Calendars could not be saved. Check the HTTPS or webcal addresses and Keychain access." } }
             if ticket == operation { busy = false }
         }
     }

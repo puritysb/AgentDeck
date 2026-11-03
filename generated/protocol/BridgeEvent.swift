@@ -145,6 +145,9 @@ struct ADBridgeEvent: Codable, Equatable {
     var status: ADBridgeEventStatus?
     /// Transcribed user speech
     var text: String?
+    var deliveryReason: String?
+    /// Capture and peer delivery are separate axes. Null clears an older receipt.
+    var deliveryStatus: ADVoiceDeliveryStatus?
     var error: String?
     var deviceId: String?
     /// LLM response text
@@ -272,6 +275,8 @@ struct ADBridgeEvent: Codable, Equatable {
         case zaiRateLimits = "zaiRateLimits"
         case status = "status"
         case text = "text"
+        case deliveryReason = "deliveryReason"
+        case deliveryStatus = "deliveryStatus"
         case error = "error"
         case deviceId = "deviceId"
         case responseText = "responseText"
@@ -407,6 +412,8 @@ extension ADBridgeEvent {
         zaiRateLimits: ADZaiRateLimits?? = nil,
         status: ADBridgeEventStatus?? = nil,
         text: String?? = nil,
+        deliveryReason: String?? = nil,
+        deliveryStatus: ADVoiceDeliveryStatus?? = nil,
         error: String?? = nil,
         deviceId: String?? = nil,
         responseText: String?? = nil,
@@ -522,6 +529,8 @@ extension ADBridgeEvent {
             zaiRateLimits: zaiRateLimits ?? self.zaiRateLimits,
             status: status ?? self.status,
             text: text ?? self.text,
+            deliveryReason: deliveryReason ?? self.deliveryReason,
+            deliveryStatus: deliveryStatus ?? self.deliveryStatus,
             error: error ?? self.error,
             deviceId: deviceId ?? self.deviceId,
             responseText: responseText ?? self.responseText,
@@ -1219,6 +1228,17 @@ extension ADCodexRateLimitWindow {
     func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
         return String(data: try self.jsonData(), encoding: encoding)
     }
+}
+
+enum ADVoiceDeliveryStatus: String, Codable, Equatable {
+    case delivered = "delivered"
+    case denied = "denied"
+    case dropped = "dropped"
+    case expired = "expired"
+    case held = "held"
+    case refused = "refused"
+    case submitted = "submitted"
+    case unavailable = "unavailable"
 }
 
 //

@@ -1,3 +1,4 @@
+import { voiceDeliveryStatus } from '@agentdeck/shared';
 import { retainSessionDisplayNames } from '@agentdeck/shared';
 /**
  * Caches the latest daemon broadcasts and produces the merged `stateEvt` the
@@ -31,6 +32,8 @@ export class StateStore {
   private usage: Record<string, unknown> = {};
   /** Host push-to-talk state (daemon voice_state) for the detail VOICE tile. */
   voiceState: 'idle' | 'recording' | 'transcribing' | 'error' = 'idle';
+  voiceDeliveryStatus?: import('@agentdeck/shared').VoiceDeliveryStatus;
+  voiceDeliverySessionId?: string;
   /** Daemon link state — false until connected, false again on disconnect. */
   private connected = false;
   /**
@@ -62,7 +65,7 @@ export class StateStore {
   /** Reflect daemon connect/disconnect so the deck shows OFFLINE when down. */
   setConnected(connected: boolean): void {
     this.connected = connected;
-    if (!connected) this.dot = null;
+    if (!connected) { this.dot = null; this.voiceState='idle'; this.voiceDeliveryStatus=undefined; this.voiceDeliverySessionId=undefined; }
     if (!connected) this.sessionSettings.disconnect();
   }
 
@@ -152,8 +155,11 @@ export class StateStore {
       case 'voice_state': {
         // Host push-to-talk progress — restyles the detail-view VOICE tile.
         const state = typeof e.state === 'string' ? e.state : 'idle';
-        if (state === this.voiceState) return false;
-        this.voiceState = state as typeof this.voiceState;
+        const delivery = state === 'recording' || state === 'transcribing' || e.deliveryStatus === null ? undefined
+          : 'deliveryStatus' in e ? voiceDeliveryStatus(e.deliveryStatus) : this.voiceDeliveryStatus;
+        const owner = delivery ? ('deliveryStatus' in e && typeof e.sessionId === 'string' ? e.sessionId : this.voiceDeliverySessionId) : undefined;
+        if (state === this.voiceState && delivery === this.voiceDeliveryStatus && owner === this.voiceDeliverySessionId) return false;
+        this.voiceState = state as typeof this.voiceState; this.voiceDeliveryStatus = delivery; this.voiceDeliverySessionId = owner;
         return true;
       }
       case 'session_settings': {
