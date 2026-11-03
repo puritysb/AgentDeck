@@ -22,6 +22,11 @@ struct DaemonLogger { static let shared = DaemonLogger(); func error(_ message: 
         }
         let directory = URL(fileURLWithPath: CommandLine.arguments[2])
         let manager = AuthManager(directory: directory)
+        if CommandLine.arguments[1] == "--adopt" {
+            let payload = try JSONSerialization.jsonObject(with: FileHandle.standardInput.readDataToEndOfFile()) as! [String: Any]
+            _ = try await manager.adoptPeerToken(payload["token"] as? String, retirement: payload["metadata"])
+            for retired in payload["rejected"] as? [String] ?? [] { precondition(!manager.validateToken(retired)) }
+        }
         if CommandLine.arguments[1] == "--unavailable" {
             precondition(!manager.rotationAvailable)
             do { try await manager.adoptPeerToken(nil, retirement: NSNull()); fatalError("unavailable peer was adopted") }

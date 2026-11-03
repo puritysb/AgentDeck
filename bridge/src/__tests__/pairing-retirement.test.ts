@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { execFileSync, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import vectors from '../../../shared/pairing-credential-vectors.json';
@@ -38,6 +38,21 @@ describe.skipIf(process.platform !== 'darwin')('actual Swift and Node pairing re
       const check = "const a=await import('./bridge/dist/auth.js'); if(a.validateToken('a'.repeat(32))||a.validateToken(process.env.RETIRED_TOKEN)||!a.validateToken(a.getOrCreateToken()))process.exit(2);console.log(JSON.stringify(a.getPairingCredentials()));";
       expect(JSON.parse((await run(process.execPath,['--input-type=module','-e',check],{env:{...env,RETIRED_TOKEN:first.token},timeout:15000})).stdout)).toEqual(current);
       expect(readFileSync(join(dir,'auth-credentials.lock.sqlite')).includes(Buffer.from(current.token))).toBe(false);
+      // Real handover between distinct profiles, in both directions. Seed the
+      // receiver explicitly so no test can inherit this host's real profile.
+      const peer = join(root,'peer-profile'); mkdirSync(peer);
+      writeFileSync(join(peer,'auth-token'),'a'.repeat(32)+'\n');
+      writeFileSync(join(peer,'auth-token-accepted'),'b'.repeat(32)+'\n');
+      const adopted = JSON.parse(execFileSync(binary,['--adopt',peer],{
+        input:JSON.stringify({token:current.token,metadata:current,rejected:['a'.repeat(32),'b'.repeat(32)]}),encoding:'utf8',timeout:15000,
+      }));
+      expect(adopted).toEqual(current);
+      const next = JSON.parse((await run(binary,['--rotate',peer],{timeout:15000})).stdout);
+      expect(next.revision).toBe(current.revision+1); expect(next.accepted).toEqual([]);
+      const adoptBack = "const fs=await import('node:fs'); const a=await import('./bridge/dist/auth.js'); const state=JSON.parse(fs.readFileSync(0,'utf8')); a.adoptPeerToken(state.token,state); if(a.validateToken(process.env.RETIRED_TOKEN)||!a.validateToken(state.token)||a.getAcceptedTokens().length)process.exit(2);console.log(JSON.stringify(a.getPairingCredentials()));";
+      expect(JSON.parse(execFileSync(process.execPath,['--input-type=module','-e',adoptBack],{
+        input:JSON.stringify(next),env:{...env,RETIRED_TOKEN:current.token},encoding:'utf8',timeout:15000,
+      }))).toEqual(next);
       for (const invalid of ['{broken', 'missing', '', 'x'.repeat(8193), Buffer.from([0xff])]) {
         writeFileSync(join(dir,'auth-credentials.json'),invalid);
         expect(JSON.parse((await run(binary,['--unavailable',dir],{timeout:15000})).stdout)).toEqual({available:false});
