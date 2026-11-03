@@ -88,8 +88,13 @@ jobs:
           targets: aarch64-apple-darwin
       - name: Select Xcode and generate project
         run: |
-          XCODE=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
-          sudo xcode-select -s "$XCODE/Contents/Developer"
+          # Xcode 27 / Swift 6.4 cannot be traced by CodeQL. Do not select the
+          # newest preview installed on the runner. Missing support fails closed.
+          test -d /Applications/Xcode_26.6.app
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          xcodebuild -version
+          xcrun swift -version | tee "$RUNNER_TEMP/codeql-swift-version.txt"
+          grep -Eq 'Swift version (5\.|6\.[0-3][. ])' "$RUNNER_TEMP/codeql-swift-version.txt"
           brew install xcodegen
           cd apple
           xcodegen generate
