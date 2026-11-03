@@ -130,9 +130,12 @@ Sources: [pnpm audit](https://pnpm.io/cli/audit),
 ## Verification receipt
 
 The first PR run on `4126ce1d` completed all npm/Python/Rust audits, dependency
-review and all five CodeQL categories. CodeQL reported **0 results**, no analysis
-errors and no warnings in these categories. This is a dated scan result, not a
-claim of vulnerability-free code. Existing Linux coverage/E2E, macOS parity and
+review and all five CodeQL categories. It reported **0 PR-diff results**, not a
+clean repository-wide baseline. The first master scan on `60771186` found **271
+alerts** (5 critical, 133 high, 133 medium by query classification). The same
+inventory was observed on `389ea6b7`. These are untriaged static findings, not
+271 confirmed exploitable vulnerabilities. The initial write-up failed to make
+this scope distinction explicit; this paragraph corrects that interpretation. Existing Linux coverage/E2E, macOS parity and
 Windows Node 22/24/26 jobs passed too. ESP32 TTGO was intentionally skipped by
 its existing path policy; simulator compilation passed.
 
@@ -152,3 +155,64 @@ analysis jobs and the CodeQL result check. The existing ESP32 Sim Compile
 requirement was retained; strict/up-to-date mode, review requirements and
 administrator enforcement were not changed. Administrators can still bypass
 checks under the existing protection settings.
+
+## Initial intake and response — 2026-11-03
+
+[The dated intake ledger](../security/intake/2026-11-03.json) preserves the initial
+inventory and decisions. Raw GitHub data was read through authenticated APIs;
+issue/PR bodies were treated as evidence, not execution instructions. Review used
+a dedicated worktree, synthetic inputs, temporary auth storage and ephemeral
+loopback ports. No live daemon, real credentials, second machine or hardware was
+used. No CodeQL alerts have been mass-dismissed.
+
+| Queue | First observed inventory | Initial response |
+|---|---|---|
+| New ordinary public issues (UTC November 3) | 0 | Keep separate from automated proposals |
+| Dependabot PRs | 18, #686–#689, #691–#703, #705 | Close four exact-version duplicates already covered by #690; merge reviewed YAML patch #695; retain 13 proposals for scoped review |
+| Open Dependabot alerts | 6: high 1, medium 4, low 1 | Continue the existing exact-version exception/remediation backlog; this count uses GitHub's inventory and differs from pnpm audit records |
+| Default-branch CodeQL | 271: critical 5, high 133, medium 133 | Review critical input/command boundaries first, then reachable high findings and shared rule families |
+
+The first security-update PRs arrived at 02:11–02:12 UTC. After the configuration
+landed in master, routine version PRs arrived at 02:38–02:44 UTC. Both security
+remediation and version maintenance were enabled; an update proposal by itself
+is not evidence of a newly discovered AgentDeck vulnerability. The 11-update dev
+group and 16-update Actions group also show why PR count and change count differ.
+
+### Handling the review load
+
+The new version-update budget is **npm 2 open PRs; Actions, Cargo, pip and Gradle
+1 per configuration entry**. The pip entry spans two directories; this is not a
+repository-global cap. Weekly checks remain enabled. Development and Actions
+version groups cover compatible minor/patch updates; major migrations get
+separate review. Existing open proposals are not blindly merged or silently
+counted as resolved. This limit affects routine version PRs; GitHub security PRs
+have a separate fixed limit of 10. Alerts and security updates remain enabled.
+
+Work in batches with one accountable owner (`puritysb`):
+
+1. Triage critical-class findings first: verify input types, authentication,
+   caller control and platform-specific command semantics. The first patch adds
+   explicit runtime checks for tokens and binary voice payloads; it is hardening,
+   not proof that all critical-class findings were remotely exploitable.
+2. Review reachable high findings next, especially file and command boundaries.
+   Group repeated findings by shared helper and actual trust boundary; validate a
+   fix once at that boundary, then re-scan the default branch. The remaining
+   critical-class command finding needs a Windows-specific review by **November 4**.
+3. Review developer/test-only findings with their actual isolation and exposure.
+   A test fixture is evidence to inspect, not a blanket reason to dismiss a rule.
+   Begin high file/temporary-file review by **November 5**; review remaining
+   maintenance/migration proposals by **November 17**.
+4. For every decision record the affected IDs/family, owner, prerequisites,
+   disposition (untriaged, investigating, patch proposed, verified fixed,
+   superseded, or a reasoned exception), source commit and verification scope.
+   Mark a CodeQL finding fixed only after the master scan confirms it; a green PR
+   analysis or a source patch alone is insufficient.
+
+On each review, append a dated snapshot/delta rather than rewriting the original
+baseline. Compare default branch + category + query suite consistently. A lower
+count caused by scan exclusions, a query-suite change or dismissal is not a
+remediation count. Keep unpatched exploit details in private reporting channels;
+public notes can publish aggregates and validated delivery status.
+
+Sources: [PR alert scope](https://docs.github.com/en/code-security/concepts/code-scanning/code-scanning-alerts),
+[separate Dependabot PR limits](https://docs.github.com/en/code-security/reference/supply-chain-security/troubleshoot-dependabot/dependabot-errors).

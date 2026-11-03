@@ -332,7 +332,8 @@ function matchesToken(candidate: string, stored: string): boolean {
  * accept (a token superseded by `adoptPeerToken`). Every candidate is compared
  * — no early exit — so the answer costs the same whichever key matched.
  */
-export function validateToken(token: string): boolean {
+export function validateToken(token: unknown): boolean {
+  if (typeof token !== 'string') return false;
   let ok = matchesToken(token, getOrCreateToken());
   for (const accepted of getAcceptedTokens()) {
     ok = matchesToken(token, accepted) || ok;
