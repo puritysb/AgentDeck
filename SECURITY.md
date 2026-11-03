@@ -41,3 +41,9 @@ data, degrade services, use social engineering, or retain sensitive data beyond
 what is necessary to demonstrate the issue.
 
 Ordinary bugs without a security impact should use the public bug-report form.
+
+## Automated scanning
+
+Dependency auditing, static analysis, exception expiry and the current coverage
+limits are documented in [the security scanning runbook](docs/security-scanning.md).
+A successful scan does not replace private reporting or product-specific review.
