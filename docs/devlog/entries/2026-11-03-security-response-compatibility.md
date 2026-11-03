@@ -51,3 +51,37 @@ suite and iOS Release build passed in the same isolated DerivedData profile; the
 previously failing Glance route case passed too. The failed earlier receipt is
 retained separately. Incoming-only source paths were byte-compared against the
 integration branch; only local XcodeGen path churn was excluded from the commit.
+
+Hosted Debug run 41628618471 failed with NSGenericException, “Task created in
+a session that has been invalidated”. The exported xcresult shows another
+connect/disconnect racing URLSession task creation during the long socket test.
+Disconnect now preserves its synchronous generation boundary on the same serial
+transport queue as task creation; a concurrent connect/stop regression exercises
+that boundary. The lifetime test remains longer than the old 120-second deadline.
+The pinned Rust Action embeds 1.90.0 and accepts only target/components inputs;
+the unsupported toolchain input was removed after the hosted warning.
+
+The follow-up quick check passed (7,561 tests, 42 skips). The full local macOS
+Debug suite passed 1,516 cases with five skips and no failures, including the
+concurrent stop regression and unchanged 125-second socket lifetime test.
+Sandbox-restricted preliminary attempts failed to execute Swift macro plugins
+and local socket tests; those are retained separately from the permitted run.
+
+Hosted Swift extraction remained in compilation for more than 30 minutes. The
+follow-up uses whole-module compilation with optimization disabled to avoid
+repeating module-wide work across primary-file frontend jobs, while retaining
+all product sources, supported Xcode and security-extended queries. Its actual
+hosted result is still required; an ordinary build is not extraction evidence.
+Local universal Release initially lacked the Intel Rust standard library. An
+isolated, checksum-verified Rust 1.90.0 toolchain supplies both macOS targets;
+no user's compiler defaults were changed.
+
+Android dependency review found a security backport hidden by the proposed
+OkHttp major update (#700). Upstream's October 20 advisory describes certificate
+blocklisting for compromised intermediate certificates (CVE-2026-111943);
+4.12.1 supplies the same protection without the 5.x API migration. This matters
+for AOSP/e-ink devices without current Google Play certificate updates. The app
+uses OkHttp's standard hostname verifier. Android dependencyInsight resolved
+4.12.1; 576 JUnit tests in 61 suites passed, and quick checks passed with 7,561
+tests and 42 platform skips. No installed app or device was updated.
+Source: [upstream advisory](https://publicobject.com/2026/10/20/mitigating-bad-roots-in-okhttp/).

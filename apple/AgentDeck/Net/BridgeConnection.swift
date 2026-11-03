@@ -97,6 +97,15 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
     private var reconnectWork: DispatchWorkItem?
     private var connectTimeoutWork: DispatchWorkItem?
     private let queue = DispatchQueue(label: "dev.agentdeck.bridge", qos: .userInitiated)
+    private let queueKey = DispatchSpecificKey<Bool>()
+
+    init() { queue.setSpecific(key: queueKey, value: true) }
+
+    private func onTransportQueue<T>(_ work: () -> T) -> T {
+        if DispatchQueue.getSpecific(key: queueKey) == true { return work() }
+        return queue.sync(execute: work)
+    }
+
     private var hasReceivedMessage = false
     /// Incremented on disconnect(reconnect: false) to invalidate pending reconnect work
     private var connectionGeneration = 0
@@ -116,7 +125,7 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
     // MARK: - Connect
 
     func connect(to urlString: String) {
-        let generation = connectionGeneration
+        let generation = onTransportQueue { connectionGeneration }
         queue.async { [weak self] in
             guard let self, self.connectionGeneration == generation else { return }
             self.connectInternal(urlString, reconnecting: false)
@@ -230,6 +239,12 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
     // MARK: - Disconnect
 
     func disconnect(reconnect: Bool = false) {
+        // Keep the generation boundary synchronous for queued UI deliveries,
+        // while serializing invalidation against URLSession task creation.
+        onTransportQueue { disconnectOnQueue(reconnect: reconnect) }
+    }
+
+    private func disconnectOnQueue(reconnect: Bool) {
         guard !isTerminating else { return }
         deliveryToken.invalidate()
         shouldReconnect = reconnect

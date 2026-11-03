@@ -84,7 +84,6 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: dtolnay/rust-toolchain@7dcc700092a1a8b9c17ba0e140b4e34e93000946 # 1.90.0
         with:
-          toolchain: 1.90.0
           targets: aarch64-apple-darwin
       - name: Select Xcode and generate project
         run: |
@@ -109,7 +108,8 @@ jobs:
             -configuration Debug -destination '${{ matrix.destination }}' \
             -derivedDataPath "$RUNNER_TEMP/CodeQLDerivedData" \
             ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO \
-            SWIFT_USE_INTEGRATED_DRIVER=NO COMPILATION_CACHE_ENABLE_CACHING=NO SWIFT_ENABLE_COMPILE_CACHE=NO
+            SWIFT_USE_INTEGRATED_DRIVER=NO COMPILATION_CACHE_ENABLE_CACHING=NO SWIFT_ENABLE_COMPILE_CACHE=NO \
+            SWIFT_COMPILATION_MODE=wholemodule SWIFT_OPTIMIZATION_LEVEL=-Onone
       - uses: github/codeql-action/analyze@793b778da9c9275a0f276522b27cb5fc14bba279 # v4
         with:
           category: /language:swift-${{ matrix.target }}

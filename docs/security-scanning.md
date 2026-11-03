@@ -251,8 +251,8 @@ Sources: [PR alert scope](https://docs.github.com/en/code-security/concepts/code
 ## Workflow execution integrity
 
 Remote Actions are pinned to full commit SHAs. Their version comments retain
-Dependabot update support; Rust toolchain selection is an explicit input rather
-than inferred from the Action ref. Workflows declare token permissions explicitly.
+Dependabot update support; the pinned Rust Action embeds toolchain 1.90.0 in its implementation.
+Only its supported target inputs are supplied. Workflows declare token permissions explicitly.
 Release jobs retain their existing publication scopes; ordinary test workflows
 receive read-only repository contents. Native CodeQL builds disable compilation
 caches so a cache hit cannot masquerade as source extraction.
@@ -268,6 +268,12 @@ fails after that deadline. Disabled workflows, failed/latest overdue scans,
 stuck execution and unavailable GitHub evidence fail the checker. Receipts and
 summaries are retained for 30 days. The watchdog cannot guarantee delivery by
 GitHub's scheduler; PR/push/manual runs supply additional detection points.
+
+Hosted Kotlin CodeQL run 41628618438 and freshness run 41628618531 succeeded.
+Their exact check contexts were added to master protection with the existing
+eleven checks preserved (13 total), strict up-to-date checks and administrator
+enforcement retained. Readback verified the applied list. Swift remains gated
+on completed hosted extraction before promotion.
 
 ## Per-alert response ledger (November 3 follow-up)
 

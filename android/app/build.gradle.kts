@@ -110,7 +110,7 @@ dependencies {
     implementation("com.google.android.filament:filament-utils-android:1.75.1")
 
     // Networking
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.1")
 
     // DataStore
     implementation("androidx.datastore:datastore-preferences:1.0.0")

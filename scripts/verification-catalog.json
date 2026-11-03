@@ -2,7 +2,7 @@
   "$comment": "What AgentDeck verifies, where, and what it does not. Rendered as the 'What we verify' tab of the GitHub Pages Build Health report (scripts/generate-html-report.py). Gated by scripts/__tests__/verification-catalog.test.ts: every workflow must be listed, every path must exist, and every test file must match a domain (domains are ordered; the first match wins). Edit this file in the same commit as a new gate, workflow or test area. Gate fields: `blocking` means a failure turns its workflow red; `required` means master branch protection lists the gate's check, so GitHub refuses the merge while it fails. Branch protection is a repository setting that CI cannot read, so `merge_policy.as_of` records when `required` was last checked against it.",
   "merge_policy": {
     "as_of": "2026-11-03",
-    "summary": "Branch protection on master requires ESP32 Sim Compile, npm/Python/Rust dependency audits, dependency review, all five CodeQL analysis jobs and the CodeQL result check. Other CI gates turn a PR red but are not individually required. Administrator enforcement and up-to-date branch checks are enabled. Newly added native analysis and freshness jobs are promoted to required only after hosted validation."
+    "summary": "Branch protection on master requires ESP32 Sim Compile, npm/Python/Rust dependency audits, dependency review, the five existing CodeQL jobs plus hosted-validated Kotlin analysis, the CodeQL result check and hosted-validated security pipeline freshness. Administrator enforcement and up-to-date branch checks are enabled. Swift jobs are promoted only after completed hosted validation."
   },
   "levels": {
     "unit": "One module in isolation; collaborators faked.",
@@ -395,7 +395,7 @@
       "job": "freshness",
       "trigger": "Every PR, master push, hourly and manual",
       "blocking": true,
-      "required": false,
+      "required": true,
       "command": "node scripts/security-pipeline-health.mjs",
       "proves": [
         "Latest default-branch scans and cron executions have separate evidence; disabled, stale, failed and stuck pipelines fail after explicit startup deadlines."
@@ -1096,7 +1096,7 @@
       "job": "kotlin",
       "trigger": "Every PR, master push, weekly and manual",
       "blocking": true,
-      "required": false,
+      "required": true,
       "command": "./gradlew :app:assembleDebug --no-build-cache --rerun-tasks",
       "proves": [
         "A clean manual build supplies java-kotlin sources to security-extended queries; build, extraction or analysis failure fails the job."
