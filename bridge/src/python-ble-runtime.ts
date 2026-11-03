@@ -173,11 +173,15 @@ function requirementsDigest(paths: BleRuntimePaths): string {
   return createHash('sha256').update(readFileSync(paths.requirements)).digest('hex');
 }
 
+// Unversioned markers could be renewed from imports alone, without installing
+// the declared versions. They must be repaired even when their digest matches.
+const BLE_READY_MARKER_VERSION = 1;
+
 function readyMarkerMatches(paths: BleRuntimePaths): boolean {
   if (!existsSync(paths.readyMarker)) return false;
   try {
-    const marker = JSON.parse(readFileSync(paths.readyMarker, 'utf8')) as { requirementsSha256?: string };
-    return marker.requirementsSha256 === requirementsDigest(paths);
+    const marker = JSON.parse(readFileSync(paths.readyMarker, 'utf8')) as { version?: number; requirementsSha256?: string };
+    return marker.version === BLE_READY_MARKER_VERSION && marker.requirementsSha256 === requirementsDigest(paths);
   } catch {
     return false;
   }
@@ -216,7 +220,7 @@ export function getBleRuntimeStatus(options: BleRuntimeOptions = {}): BleRuntime
 
   // Preserve source-checkout and pre-1.0.4 manual environments. An explicit BLE
   // command will import-probe this interpreter before using it.
-  if (existsSync(paths.legacyPython)) {
+  if (!existsSync(paths.venvPython) && existsSync(paths.legacyPython)) {
     const rosetta = rosettaInterpreterReason(paths.legacyPython, platform, hostArch);
     if (!rosetta) return { ready: true, python: paths.legacyPython, paths };
     return { ready: false, paths, reason: `${rosetta}; run \`agentdeck ble setup\` to rebuild it` };
@@ -330,12 +334,7 @@ export function ensureBleRuntime(options: BleRuntimeOptions = {}): BleRuntimeSta
   const venvRosetta = existsSync(paths.venvPython)
     ? rosettaInterpreterReason(paths.venvPython, platform, hostArch)
     : null;
-  if (existsSync(paths.venvPython) && !venvRosetta && dependencyProbe(run, paths.venvPython)) {
-    mkdirSync(paths.runtimeDir, { recursive: true });
-    writeFileSync(paths.readyMarker, JSON.stringify({
-      requirementsSha256: requirementsDigest(paths),
-      preparedAt: new Date().toISOString(),
-    }, null, 2) + '\n');
+  if (existsSync(paths.venvPython) && !venvRosetta && readyMarkerMatches(paths) && dependencyProbe(run, paths.venvPython)) {
     return { ready: true, python: paths.venvPython, paths };
   }
 
@@ -343,7 +342,7 @@ export function ensureBleRuntime(options: BleRuntimeOptions = {}): BleRuntimeSta
     ? rosettaInterpreterReason(paths.legacyPython, platform, hostArch)
     : null;
   if (legacyRosetta) log(`Ignoring legacy BLE venv: ${legacyRosetta}.`);
-  if (existsSync(paths.legacyPython) && !legacyRosetta && dependencyProbe(run, paths.legacyPython)) {
+  if (!existsSync(paths.venvPython) && existsSync(paths.legacyPython) && !legacyRosetta && dependencyProbe(run, paths.legacyPython)) {
     return { ready: true, python: paths.legacyPython, paths };
   }
 
@@ -361,6 +360,9 @@ export function ensureBleRuntime(options: BleRuntimeOptions = {}): BleRuntimeSta
   }
 
   mkdirSync(paths.runtimeDir, { recursive: true });
+  // Imports do not prove the installed versions satisfy a changed manifest.
+  // Revoke old readiness before repair; a failed install must stay unready.
+  rmSync(paths.readyMarker, { force: true });
   log(`Preparing optional BLE support in ${paths.runtimeDir}...`);
   const create = run(python.command, [
     ...python.prefix,
@@ -388,6 +390,7 @@ export function ensureBleRuntime(options: BleRuntimeOptions = {}): BleRuntimeSta
   }
 
   writeFileSync(paths.readyMarker, JSON.stringify({
+    version: BLE_READY_MARKER_VERSION,
     requirementsSha256: requirementsDigest(paths),
     preparedAt: new Date().toISOString(),
   }, null, 2) + '\n');
