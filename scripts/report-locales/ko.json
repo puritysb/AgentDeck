@@ -569,5 +569,10 @@
   "A clean manual build supplies swift sources to security-extended queries; build, extraction or analysis failure fails the job.": "새 macOS 앱 빌드에서 Swift 소스를 수집해 확장 보안 규칙으로 분석합니다. 빌드·추출·분석 오류는 검사를 실패 처리합니다.",
   "Absence of exploitable defects; alerts require per-finding review. Swift targets the macOS application; platform-exclusive iOS paths and physical-device behavior need separate verification.": "악용 가능한 결함이 없다는 보장은 아닙니다. 경고는 항목별 검토가 필요합니다. Swift 분석은 macOS 앱을 대상으로 하므로 iOS 전용 코드와 실기기 동작은 별도로 검증해야 합니다.",
   "Clean manual macOS and iOS Simulator builds supply Swift sources to security-extended queries; build, extraction or analysis failure fails the job.": "새 macOS·iOS 시뮬레이터 빌드에서 Swift 소스를 수집해 확장 보안 규칙으로 분석합니다. 빌드·추출·분석 오류는 검사를 실패 처리합니다.",
-  "Absence of exploitable defects, physical-device behavior or release delivery; alerts require per-finding review.": "악용 가능한 결함의 부재, 실기기 동작이나 배포 완료를 보장하지 않습니다. 경고는 항목별 검토가 필요합니다."
+  "Absence of exploitable defects, physical-device behavior or release delivery; alerts require per-finding review.": "악용 가능한 결함의 부재, 실기기 동작이나 배포 완료를 보장하지 않습니다. 경고는 항목별 검토가 필요합니다.",
+  "Security pipeline freshness": "보안 검사 실행 상태",
+  "Every PR, master push, hourly and manual": "모든 PR·master 반영·매시간 예약·수동 실행",
+  "Latest default-branch scans and cron executions have separate evidence; disabled, stale, failed and stuck pipelines fail after explicit startup deadlines.": "기본 브랜치의 최근 검사와 예약 실행 이력을 나눠 확인합니다. 비활성화·기한 초과·실패·장시간 대기는 초기 유예 기한을 적용해 실패 처리합니다.",
+  "Future GitHub scheduler delivery; a first schedule within startup grace remains unverified, not healthy.": "앞으로의 GitHub 예약 실행을 보장하지 않습니다. 초기 유예 기간에 첫 예약 이력이 없으면 미검증으로 표시합니다.",
+  "Branch protection on master requires ESP32 Sim Compile, npm/Python/Rust dependency audits, dependency review, all five CodeQL analysis jobs and the CodeQL result check. Other CI gates turn a PR red but are not individually required. Administrator enforcement and up-to-date branch checks are enabled. Newly added native analysis and freshness jobs are promoted to required only after hosted validation.": "master 보호는 ESP32 시뮬레이터, npm·Python·Rust 의존성 검사, 변경 의존성 검토, 기존 CodeQL 분석 및 경고 검사를 필수로 적용합니다. 관리자도 최신 브랜치의 검사를 통과해야 합니다. 새 네이티브 분석과 실행 상태 검사는 CI에서 확인한 뒤 필수 조건으로 추가합니다."
 }

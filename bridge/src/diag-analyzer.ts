@@ -1,3 +1,4 @@
+import { atomicWritePrivateFile } from './private-files.js';
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
@@ -93,7 +94,7 @@ export function saveDiagDump(dump: DiagDump): string {
 
   const ts = Date.now();
   const filePath = join(DIAG_DIR, `dump-${ts}.json`);
-  writeFileSync(filePath, JSON.stringify(dump, null, 2));
+  atomicWritePrivateFile(filePath, JSON.stringify(dump, null, 2));
   debug('Diag', `Dump saved: ${filePath}`);
   return filePath;
 }

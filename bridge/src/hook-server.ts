@@ -3,7 +3,7 @@ import { createServer, type Server, type ServerResponse } from 'http';
 import { EventEmitter } from 'events';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { writeFileSync, unlinkSync } from 'fs';
+import { writeFileSync, mkdtempSync, rmSync } from 'fs';
 import { debug } from './logger.js';
 import { isLocalConnection, localTrustOf, logLocalTrustRefusal, validateToken } from './auth.js';
 import type { BridgeEvent } from './types.js';
@@ -40,6 +40,9 @@ export class HookServer extends EventEmitter {
   private sseHeartbeats: Map<number, ReturnType<typeof setInterval>> = new Map();
   private pixooStreamTimers: Set<ReturnType<typeof setInterval>> = new Set();
   private sseIdCounter = 0;
+  private admittedRequests = 0;
+  private requestWindowAt = 0;
+  private activeTranscriptions = 0;
   private lastStateEvent: BridgeEvent | null = null;
   private lastUsageEvent: BridgeEvent | null = null;
 
@@ -64,6 +67,21 @@ export class HookServer extends EventEmitter {
       if (typeof token === 'string' && validateToken(token)) { next(); return; }
       if (verdict !== null) logLocalTrustRefusal('hook server', verdict, req);
       res.status(401).json({ error: 'Unauthorized — token required' });
+    });
+    // One bounded counter per server: no attacker-keyed map, and admission
+    // happens after authentication but before request body allocation.
+    this.app.use((_req, res, next) => {
+      const now = Date.now();
+      if (now - this.requestWindowAt >= 1_000 || now < this.requestWindowAt) {
+        this.requestWindowAt = now;
+        this.admittedRequests = 0;
+      }
+      if (++this.admittedRequests > 200) {
+        res.setHeader('Retry-After', '1');
+        res.status(429).json({ error: 'Request rate exceeded' });
+        return;
+      }
+      next();
     });
     this.app.use(express.json());
     this.setupRoutes();
@@ -218,6 +236,10 @@ export class HookServer extends EventEmitter {
     this.app.get('/sse', (req, res) => {
       if (!this.checkAuth(req, res)) return;
 
+      if (this.sseClients.length >= 16) {
+        res.status(429).json({ error: 'Stream capacity reached' });
+        return;
+      }
       debug('SSE', 'New SSE client connected');
 
       // No `Access-Control-Allow-Origin`: the stream carries the session's
@@ -287,7 +309,8 @@ export class HookServer extends EventEmitter {
         const dump = this.diagHandler(tail);
         res.json(dump);
       } catch (err) {
-        res.status(500).json({ error: String(err) });
+        debug('Hook', `Diagnostic request failed: ${String(err)}`);
+        res.status(500).json({ error: 'Diagnostic request failed' });
       }
     });
 
@@ -348,17 +371,26 @@ export class HookServer extends EventEmitter {
 
         debug('Hook', `POST /voice/transcribe (${body.length} bytes)`);
 
-        // Save to temp file
-        const tempFile = join(tmpdir(), `agentdeck-voice-remote-${Date.now()}.wav`);
+        if (this.activeTranscriptions >= 2) {
+          res.status(429).json({ error: 'Transcription capacity reached' });
+          return;
+        }
+        this.activeTranscriptions++;
+        let temporaryDirectory: string | undefined;
         try {
-          writeFileSync(tempFile, body);
+          temporaryDirectory = mkdtempSync(join(tmpdir(), 'agentdeck-voice-'));
+          const tempFile = join(temporaryDirectory, 'audio.wav');
+          writeFileSync(tempFile, body, { flag: 'wx', mode: 0o600 });
           const text = await this.voiceManager.transcribeFile(tempFile);
           res.json({ text });
         } catch (err) {
           debug('Hook', `Transcription error: ${err}`);
-          res.status(500).json({ error: String(err) });
+          res.status(500).json({ error: 'Voice transcription failed' });
         } finally {
-          try { unlinkSync(tempFile); } catch { /* ignore */ }
+          this.activeTranscriptions--;
+          if (temporaryDirectory) {
+            try { rmSync(temporaryDirectory, { recursive: true, force: true }); } catch { /* ignore */ }
+          }
         }
       },
     );

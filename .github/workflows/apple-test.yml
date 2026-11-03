@@ -85,6 +85,13 @@ jobs:
           echo "Using: $XCODE"
           sudo xcode-select -s "$XCODE/Contents/Developer"
 
+      - name: Typecheck generated Swift reference models
+        if: matrix.configuration == 'Debug'
+        run: |
+          for source in generated/protocol/*.swift; do
+            swiftc -typecheck "$source"
+          done
+
       - name: Install XcodeGen
         run: brew install xcodegen
 

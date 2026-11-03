@@ -45,10 +45,10 @@
  * /Create|/Run|/Query|/Delete calls are integration-only (real Windows host +
  * side effects) and are exercised manually per docs/daemon.md.
  */
-import { writeFileSync, unlinkSync } from 'fs';
+import { writeFileSync, mkdtempSync, rmSync } from 'fs';
 import { homedir, tmpdir, userInfo } from 'os';
 import { dirname, join } from 'path';
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
 export const TASK_NAME = 'AgentDeckDaemon';
@@ -152,14 +152,16 @@ export function buildScheduledTaskXml(opts?: { node?: string; cliJs?: string; us
  */
 export function installWindowsTask(extraArgs: string[] = []): void {
   const xml = buildScheduledTaskXml({ extraArgs });
-  const tmpFile = join(tmpdir(), `agentdeck-task-${process.pid}-${Date.now()}.xml`);
-  // Write UTF-16LE with a BOM (U+FEFF) — schtasks /XML rejects UTF-8 here.
-  writeFileSync(tmpFile, '﻿' + xml, 'utf16le');
+  const temporaryDirectory = mkdtempSync(join(tmpdir(), 'agentdeck-task-'));
+  const tmpFile = join(temporaryDirectory, 'task.xml');
   try {
+    // Write UTF-16LE with a BOM (U+FEFF) — schtasks /XML rejects UTF-8 here.
+    writeFileSync(tmpFile, '\uFEFF' + xml, { encoding: 'utf16le', flag: 'wx', mode: 0o600 });
     // /F overwrites an existing task (idempotent; mirrors macOS unload-before-load).
-    execSync(`schtasks /Create /TN "${TASK_NAME}" /XML "${tmpFile}" /F`, { stdio: 'pipe', windowsHide: true });
+    execFileSync('schtasks.exe', ['/Create', '/TN', TASK_NAME, '/XML', tmpFile, '/F'],
+      { stdio: 'pipe', windowsHide: true, timeout: 15_000 });
   } finally {
-    try { unlinkSync(tmpFile); } catch { /* temp cleanup best-effort */ }
+    try { rmSync(temporaryDirectory, { recursive: true, force: true }); } catch { /* temp cleanup best-effort */ }
   }
 }
 

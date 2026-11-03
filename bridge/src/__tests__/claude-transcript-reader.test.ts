@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { mkdtempSync, rmSync, writeFileSync, symlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { readLastTurn, readTurnEndProbe, readOpenTurnEvidence } from '../apme/claude-transcript-reader.js';
+import { readLastTurn, readModelFromTranscript, readTurnEndProbe, readOpenTurnEvidence } from '../apme/claude-transcript-reader.js';
 
 // Picks the most recent user→assistant turn out of a Claude Code JSONL
 // transcript. These fixtures mirror the structure Claude Code writes to
@@ -23,6 +23,28 @@ describe('readLastTurn', () => {
     writeFileSync(path, content);
     return path;
   }
+
+  it('reads the latest turn and model after a large malformed prefix', () => {
+    const path = writeTranscript('x'.repeat(2 * 1024 * 1024) + '\n' + fixture([
+      { message: { role: 'user', content: 'tail question' } },
+      { message: { role: 'assistant', model: 'fixture-model', content: 'tail answer' } },
+    ]));
+    expect(readLastTurn(path)).toMatchObject({ userPrompt: 'tail question', assistantText: 'tail answer' });
+    expect(readModelFromTranscript(path)).toBe('fixture-model');
+  });
+
+  it('refuses non-regular transcript inputs', () => {
+    expect(readLastTurn(dir)).toBeNull();
+    expect(readModelFromTranscript(dir)).toBeNull();
+  });
+
+  it.skipIf(process.platform === 'win32')('refuses a symlink swapped into the transcript path', () => {
+    const target = writeTranscript(fixture([{ message: { role: 'user', content: 'outside content' } }]));
+    const alias = join(dir, 'alias.jsonl');
+    symlinkSync(target, alias);
+    expect(readLastTurn(alias)).toBeNull();
+    expect(readModelFromTranscript(alias)).toBeNull();
+  });
 
   it('extracts assistant text and user prompt from a text-only turn', () => {
     const path = writeTranscript(fixture([

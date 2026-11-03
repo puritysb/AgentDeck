@@ -3038,11 +3038,12 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(result));
       }).catch((err) => {
+        debug('HTTP', `Request failed: ${String(err)}`);
         const status = err instanceof SurfaceProtocolError ? err.status : 500;
         res.writeHead(status, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(err instanceof SurfaceProtocolError
           ? { ok: false, ...surfaceErrorBody(err) }
-          : { ok: false, error: err instanceof Error ? err.message : String(err) }));
+          : { ok: false, error: 'Firmware update failed' }));
       });
       return;
     }
@@ -3139,8 +3140,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         });
         sendPullOtaBody(res, body);
       } catch (err) {
+        debug('HTTP', `Request failed: ${String(err)}`);
         res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+        res.end(JSON.stringify({ error: 'Firmware download failed' }));
       }
       return;
     }
@@ -3525,11 +3527,12 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         });
         res.end(body);
       }).catch((err) => {
+        debug('HTTP', `Request failed: ${String(err)}`);
         const status = err instanceof SurfaceProtocolError ? err.status : 500;
         res.writeHead(status, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(err instanceof SurfaceProtocolError
           ? surfaceErrorBody(err)
-          : { error: err instanceof Error ? err.message : String(err) }));
+          : { error: 'Device feed unavailable' }));
       });
       return;
     }

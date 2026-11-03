@@ -8,7 +8,8 @@
  * EVERY flash and reads like a bad write; a guard whose polarity flips fails
  * nothing until someone picks the wrong board).
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { setLocale, t } from '../../tools/web-flasher/i18n.js';
 import crypto from 'node:crypto';
 import { md5 } from '../../tools/web-flasher/md5.js';
 import {
@@ -17,6 +18,19 @@ import {
   esp32PreflightVerdict,
   type Esp32BoardSpec,
 } from '../../shared/src/esp32-boards.js';
+
+it('renders unknown locale keys as text while preserving authored translation markup', () => {
+  const known = { getAttribute: () => 's1.check', innerHTML: '', textContent: '' };
+  const unknown = { getAttribute: () => '<img src=x onerror=alert(1)>', innerHTML: '', textContent: '' };
+  vi.stubGlobal('document', { documentElement: { lang: '' }, querySelectorAll: () => [known, unknown] });
+  try {
+    setLocale('en');
+    expect(known.innerHTML).toContain('<code');
+    expect(unknown.innerHTML).toBe('');
+    expect(unknown.textContent).toBe('<img src=x onerror=alert(1)>');
+    expect(t('constructor' as Parameters<typeof t>[0])).toBe('constructor');
+  } finally { vi.unstubAllGlobals(); }
+});
 
 describe('md5 (browser flasher)', () => {
   // Checked against node:crypto rather than against pasted digests: a table of

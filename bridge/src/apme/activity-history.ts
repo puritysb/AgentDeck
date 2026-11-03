@@ -8,10 +8,11 @@
  */
 
 import { createHash } from 'crypto';
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
+import { mkdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { request } from 'http';
 import { getDataDir } from '../session-registry.js';
+import { atomicWritePrivateFile } from '../private-files.js';
 import type { ApmeStore } from './store.js';
 
 export const APME_ACTIVITY_SCHEMA = 'agentdeck-activity/v1' as const;
@@ -240,9 +241,7 @@ export function savePeerActivityRows(rows: ApmeActivityRow[]): void {
   const snapshot = makeActivitySnapshot(merged);
   const path = cachePath();
   mkdirSync(getDataDir(), { recursive: true });
-  const tmp = `${path}.${process.pid}.tmp`;
-  writeFileSync(tmp, JSON.stringify(snapshot), { encoding: 'utf8', mode: 0o600 });
-  renameSync(tmp, path);
+  atomicWritePrivateFile(path, JSON.stringify(snapshot));
 }
 
 export function makeActivitySnapshot(rows: ApmeActivityRow[]): ApmeActivitySnapshot {

@@ -16,6 +16,7 @@ vi.mock('child_process', async importOriginal => ({ ...await importOriginal<type
   execSync: vi.fn(() => io.credentials),
   execFile: vi.fn((_file, _args, _options, callback) => callback(null, io.credentials)),
 }));
+vi.mock('../private-files.js', () => ({ atomicWritePrivateFile: vi.fn((path: string, data: string) => io.files.set(path, data)) }));
 vi.mock('../claude-usage-recovery.js', () => ({ claudeUsageRecovery: { recover: io.recover } }));
 
 let api: typeof import('../usage-api.js');

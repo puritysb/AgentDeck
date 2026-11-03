@@ -25,7 +25,7 @@ private val klaxon = Klaxon()
     .convert(Status::class,                 { Status.fromValue(it.string!!) },                 { "\"${it.value}\"" })
     .convert(ConnectResultType::class,      { ConnectResultType.fromValue(it.string!!) },      { "\"${it.value}\"" })
     .convert(GatewayFrameType::class,       { GatewayFrameType.fromValue(it.string!!) },       { "\"${it.value}\"" })
-    .convert(GatewayMethodResult::class,    { GatewayMethodResult.fromJson(it) },              { it.toJson() }, true)
+    .convert(Gateway::class,                { Gateway.fromJson(it) },                          { it.toJson() }, true)
 
 /**
  * Client → Gateway: RPC request.
@@ -41,7 +41,7 @@ data class GatewayFrame (
     val type: GatewayFrameType,
     val error: GatewayError? = null,
     val ok: Boolean? = null,
-    val payload: GatewayMethodResult? = null,
+    val payload: Gateway? = null,
     val event: GatewayEventName? = null,
 
     /**
@@ -285,9 +285,9 @@ data class DeviceAuth (
     val signedAt: Double
 )
 
-sealed class GatewayMethodResult {
-    class ApprovalRequestedPayloadArrayValue(val value: List<ApprovalRequestedPayload>) : GatewayMethodResult()
-    class ConnectResultValue(val value: ConnectResult)                                  : GatewayMethodResult()
+sealed class Gateway {
+    class ApprovalRequestedPayloadArrayValue(val value: List<ApprovalRequestedPayload>) : Gateway()
+    class ConnectResultValue(val value: ConnectResult)                                  : Gateway()
 
     public fun toJson(): String = klaxon.toJsonString(when (this) {
         is ApprovalRequestedPayloadArrayValue -> this.value
@@ -295,7 +295,7 @@ sealed class GatewayMethodResult {
     })
 
     companion object {
-        public fun fromJson(jv: JsonValue): GatewayMethodResult = when (jv.inside) {
+        public fun fromJson(jv: JsonValue): Gateway = when (jv.inside) {
             is JsonArray<*> -> ApprovalRequestedPayloadArrayValue(jv.array?.let { klaxon.parseFromJsonArray<ApprovalRequestedPayload>(it) }!!)
             is JsonObject   -> ConnectResultValue(jv.obj?.let { klaxon.parseFromJsonObject<ConnectResult>(it) }!!)
             else            -> throw IllegalArgumentException()
@@ -363,7 +363,7 @@ data class ApprovalRequestedPayload (
 
     val host: String? = null,
     val id: String,
-    val request: ExecApprovalListResultRequest? = null,
+    val request: ApprovalRequestBody? = null,
     val resolvedPath: String? = null,
     val security: String? = null,
     val sessionKey: String? = null,
@@ -423,7 +423,7 @@ data class ExecApprovalListResultMCPTool (
  * The `request` body OpenClaw nests inside the requested/resolved event —
  * `PluginApprovalRequestPayload` in `approval-types-CQ_BKP9V.d.ts`.
  */
-data class ExecApprovalListResultRequest (
+data class ApprovalRequestBody (
     @Json(name = "agentId")
     val agentID: String? = null,
 
@@ -771,7 +771,7 @@ data class ConnectResult (
 
     val host: String? = null,
     val id: String? = null,
-    val request: ConnectResultRequest? = null,
+    val request: ApprovalRequestBody? = null,
     val resolvedPath: String? = null,
     val security: String? = null,
     val unavailableDecisions: List<String>? = null,
@@ -930,79 +930,6 @@ data class Policy (
 
     @Json(name = "tickIntervalMs")
     val tickIntervalMS: Double? = null
-)
-
-/**
- * The `request` body OpenClaw nests inside the requested event.
- *
- * The `request` body OpenClaw nests inside the requested/resolved event —
- * `PluginApprovalRequestPayload` in `approval-types-CQ_BKP9V.d.ts`.
- */
-data class ConnectResultRequest (
-    @Json(name = "agentId")
-    val agentID: String? = null,
-
-    /**
-     * Decisions this specific request permits (policy may drop allow-always).
-     *
-     * Explicit decisions this request permits. No `unavailableDecisions` counterpart exists on
-     * the plugin surface — unlike exec, there is no subtraction step.
-     */
-    val allowedDecisions: List<String>? = null,
-
-    /**
-     * Approval POLICY ("on-miss" | "always" | …), never a question.
-     */
-    val ask: String? = null,
-
-    /**
-     * Sanitized command display text — the thing the user is approving.
-     */
-    val command: String? = null,
-
-    /**
-     * Gateway-side static analysis summary of the command.
-     */
-    val commandAnalysis: String? = null,
-
-    val commandArgv: List<String>? = null,
-
-    /**
-     * Non-node hosts send a preview instead of the full command.
-     */
-    val commandPreview: String? = null,
-
-    val cwd: String? = null,
-    val host: String? = null,
-    val resolvedPath: String? = null,
-    val security: String? = null,
-    val sessionKey: String? = null,
-    val unavailableDecisions: List<String>? = null,
-
-    /**
-     * Human-readable risk note, when the Gateway produced one.
-     */
-    val warningText: String? = null,
-
-    val description: String? = null,
-    val detail: String? = null,
-    val externalResolution: RequestExternalResolution? = null,
-    val mcpTool: RequestMCPTool? = null,
-
-    @Json(name = "pluginId")
-    val pluginID: String? = null,
-
-    @Json(name = "runId")
-    val runID: String? = null,
-
-    val scope: PluginApprovalScopeLike? = null,
-    val severity: PluginApprovalSeverity? = null,
-    val title: String? = null,
-
-    @Json(name = "toolCallId")
-    val toolCallID: String? = null,
-
-    val toolName: String? = null
 )
 
 data class Server (

@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const home = mkdtempSync(join(tmpdir(), 'agentdeck-wifi-home-'));
+const execute = vi.hoisted(() => vi.fn());
+vi.mock('child_process', () => ({ execFileSync: execute }));
 vi.mock('os', async (orig) => ({ ...(await orig<typeof import('os')>()), homedir: () => home }));
 const logs: string[] = [];
 vi.mock('../logger.js', () => ({ debug: () => {}, log: (...a: unknown[]) => { logs.push(a.join(' ')); } }));
@@ -13,6 +15,7 @@ describe('wifi-config follows the data dir', () => {
   beforeEach(() => {
     vi.resetModules();
     logs.length = 0;
+    execute.mockReset();
     dataDir = mkdtempSync(join(tmpdir(), 'agentdeck-wifi-data-'));
     vi.stubEnv('AGENTDECK_DATA_DIR', dataDir);
   });
@@ -46,5 +49,23 @@ describe('wifi-config follows the data dir', () => {
     vi.stubEnv('AGENTDECK_DATA_DIR', '');
     const { wifiConfigPath } = await import('../wifi-config.js');
     expect(wifiConfigPath()).toBe(join(home, '.agentdeck', 'wifi-config.json'));
+  });
+
+  it.skipIf(process.platform !== 'darwin')('passes hostile SSIDs as one Keychain argument without a shell', async () => {
+    const { getKeychainPassword } = await import('../wifi-config.js');
+    const ssid = 'network$(echo fixture)`echo fixture`"&name';
+    execute.mockReturnValue('fixture-password\n');
+    expect(getKeychainPassword(ssid)).toBe('fixture-password');
+    expect(execute).toHaveBeenCalledWith('security', ['find-generic-password', '-ga', ssid, '-w'],
+      expect.objectContaining({ timeout: 10000, windowsHide: true }));
+  });
+
+  it.skipIf(process.platform !== 'darwin')('detects a non-default interface using argument arrays', async () => {
+    const { detectCurrentSSID } = await import('../wifi-config.js');
+    execute.mockReturnValueOnce('Hardware Port: Wi-Fi\nDevice: en1\n').mockReturnValueOnce('Current Wi-Fi Network: Desk WiFi\n');
+    expect(detectCurrentSSID()).toBe('Desk WiFi');
+    expect(execute.mock.calls.map(c => c.slice(0, 2))).toEqual([
+      ['networksetup', ['-listallhardwareports']], ['networksetup', ['-getairportnetwork', 'en1']],
+    ]);
   });
 });

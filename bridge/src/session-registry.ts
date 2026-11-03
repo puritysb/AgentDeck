@@ -1,4 +1,4 @@
-import { DEFAULT_DAEMON_PORT_WINDOW, parseDaemonPortWindow, DAEMON_CONFIGURATION_POLICY, DAEMON_CHECKPOINT_POLICY } from '@agentdeck/shared';
+import { DEFAULT_DAEMON_PORT_WINDOW, parseDaemonPortWindow, DAEMON_PORT_WINDOW_LIMITS, DAEMON_CONFIGURATION_POLICY, DAEMON_CHECKPOINT_POLICY } from '@agentdeck/shared';
 export { DEFAULT_DAEMON_PORT_WINDOW } from '@agentdeck/shared';
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, unlinkSync } from 'fs';
 import { execSync } from 'child_process';
@@ -156,6 +156,10 @@ function ensureDir(): void {
   }
 }
 
+function isRegistryPort(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= DAEMON_PORT_WINDOW_LIMITS.max;
+}
+
 function readSessions(): SessionEntry[] {
   // Read sessions.json from each candidate dir and merge — App Store Swift
   // daemon + CLI Node daemon can coexist, and a session bridge started from
@@ -167,8 +171,10 @@ function readSessions(): SessionEntry[] {
     try {
       const data = readFileSync(join(dir, 'sessions.json'), 'utf-8');
       const parsed = JSON.parse(data) as SessionEntry[];
+      if (!Array.isArray(parsed)) continue;
       for (const entry of parsed) {
-        if (!entry?.id || seen.has(entry.id)) continue;
+        if (!entry || typeof entry.id !== 'string' || !entry.id || seen.has(entry.id)
+          || !isRegistryPort(entry.port) || !Number.isSafeInteger(entry.pid) || entry.pid <= 0) continue;
         seen.add(entry.id);
         merged.push(entry);
       }
@@ -432,6 +438,8 @@ export function readDaemonInfo(): DaemonInfo | null {
     try {
       const data = readFileSync(path, 'utf-8');
       const info = JSON.parse(data) as DaemonInfo;
+      if (!info || !isRegistryPort(info.port) || !Number.isSafeInteger(info.pid) || info.pid <= 0) continue;
+      if (info.httpPort !== undefined && !isRegistryPort(info.httpPort)) continue;
       if (info.pid && isProcessAlive(info.pid)) {
         return info;
       }

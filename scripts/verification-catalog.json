@@ -2,7 +2,7 @@
   "$comment": "What AgentDeck verifies, where, and what it does not. Rendered as the 'What we verify' tab of the GitHub Pages Build Health report (scripts/generate-html-report.py). Gated by scripts/__tests__/verification-catalog.test.ts: every workflow must be listed, every path must exist, and every test file must match a domain (domains are ordered; the first match wins). Edit this file in the same commit as a new gate, workflow or test area. Gate fields: `blocking` means a failure turns its workflow red; `required` means master branch protection lists the gate's check, so GitHub refuses the merge while it fails. Branch protection is a repository setting that CI cannot read, so `merge_policy.as_of` records when `required` was last checked against it.",
   "merge_policy": {
     "as_of": "2026-11-03",
-    "summary": "Branch protection on master requires ESP32 Sim Compile, npm/Python/Rust dependency audits, dependency review, all five CodeQL analysis jobs and the CodeQL result check. Other CI gates turn a PR red but are not individually required. Administrator enforcement remains disabled."
+    "summary": "Branch protection on master requires ESP32 Sim Compile, npm/Python/Rust dependency audits, dependency review, all five CodeQL analysis jobs and the CodeQL result check. Other CI gates turn a PR red but are not individually required. Administrator enforcement and up-to-date branch checks are enabled. Newly added native analysis and freshness jobs are promoted to required only after hosted validation."
   },
   "levels": {
     "unit": "One module in isolation; collaborators faked.",
@@ -385,6 +385,26 @@
   ],
   "gates": [
     {
+      "id": "security-pipeline-health",
+      "name": "Security pipeline freshness",
+      "level": [
+        "static"
+      ],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/security-health.yml",
+      "job": "freshness",
+      "trigger": "Every PR, master push, hourly and manual",
+      "blocking": true,
+      "required": false,
+      "command": "node scripts/security-pipeline-health.mjs",
+      "proves": [
+        "Latest default-branch scans and cron executions have separate evidence; disabled, stale, failed and stuck pipelines fail after explicit startup deadlines."
+      ],
+      "does_not_prove": [
+        "Future GitHub scheduler delivery; a first schedule within startup grace remains unverified, not healthy."
+      ]
+    },
+    {
       "id": "vitest",
       "name": "TypeScript suite (Vitest) + coverage floor",
       "level": [
@@ -664,6 +684,7 @@
         "bridge/src/__tests__/daemon-supervisor.test.ts",
         "bridge/src/__tests__/fm-helper-build.test.ts",
         "bridge/src/__tests__/usage-api-recovery.test.ts",
+        "bridge/src/__tests__/wifi-config.test.ts",
         "bridge/src/__tests__/apme-async-probes.test.ts"
       ],
       "proves": [
@@ -1151,6 +1172,8 @@
       "icon": "▣",
       "match": [
         "bridge/src/__tests__/http-auth-gate.test.ts",
+        "bridge/src/__tests__/private-files.test.ts",
+        "bridge/src/__tests__/check-deps.test.ts",
         "bridge/src/__tests__/auth-token-adoption.test.ts",
         "bridge/src/__tests__/pairing-*.test.ts",
         "bridge/src/__tests__/network-posture.test.ts",
@@ -1178,6 +1201,7 @@
         "bridge/src/__tests__/*timeline*.test.ts",
         "bridge/src/__tests__/*orphan*.test.ts",
         "shared/src/__tests__/timeline*.test.ts",
+        "shared/src/__tests__/text-scanning.test.ts",
         "shared/src/__tests__/task-title.test.ts"
       ]
     },
@@ -1461,7 +1485,9 @@
         "scripts/__tests__/public-media.test.ts",
         "scripts/__tests__/product-tour-fixture.test.ts",
         "scripts/__tests__/aquarium-showcase-story.test.ts",
-        "scripts/__tests__/security-audit.test.ts"
+        "scripts/__tests__/security-audit.test.ts",
+        "scripts/__tests__/security-pipeline-health.test.ts",
+        "scripts/__tests__/dependency-security.test.ts"
       ]
     }
   ]

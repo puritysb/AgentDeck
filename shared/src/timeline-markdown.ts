@@ -223,9 +223,11 @@ function parseHeading(trimmed: string): { level: 1 | 2 | 3 | 4 | 5 | 6; content:
 }
 
 function parseNumbered(trimmed: string): { marker: string; content: string } | null {
-  const m = trimmed.match(/^(\d+)([.)])\s+(.*)$/);
+  const m = trimmed.match(/^(\d+[.)])\s/);
   if (!m) return null;
-  return { marker: `${m[1]}${m[2]}`, content: m[3] };
+  const content = trimmed.slice(m[0].length).trimStart();
+  if (/[\r\n\u2028\u2029]/.test(content)) return null;
+  return { marker: m[1], content };
 }
 
 // ---- Table helpers ----

@@ -38,6 +38,16 @@ function abortAt(ts: number): TurnEndProbe {
 }
 
 describe('ClaudeTurnWatchdog', () => {
+  it('does not stat or read network-share paths supplied in hook data', async () => {
+    const mtimeMs = vi.fn(() => 1), probe = vi.fn(() => null);
+    const { wd } = makeWatchdog({ mtimeMs, probe });
+    wd.noteHookEvent('UserPromptSubmit', { transcript_path: '//outside.invalid/share/transcript.jsonl' });
+    await vi.advanceTimersByTimeAsync(WATCHDOG_QUIET_MS + WATCHDOG_POLL_MS);
+    expect(mtimeMs).not.toHaveBeenCalled();
+    expect(probe).not.toHaveBeenCalled();
+    wd.stop();
+  });
+
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000_000);

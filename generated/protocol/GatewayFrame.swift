@@ -18,7 +18,7 @@ struct ADGatewayFrame: Codable {
     var type: ADGatewayFrameType
     var error: ADGatewayError?
     var ok: Bool?
-    var payload: ADGatewayMethodResult?
+    var payload: ADGateway?
     var event: ADGatewayEventName?
     /// Monotonic sequence number (optional, used for ordering on reconnect).
     var seq: String?
@@ -64,7 +64,7 @@ extension ADGatewayFrame {
         type: ADGatewayFrameType? = nil,
         error: ADGatewayError?? = nil,
         ok: Bool?? = nil,
-        payload: ADGatewayMethodResult?? = nil,
+        payload: ADGateway?? = nil,
         event: ADGatewayEventName?? = nil,
         seq: String?? = nil,
         stateVersion: String?? = nil
@@ -546,7 +546,7 @@ extension ADDeviceAuth {
     }
 }
 
-enum ADGatewayMethodResult: Codable {
+enum ADGateway: Codable {
     case adApprovalRequestedPayloadArray([ADApprovalRequestedPayload])
     case adConnectResult(ADConnectResult)
 
@@ -560,7 +560,7 @@ enum ADGatewayMethodResult: Codable {
             self = .adConnectResult(x)
             return
         }
-        throw DecodingError.typeMismatch(ADGatewayMethodResult.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Wrong type for ADGatewayMethodResult"))
+        throw DecodingError.typeMismatch(ADGateway.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Wrong type for ADGateway"))
     }
 
     func encode(to encoder: Encoder) throws {
@@ -610,7 +610,7 @@ struct ADApprovalRequestedPayload: Codable {
     var expiresAtMs: Double?
     var host: String?
     var id: String
-    var request: ADExecApprovalListResultRequest?
+    var request: ADApprovalRequestBody?
     var resolvedPath: String?
     var security: String?
     var sessionKey: String?
@@ -695,7 +695,7 @@ extension ADApprovalRequestedPayload {
         expiresAtMs: Double?? = nil,
         host: String?? = nil,
         id: String? = nil,
-        request: ADExecApprovalListResultRequest?? = nil,
+        request: ADApprovalRequestBody?? = nil,
         resolvedPath: String?? = nil,
         security: String?? = nil,
         sessionKey: String?? = nil,
@@ -861,8 +861,8 @@ extension ADExecApprovalListResultMcpTool {
 ///
 /// The `request` body OpenClaw nests inside the requested/resolved event —
 /// `PluginApprovalRequestPayload` in `approval-types-CQ_BKP9V.d.ts`.
-// MARK: - ADExecApprovalListResultRequest
-struct ADExecApprovalListResultRequest: Codable {
+// MARK: - ADApprovalRequestBody
+struct ADApprovalRequestBody: Codable {
     var agentId: String?
     /// Decisions this specific request permits (policy may drop allow-always).
     ///
@@ -927,11 +927,11 @@ struct ADExecApprovalListResultRequest: Codable {
     }
 }
 
-// MARK: ADExecApprovalListResultRequest convenience initializers and mutators
+// MARK: ADApprovalRequestBody convenience initializers and mutators
 
-extension ADExecApprovalListResultRequest {
+extension ADApprovalRequestBody {
     init(data: Data) throws {
-        self = try newJSONDecoder().decode(ADExecApprovalListResultRequest.self, from: data)
+        self = try newJSONDecoder().decode(ADApprovalRequestBody.self, from: data)
     }
 
     init(_ json: String, using encoding: String.Encoding = .utf8) throws {
@@ -971,8 +971,8 @@ extension ADExecApprovalListResultRequest {
         title: String?? = nil,
         toolCallId: String?? = nil,
         toolName: String?? = nil
-    ) -> ADExecApprovalListResultRequest {
-        return ADExecApprovalListResultRequest(
+    ) -> ADApprovalRequestBody {
+        return ADApprovalRequestBody(
             agentId: agentId ?? self.agentId,
             allowedDecisions: allowedDecisions ?? self.allowedDecisions,
             ask: ask ?? self.ask,
@@ -1340,7 +1340,7 @@ struct ADConnectResult: Codable {
     var expiresAtMs: Double?
     var host: String?
     var id: String?
-    var request: ADConnectResultRequest?
+    var request: ADApprovalRequestBody?
     var resolvedPath: String?
     var security: String?
     var unavailableDecisions: [String]?
@@ -1537,7 +1537,7 @@ extension ADConnectResult {
         expiresAtMs: Double?? = nil,
         host: String?? = nil,
         id: String?? = nil,
-        request: ADConnectResultRequest?? = nil,
+        request: ADApprovalRequestBody?? = nil,
         resolvedPath: String?? = nil,
         security: String?? = nil,
         unavailableDecisions: [String]?? = nil,
@@ -2369,159 +2369,6 @@ extension ADPolicy {
     }
 }
 
-/// The `request` body OpenClaw nests inside the requested event.
-///
-/// The `request` body OpenClaw nests inside the requested/resolved event —
-/// `PluginApprovalRequestPayload` in `approval-types-CQ_BKP9V.d.ts`.
-// MARK: - ADConnectResultRequest
-struct ADConnectResultRequest: Codable {
-    var agentId: String?
-    /// Decisions this specific request permits (policy may drop allow-always).
-    ///
-    /// Explicit decisions this request permits. No `unavailableDecisions` counterpart exists on
-    /// the plugin surface — unlike exec, there is no subtraction step.
-    var allowedDecisions: [String]?
-    /// Approval POLICY ("on-miss" | "always" | …), never a question.
-    var ask: String?
-    /// Sanitized command display text — the thing the user is approving.
-    var command: String?
-    /// Gateway-side static analysis summary of the command.
-    var commandAnalysis: String?
-    var commandArgv: [String]?
-    /// Non-node hosts send a preview instead of the full command.
-    var commandPreview: String?
-    var cwd: String?
-    var host: String?
-    var resolvedPath: String?
-    var security: String?
-    var sessionKey: String?
-    var unavailableDecisions: [String]?
-    /// Human-readable risk note, when the Gateway produced one.
-    var warningText: String?
-    var description: String?
-    var detail: String?
-    var externalResolution: ADRequestExternalResolution?
-    var mcpTool: ADRequestMcpTool?
-    var pluginId: String?
-    var runId: String?
-    var scope: ADPluginApprovalScopeLike?
-    var severity: ADPluginApprovalSeverity?
-    var title: String?
-    var toolCallId: String?
-    var toolName: String?
-
-    enum CodingKeys: String, CodingKey {
-        case agentId = "agentId"
-        case allowedDecisions = "allowedDecisions"
-        case ask = "ask"
-        case command = "command"
-        case commandAnalysis = "commandAnalysis"
-        case commandArgv = "commandArgv"
-        case commandPreview = "commandPreview"
-        case cwd = "cwd"
-        case host = "host"
-        case resolvedPath = "resolvedPath"
-        case security = "security"
-        case sessionKey = "sessionKey"
-        case unavailableDecisions = "unavailableDecisions"
-        case warningText = "warningText"
-        case description = "description"
-        case detail = "detail"
-        case externalResolution = "externalResolution"
-        case mcpTool = "mcpTool"
-        case pluginId = "pluginId"
-        case runId = "runId"
-        case scope = "scope"
-        case severity = "severity"
-        case title = "title"
-        case toolCallId = "toolCallId"
-        case toolName = "toolName"
-    }
-}
-
-// MARK: ADConnectResultRequest convenience initializers and mutators
-
-extension ADConnectResultRequest {
-    init(data: Data) throws {
-        self = try newJSONDecoder().decode(ADConnectResultRequest.self, from: data)
-    }
-
-    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
-        guard let data = json.data(using: encoding) else {
-            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
-        }
-        try self.init(data: data)
-    }
-
-    init(fromURL url: URL) throws {
-        try self.init(data: try Data(contentsOf: url))
-    }
-
-    func with(
-        agentId: String?? = nil,
-        allowedDecisions: [String]?? = nil,
-        ask: String?? = nil,
-        command: String?? = nil,
-        commandAnalysis: String?? = nil,
-        commandArgv: [String]?? = nil,
-        commandPreview: String?? = nil,
-        cwd: String?? = nil,
-        host: String?? = nil,
-        resolvedPath: String?? = nil,
-        security: String?? = nil,
-        sessionKey: String?? = nil,
-        unavailableDecisions: [String]?? = nil,
-        warningText: String?? = nil,
-        description: String?? = nil,
-        detail: String?? = nil,
-        externalResolution: ADRequestExternalResolution?? = nil,
-        mcpTool: ADRequestMcpTool?? = nil,
-        pluginId: String?? = nil,
-        runId: String?? = nil,
-        scope: ADPluginApprovalScopeLike?? = nil,
-        severity: ADPluginApprovalSeverity?? = nil,
-        title: String?? = nil,
-        toolCallId: String?? = nil,
-        toolName: String?? = nil
-    ) -> ADConnectResultRequest {
-        return ADConnectResultRequest(
-            agentId: agentId ?? self.agentId,
-            allowedDecisions: allowedDecisions ?? self.allowedDecisions,
-            ask: ask ?? self.ask,
-            command: command ?? self.command,
-            commandAnalysis: commandAnalysis ?? self.commandAnalysis,
-            commandArgv: commandArgv ?? self.commandArgv,
-            commandPreview: commandPreview ?? self.commandPreview,
-            cwd: cwd ?? self.cwd,
-            host: host ?? self.host,
-            resolvedPath: resolvedPath ?? self.resolvedPath,
-            security: security ?? self.security,
-            sessionKey: sessionKey ?? self.sessionKey,
-            unavailableDecisions: unavailableDecisions ?? self.unavailableDecisions,
-            warningText: warningText ?? self.warningText,
-            description: description ?? self.description,
-            detail: detail ?? self.detail,
-            externalResolution: externalResolution ?? self.externalResolution,
-            mcpTool: mcpTool ?? self.mcpTool,
-            pluginId: pluginId ?? self.pluginId,
-            runId: runId ?? self.runId,
-            scope: scope ?? self.scope,
-            severity: severity ?? self.severity,
-            title: title ?? self.title,
-            toolCallId: toolCallId ?? self.toolCallId,
-            toolName: toolName ?? self.toolName
-        )
-    }
-
-    func jsonData() throws -> Data {
-        return try newJSONEncoder().encode(self)
-    }
-
-    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
-        return String(data: try self.jsonData(), encoding: encoding)
-    }
-}
-
 // MARK: - ADServer
 struct ADServer: Codable {
     var connId: String
@@ -2812,25 +2659,26 @@ func newJSONEncoder() -> JSONEncoder {
 class JSONNull: Codable, Hashable {
 
     public static func == (lhs: JSONNull, rhs: JSONNull) -> Bool {
-            return true
+        return true
     }
 
+
     public func hash(into hasher: inout Hasher) {
-            hasher.combine(0)
+        // No-op
     }
 
     public init() {}
 
     public required init(from decoder: Decoder) throws {
-            let container = try decoder.singleValueContainer()
-            if !container.decodeNil() {
-                    throw DecodingError.typeMismatch(JSONNull.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Wrong type for JSONNull"))
-            }
+        let container = try decoder.singleValueContainer()
+        if !container.decodeNil() {
+            throw DecodingError.typeMismatch(JSONNull.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Wrong type for JSONNull"))
+        }
     }
 
     public func encode(to encoder: Encoder) throws {
-            var container = encoder.singleValueContainer()
-            try container.encodeNil()
+        var container = encoder.singleValueContainer()
+        try container.encodeNil()
     }
 }
 
@@ -2838,19 +2686,19 @@ final class JSONCodingKey: CodingKey {
     let key: String
 
     required init?(intValue: Int) {
-            return nil
+        return nil
     }
 
     required init?(stringValue: String) {
-            key = stringValue
+        key = stringValue
     }
 
     var intValue: Int? {
-            return nil
+        return nil
     }
 
     var stringValue: String {
-            return key
+        return key
     }
 }
 
@@ -2859,192 +2707,192 @@ class JSONAny: Codable {
     let value: Any
 
     static func decodingError(forCodingPath codingPath: [CodingKey]) -> DecodingError {
-            let context = DecodingError.Context(codingPath: codingPath, debugDescription: "Cannot decode JSONAny")
-            return DecodingError.typeMismatch(JSONAny.self, context)
+        let context = DecodingError.Context(codingPath: codingPath, debugDescription: "Cannot decode JSONAny")
+        return DecodingError.typeMismatch(JSONAny.self, context)
     }
 
     static func encodingError(forValue value: Any, codingPath: [CodingKey]) -> EncodingError {
-            let context = EncodingError.Context(codingPath: codingPath, debugDescription: "Cannot encode JSONAny")
-            return EncodingError.invalidValue(value, context)
+        let context = EncodingError.Context(codingPath: codingPath, debugDescription: "Cannot encode JSONAny")
+        return EncodingError.invalidValue(value, context)
     }
 
     static func decode(from container: SingleValueDecodingContainer) throws -> Any {
-            if let value = try? container.decode(Bool.self) {
-                    return value
-            }
-            if let value = try? container.decode(Int64.self) {
-                    return value
-            }
-            if let value = try? container.decode(Double.self) {
-                    return value
-            }
-            if let value = try? container.decode(String.self) {
-                    return value
-            }
-            if container.decodeNil() {
-                    return JSONNull()
-            }
-            throw decodingError(forCodingPath: container.codingPath)
+        if let value = try? container.decode(Bool.self) {
+            return value
+        }
+        if let value = try? container.decode(Int64.self) {
+            return value
+        }
+        if let value = try? container.decode(Double.self) {
+            return value
+        }
+        if let value = try? container.decode(String.self) {
+            return value
+        }
+        if container.decodeNil() {
+            return JSONNull()
+        }
+        throw decodingError(forCodingPath: container.codingPath)
     }
 
     static func decode(from container: inout UnkeyedDecodingContainer) throws -> Any {
-            if let value = try? container.decode(Bool.self) {
-                    return value
+        if let value = try? container.decode(Bool.self) {
+            return value
+        }
+        if let value = try? container.decode(Int64.self) {
+            return value
+        }
+        if let value = try? container.decode(Double.self) {
+            return value
+        }
+        if let value = try? container.decode(String.self) {
+            return value
+        }
+        if let value = try? container.decodeNil() {
+            if value {
+                return JSONNull()
             }
-            if let value = try? container.decode(Int64.self) {
-                    return value
-            }
-            if let value = try? container.decode(Double.self) {
-                    return value
-            }
-            if let value = try? container.decode(String.self) {
-                    return value
-            }
-            if let value = try? container.decodeNil() {
-                    if value {
-                            return JSONNull()
-                    }
-            }
-            if var container = try? container.nestedUnkeyedContainer() {
-                    return try decodeArray(from: &container)
-            }
-            if var container = try? container.nestedContainer(keyedBy: JSONCodingKey.self) {
-                    return try decodeDictionary(from: &container)
-            }
-            throw decodingError(forCodingPath: container.codingPath)
+        }
+        if var container = try? container.nestedUnkeyedContainer() {
+            return try decodeArray(from: &container)
+        }
+        if var container = try? container.nestedContainer(keyedBy: JSONCodingKey.self) {
+            return try decodeDictionary(from: &container)
+        }
+        throw decodingError(forCodingPath: container.codingPath)
     }
 
     static func decode(from container: inout KeyedDecodingContainer<JSONCodingKey>, forKey key: JSONCodingKey) throws -> Any {
-            if let value = try? container.decode(Bool.self, forKey: key) {
-                    return value
+        if let value = try? container.decode(Bool.self, forKey: key) {
+            return value
+        }
+        if let value = try? container.decode(Int64.self, forKey: key) {
+            return value
+        }
+        if let value = try? container.decode(Double.self, forKey: key) {
+            return value
+        }
+        if let value = try? container.decode(String.self, forKey: key) {
+            return value
+        }
+        if let value = try? container.decodeNil(forKey: key) {
+            if value {
+                return JSONNull()
             }
-            if let value = try? container.decode(Int64.self, forKey: key) {
-                    return value
-            }
-            if let value = try? container.decode(Double.self, forKey: key) {
-                    return value
-            }
-            if let value = try? container.decode(String.self, forKey: key) {
-                    return value
-            }
-            if let value = try? container.decodeNil(forKey: key) {
-                    if value {
-                            return JSONNull()
-                    }
-            }
-            if var container = try? container.nestedUnkeyedContainer(forKey: key) {
-                    return try decodeArray(from: &container)
-            }
-            if var container = try? container.nestedContainer(keyedBy: JSONCodingKey.self, forKey: key) {
-                    return try decodeDictionary(from: &container)
-            }
-            throw decodingError(forCodingPath: container.codingPath)
+        }
+        if var container = try? container.nestedUnkeyedContainer(forKey: key) {
+            return try decodeArray(from: &container)
+        }
+        if var container = try? container.nestedContainer(keyedBy: JSONCodingKey.self, forKey: key) {
+            return try decodeDictionary(from: &container)
+        }
+        throw decodingError(forCodingPath: container.codingPath)
     }
 
     static func decodeArray(from container: inout UnkeyedDecodingContainer) throws -> [Any] {
-            var arr: [Any] = []
-            while !container.isAtEnd {
-                    let value = try decode(from: &container)
-                    arr.append(value)
-            }
-            return arr
+        var arr: [Any] = []
+        while !container.isAtEnd {
+            let value = try decode(from: &container)
+            arr.append(value)
+        }
+        return arr
     }
 
     static func decodeDictionary(from container: inout KeyedDecodingContainer<JSONCodingKey>) throws -> [String: Any] {
-            var dict = [String: Any]()
-            for key in container.allKeys {
-                    let value = try decode(from: &container, forKey: key)
-                    dict[key.stringValue] = value
-            }
-            return dict
+        var dict = [String: Any]()
+        for key in container.allKeys {
+            let value = try decode(from: &container, forKey: key)
+            dict[key.stringValue] = value
+        }
+        return dict
     }
 
     static func encode(to container: inout UnkeyedEncodingContainer, array: [Any]) throws {
-            for value in array {
-                    if let value = value as? Bool {
-                            try container.encode(value)
-                    } else if let value = value as? Int64 {
-                            try container.encode(value)
-                    } else if let value = value as? Double {
-                            try container.encode(value)
-                    } else if let value = value as? String {
-                            try container.encode(value)
-                    } else if value is JSONNull {
-                            try container.encodeNil()
-                    } else if let value = value as? [Any] {
-                            var container = container.nestedUnkeyedContainer()
-                            try encode(to: &container, array: value)
-                    } else if let value = value as? [String: Any] {
-                            var container = container.nestedContainer(keyedBy: JSONCodingKey.self)
-                            try encode(to: &container, dictionary: value)
-                    } else {
-                            throw encodingError(forValue: value, codingPath: container.codingPath)
-                    }
+        for value in array {
+            if let value = value as? Bool {
+                try container.encode(value)
+            } else if let value = value as? Int64 {
+                try container.encode(value)
+            } else if let value = value as? Double {
+                try container.encode(value)
+            } else if let value = value as? String {
+                try container.encode(value)
+            } else if value is JSONNull {
+                try container.encodeNil()
+            } else if let value = value as? [Any] {
+                var container = container.nestedUnkeyedContainer()
+                try encode(to: &container, array: value)
+            } else if let value = value as? [String: Any] {
+                var container = container.nestedContainer(keyedBy: JSONCodingKey.self)
+                try encode(to: &container, dictionary: value)
+            } else {
+                throw encodingError(forValue: value, codingPath: container.codingPath)
             }
+        }
     }
 
     static func encode(to container: inout KeyedEncodingContainer<JSONCodingKey>, dictionary: [String: Any]) throws {
-            for (key, value) in dictionary {
-                    let key = JSONCodingKey(stringValue: key)!
-                    if let value = value as? Bool {
-                            try container.encode(value, forKey: key)
-                    } else if let value = value as? Int64 {
-                            try container.encode(value, forKey: key)
-                    } else if let value = value as? Double {
-                            try container.encode(value, forKey: key)
-                    } else if let value = value as? String {
-                            try container.encode(value, forKey: key)
-                    } else if value is JSONNull {
-                            try container.encodeNil(forKey: key)
-                    } else if let value = value as? [Any] {
-                            var container = container.nestedUnkeyedContainer(forKey: key)
-                            try encode(to: &container, array: value)
-                    } else if let value = value as? [String: Any] {
-                            var container = container.nestedContainer(keyedBy: JSONCodingKey.self, forKey: key)
-                            try encode(to: &container, dictionary: value)
-                    } else {
-                            throw encodingError(forValue: value, codingPath: container.codingPath)
-                    }
+        for (key, value) in dictionary {
+            let key = JSONCodingKey(stringValue: key)!
+            if let value = value as? Bool {
+                try container.encode(value, forKey: key)
+            } else if let value = value as? Int64 {
+                try container.encode(value, forKey: key)
+            } else if let value = value as? Double {
+                try container.encode(value, forKey: key)
+            } else if let value = value as? String {
+                try container.encode(value, forKey: key)
+            } else if value is JSONNull {
+                try container.encodeNil(forKey: key)
+            } else if let value = value as? [Any] {
+                var container = container.nestedUnkeyedContainer(forKey: key)
+                try encode(to: &container, array: value)
+            } else if let value = value as? [String: Any] {
+                var container = container.nestedContainer(keyedBy: JSONCodingKey.self, forKey: key)
+                try encode(to: &container, dictionary: value)
+            } else {
+                throw encodingError(forValue: value, codingPath: container.codingPath)
             }
+        }
     }
 
     static func encode(to container: inout SingleValueEncodingContainer, value: Any) throws {
-            if let value = value as? Bool {
-                    try container.encode(value)
-            } else if let value = value as? Int64 {
-                    try container.encode(value)
-            } else if let value = value as? Double {
-                    try container.encode(value)
-            } else if let value = value as? String {
-                    try container.encode(value)
-            } else if value is JSONNull {
-                    try container.encodeNil()
-            } else {
-                    throw encodingError(forValue: value, codingPath: container.codingPath)
-            }
+        if let value = value as? Bool {
+            try container.encode(value)
+        } else if let value = value as? Int64 {
+            try container.encode(value)
+        } else if let value = value as? Double {
+            try container.encode(value)
+        } else if let value = value as? String {
+            try container.encode(value)
+        } else if value is JSONNull {
+            try container.encodeNil()
+        } else {
+            throw encodingError(forValue: value, codingPath: container.codingPath)
+        }
     }
 
     public required init(from decoder: Decoder) throws {
-            if var arrayContainer = try? decoder.unkeyedContainer() {
-                    self.value = try JSONAny.decodeArray(from: &arrayContainer)
-            } else if var container = try? decoder.container(keyedBy: JSONCodingKey.self) {
-                    self.value = try JSONAny.decodeDictionary(from: &container)
-            } else {
-                    let container = try decoder.singleValueContainer()
-                    self.value = try JSONAny.decode(from: container)
-            }
+        if var arrayContainer = try? decoder.unkeyedContainer() {
+            self.value = try JSONAny.decodeArray(from: &arrayContainer)
+        } else if var container = try? decoder.container(keyedBy: JSONCodingKey.self) {
+            self.value = try JSONAny.decodeDictionary(from: &container)
+        } else {
+            let container = try decoder.singleValueContainer()
+            self.value = try JSONAny.decode(from: container)
+        }
     }
 
     public func encode(to encoder: Encoder) throws {
-            if let arr = self.value as? [Any] {
-                    var container = encoder.unkeyedContainer()
-                    try JSONAny.encode(to: &container, array: arr)
-            } else if let dict = self.value as? [String: Any] {
-                    var container = encoder.container(keyedBy: JSONCodingKey.self)
-                    try JSONAny.encode(to: &container, dictionary: dict)
-            } else {
-                    var container = encoder.singleValueContainer()
-                    try JSONAny.encode(to: &container, value: self.value)
-            }
+        if let arr = self.value as? [Any] {
+            var container = encoder.unkeyedContainer()
+            try JSONAny.encode(to: &container, array: arr)
+        } else if let dict = self.value as? [String: Any] {
+            var container = encoder.container(keyedBy: JSONCodingKey.self)
+            try JSONAny.encode(to: &container, dictionary: dict)
+        } else {
+            var container = encoder.singleValueContainer()
+            try JSONAny.encode(to: &container, value: self.value)
+        }
     }
 }

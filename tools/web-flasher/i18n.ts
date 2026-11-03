@@ -349,13 +349,18 @@ export function setLocale(l: Locale): void {
   document.documentElement.lang = current;
   for (const node of document.querySelectorAll<HTMLElement>("[data-i18n]")) {
     const key = node.getAttribute("data-i18n") as MessageKey | null;
-    if (key) node.innerHTML = t(key);
+    if (!key) continue;
+    // Only repository-authored translations may contain markup. Unknown DOM
+    // keys are displayed literally, including the fallback key itself.
+    if (Object.hasOwn(EN, key)) node.innerHTML = t(key);
+    else node.textContent = key;
   }
 }
 
 /** Look up a key; English is the fallback, and a missing key shows itself. */
 export function t(key: MessageKey): string {
-  return DICTS[current][key] ?? EN[key] ?? key;
+  if (!Object.hasOwn(EN, key)) return key;
+  return DICTS[current][key] ?? EN[key];
 }
 
 export function readStoredLocale(): Locale {
