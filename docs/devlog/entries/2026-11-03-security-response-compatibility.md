@@ -75,6 +75,7 @@ hosted result is still required; an ordinary build is not extraction evidence.
 Local universal Release initially lacked the Intel Rust standard library. An
 isolated, checksum-verified Rust 1.90.0 toolchain supplies both macOS targets;
 no user's compiler defaults were changed.
+
 Android dependency review found a security backport hidden by the proposed
 OkHttp major update (#700). Upstream's October 20 advisory describes certificate
 blocklisting for compromised intermediate certificates (CVE-2026-111943);

@@ -274,3 +274,33 @@ Their exact check contexts were added to master protection with the existing
 eleven checks preserved (13 total), strict up-to-date checks and administrator
 enforcement retained. Readback verified the applied list. Swift remains gated
 on completed hosted extraction before promotion.
+
+## Per-alert response ledger (November 3 follow-up)
+
+The [266-alert review ledger](../security/reports/2026-11-03-alert-review.json)
+records each source location, decision, reasoning and independently read GitHub
+state. Source fixes are in [#712](https://github.com/puritysb/AgentDeck/pull/712);
+a candidate fix is kept separate from default-branch scan closure. Earlier
+271-alert and dependency receipts remain historical snapshots. New PR-only
+fingerprints are listed separately.
+
+Manual closure proposals remain open pending explicit approval after automatic
+approval review rejected bulk dismissal as a persistent reduction in security
+visibility. Do not interpret the review classification as a completed GitHub
+state change or count a dismissed finding as a vulnerability fixed by code.
+
+The [firmware inventory](../security/reports/2026-11-03-firmware-inventory.json)
+covers 16 declared build environments and read-only local library caches. It
+does not establish complete framework/SDK resolution or advisory coverage.
+[Owner-assigned #713](https://github.com/puritysb/AgentDeck/issues/713) tracks
+that gap and deferred major migrations for November 17 review; existing Rust
+maintenance exceptions expire December 1. No Snyk integration is claimed.
+
+At this checkpoint, the candidate npm audit has zero production matches and one
+low development-only deepmerge version match with a tested local mitigation.
+Android's compatible OkHttp 4.12.1 security backport is being validated separately
+from the proposed 5.x migration. Native CodeQL Kotlin analysis passed; completed
+Swift hosted extraction and the first scheduled event remain to be verified.
+The freshness watchdog's hosted check passed; manual and push runs do not prove
+a cron event occurred. Product release and physical device acceptance remain
+separate delivery work.

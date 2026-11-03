@@ -1,0 +1,677 @@
+{
+  "capturedAt": "2026-11-03T11:32:56.721955+00:00",
+  "configurationSha256": "053948af5b05be792a983ab0cb76f3b7d1704c80c3619be45eb82aad088e93cb",
+  "provenance": "Declared current configuration; read-only local PlatformIO library-cache observations. No resolution/build/upload performed by this inventory.",
+  "limits": [
+    "Cached versions do not prove a current clean resolution or that every target was rebuilt.",
+    "Local cache can include project-managed patches. Manifest hashes do not hash the complete library source.",
+    "Platform frameworks, SDK-transitive components and vendor CVE matching are not established covered by npm/pip/Cargo audits.",
+    "Unknown versions and absent caches remain unknown; no zero-vulnerability claim."
+  ],
+  "environments": [
+    {
+      "environment": "ips35",
+      "platform": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+      "declaredLibraries": [
+        "lvgl/lvgl@^9.2.0",
+        "moononournation/GFX Library for Arduino@1.6.5",
+        "links2004/WebSockets@^2.6.1",
+        "bblanchon/ArduinoJson@^7.3.0",
+        "tzapu/WiFiManager@^2.0.17"
+      ],
+      "cacheObservation": "present",
+      "observedCachedLibraries": [
+        {
+          "directoryLabel": "ArduinoJson",
+          "name": "ArduinoJson",
+          "version": "7.4.3",
+          "manifestSha256": "45c8072598d097cf03031ee4f3230031105329903e022a2abd15b1c56157c770"
+        },
+        {
+          "directoryLabel": "GFX Library for Arduino",
+          "name": "GFX Library for Arduino",
+          "version": "1.6.5",
+          "manifestSha256": "40ee458ca13d2fa1391b7eebf7df232e1671d3b24811c0afeb4ef2cc377750cb"
+        },
+        {
+          "directoryLabel": "WebSockets",
+          "name": "WebSockets",
+          "version": "2.7.3",
+          "manifestSha256": "d12af9343b0b972b81f5c33cbd70277bfca5be544f0efc67620174564a95f7a3"
+        },
+        {
+          "directoryLabel": "WiFiManager",
+          "name": "WiFiManager",
+          "version": "2.0.17",
+          "manifestSha256": "c960a55a98476c489c5620e7a4f05d2f85aefdd6b3c1fbeeaaf7ce7d51856fd0"
+        },
+        {
+          "directoryLabel": "lvgl",
+          "name": "lvgl",
+          "version": "9.5.0",
+          "manifestSha256": "be917c686b343434b5659fc1554ef45682519f8000cccf5803386b7a903a1a5f"
+        }
+      ]
+    },
+    {
+      "environment": "box_86",
+      "platform": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+      "declaredLibraries": [
+        "lvgl/lvgl@^9.2.0",
+        "lovyan03/LovyanGFX@^1.2.0",
+        "links2004/WebSockets@^2.6.1",
+        "bblanchon/ArduinoJson@^7.3.0",
+        "tzapu/WiFiManager@^2.0.17"
+      ],
+      "cacheObservation": "present",
+      "observedCachedLibraries": [
+        {
+          "directoryLabel": "ArduinoJson",
+          "name": "ArduinoJson",
+          "version": "7.4.3",
+          "manifestSha256": "45c8072598d097cf03031ee4f3230031105329903e022a2abd15b1c56157c770"
+        },
+        {
+          "directoryLabel": "LovyanGFX",
+          "name": "LovyanGFX",
+          "version": "1.2.19",
+          "manifestSha256": "c56d4e6a3308419595970ea949f7b14fb1ea87c6b97be23df64825341fd0afb0"
+        },
+        {
+          "directoryLabel": "WebSockets",
+          "name": "WebSockets",
+          "version": "2.7.3",
+          "manifestSha256": "d12af9343b0b972b81f5c33cbd70277bfca5be544f0efc67620174564a95f7a3"
+        },
+        {
+          "directoryLabel": "WiFiManager",
+          "name": "WiFiManager",
+          "version": "2.0.17",
+          "manifestSha256": "c960a55a98476c489c5620e7a4f05d2f85aefdd6b3c1fbeeaaf7ce7d51856fd0"
+        },
+        {
+          "directoryLabel": "lvgl",
+          "name": "lvgl",
+          "version": "9.5.0",
+          "manifestSha256": "be917c686b343434b5659fc1554ef45682519f8000cccf5803386b7a903a1a5f"
+        }
+      ]
+    },
+    {
+      "environment": "boot_test_qspi",
+      "platform": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+      "declaredLibraries": [],
+      "cacheObservation": "unavailable",
+      "observedCachedLibraries": []
+    },
+    {
+      "environment": "axs_test",
+      "platform": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+      "declaredLibraries": [
+        "moononournation/GFX Library for Arduino@1.6.5"
+      ],
+      "cacheObservation": "present",
+      "observedCachedLibraries": [
+        {
+          "directoryLabel": "GFX Library for Arduino",
+          "name": "GFX Library for Arduino",
+          "version": "1.6.5",
+          "manifestSha256": "40ee458ca13d2fa1391b7eebf7df232e1671d3b24811c0afeb4ef2cc377750cb"
+        }
+      ]
+    },
+    {
+      "environment": "qspi_test",
+      "platform": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+      "declaredLibraries": [
+        "moononournation/GFX Library for Arduino@1.6.5"
+      ],
+      "cacheObservation": "present",
+      "observedCachedLibraries": [
+        {
+          "directoryLabel": "GFX Library for Arduino",
+          "name": "GFX Library for Arduino",
+          "version": "1.6.5",
+          "manifestSha256": "40ee458ca13d2fa1391b7eebf7df232e1671d3b24811c0afeb4ef2cc377750cb"
+        }
+      ]
+    },
+    {
+      "environment": "display_test",
+      "platform": "espressif32@^6.9.0",
+      "declaredLibraries": [
+        "lovyan03/LovyanGFX@^1.2.0"
+      ],
+      "cacheObservation": "present",
+      "observedCachedLibraries": [
+        {
+          "directoryLabel": "LovyanGFX",
+          "name": "LovyanGFX",
+          "version": "1.2.19",
+          "manifestSha256": "c56d4e6a3308419595970ea949f7b14fb1ea87c6b97be23df64825341fd0afb0"
+        }
+      ]
+    },
+    {
+      "environment": "amoled",
+      "platform": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+      "declaredLibraries": [
+        "lvgl/lvgl@^9.2.0",
+        "moononournation/GFX Library for Arduino@1.6.5",
+        "links2004/WebSockets@^2.6.1",
+        "bblanchon/ArduinoJson@^7.3.0",
+        "tzapu/WiFiManager@^2.0.17"
+      ],
+      "cacheObservation": "present",
+      "observedCachedLibraries": [
+        {
+          "directoryLabel": "ArduinoJson",
+          "name": "ArduinoJson",
+          "version": "7.4.3",
+          "manifestSha256": "45c8072598d097cf03031ee4f3230031105329903e022a2abd15b1c56157c770"
+        },
+        {
+          "directoryLabel": "GFX Library for Arduino",
+          "name": "GFX Library for Arduino",
+          "version": "1.6.5",
+          "manifestSha256": "40ee458ca13d2fa1391b7eebf7df232e1671d3b24811c0afeb4ef2cc377750cb"
+        },
+        {
+          "directoryLabel": "WebSockets",
+          "name": "WebSockets",
+          "version": "2.7.3",
+          "manifestSha256": "d12af9343b0b972b81f5c33cbd70277bfca5be544f0efc67620174564a95f7a3"
+        },
+        {
+          "directoryLabel": "WiFiManager",
+          "name": "WiFiManager",
+          "version": "2.0.17",
+          "manifestSha256": "c960a55a98476c489c5620e7a4f05d2f85aefdd6b3c1fbeeaaf7ce7d51856fd0"
+        },
+        {
+          "directoryLabel": "lvgl",
+          "name": "lvgl",
+          "version": "9.5.0",
+          "manifestSha256": "be917c686b343434b5659fc1554ef45682519f8000cccf5803386b7a903a1a5f"
+        }
+      ]
+    },
+    {
+      "environment": "led8x32",
+      "platform": "platformio/espressif32@7.1.3",
+      "declaredLibraries": [
+        "fastled/FastLED@3.7.0",
+        "links2004/WebSockets@^2.6.1",
+        "bblanchon/ArduinoJson@^7.3.0",
+        "tzapu/WiFiManager@^2.0.17"
+      ],
+      "cacheObservation": "present",
+      "observedCachedLibraries": [
+        {
+          "directoryLabel": "ArduinoJson",
+          "name": "ArduinoJson",
+          "version": "7.4.3",
+          "manifestSha256": "45c8072598d097cf03031ee4f3230031105329903e022a2abd15b1c56157c770"
+        },
+        {
+          "directoryLabel": "FastLED",
+          "name": "FastLED",
+          "version": "3.10.3",
+          "manifestSha256": "7542c409fbc56f906a029a45920681b894063c89f6796453afa1d25a63a9d309"
+        },
+        {
+          "directoryLabel": "WebSockets",
+          "name": "WebSockets",
+          "version": "2.7.3",
+          "manifestSha256": "d12af9343b0b972b81f5c33cbd70277bfca5be544f0efc67620174564a95f7a3"
+        },
+        {
+          "directoryLabel": "WiFiManager",
+          "name": "WiFiManager",
+          "version": "2.0.17",
+          "manifestSha256": "c960a55a98476c489c5620e7a4f05d2f85aefdd6b3c1fbeeaaf7ce7d51856fd0"
+        }
+      ]
+    },
+    {
+      "environment": "trmnl_75",
+      "platform": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+      "declaredLibraries": [
+        "zinggjm/GxEPD2@^1.6.4",
+        "adafruit/Adafruit GFX Library@^1.11.9",
+        "adafruit/Adafruit BusIO@^1.16.1",
+        "olikraus/U8g2_for_Adafruit_GFX@^1.8.0",
+        "links2004/WebSockets@^2.6.1",
+        "bblanchon/ArduinoJson@^7.3.0",
+        "tzapu/WiFiManager@^2.0.17"
+      ],
+      "cacheObservation": "present",
+      "observedCachedLibraries": [
+        {
+          "directoryLabel": "Adafruit BusIO",
+          "name": "Adafruit BusIO",
+          "version": "1.17.4",
+          "manifestSha256": "1f1c13c18d84a15f71e8e833aeaf1ada2d505cc915485174167ea661ed085194"
+        },
+        {
+          "directoryLabel": "Adafruit GFX Library",
+          "name": "Adafruit GFX Library",
+          "version": "1.12.6",
+          "manifestSha256": "e6b702f2d0463216bf4b89d10c1701ae0de2aabbee42f7088054e9e21949cc31"
+        },
+        {
+          "directoryLabel": "ArduinoJson",
+          "name": "ArduinoJson",
+          "version": "7.4.3",
+          "manifestSha256": "45c8072598d097cf03031ee4f3230031105329903e022a2abd15b1c56157c770"
+        },
+        {
+          "directoryLabel": "GxEPD2",
+          "name": "GxEPD2",
+          "version": "1.6.9",
+          "manifestSha256": "6b31aec599921175a16e0e0c6ee6cb806f1539215c490a0d9f7de883806ed119"
+        },
+        {
+          "directoryLabel": "U8g2_for_Adafruit_GFX",
+          "name": "U8g2_for_Adafruit_GFX",
+          "version": "1.8.0",
+          "manifestSha256": "11078753bca28b24631173a317f3b3db89c9df9d46873f5ef1d922166ecdcd6c"
+        },
+        {
+          "directoryLabel": "WebSockets",
+          "name": "WebSockets",
+          "version": "2.7.3",
+          "manifestSha256": "d12af9343b0b972b81f5c33cbd70277bfca5be544f0efc67620174564a95f7a3"
+        },
+        {
+          "directoryLabel": "WiFiManager",
+          "name": "WiFiManager",
+          "version": "2.0.17",
+          "manifestSha256": "c960a55a98476c489c5620e7a4f05d2f85aefdd6b3c1fbeeaaf7ce7d51856fd0"
+        }
+      ]
+    },
+    {
+      "environment": "nm_epd_420",
+      "platform": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+      "declaredLibraries": [
+        "zinggjm/GxEPD2@^1.6.8",
+        "adafruit/Adafruit GFX Library@^1.11.9",
+        "adafruit/Adafruit BusIO@^1.16.1",
+        "olikraus/U8g2_for_Adafruit_GFX@^1.8.0",
+        "links2004/WebSockets@^2.6.1",
+        "bblanchon/ArduinoJson@^7.3.0",
+        "tzapu/WiFiManager@^2.0.17"
+      ],
+      "cacheObservation": "present",
+      "observedCachedLibraries": [
+        {
+          "directoryLabel": "Adafruit BusIO",
+          "name": "Adafruit BusIO",
+          "version": "1.17.4",
+          "manifestSha256": "1f1c13c18d84a15f71e8e833aeaf1ada2d505cc915485174167ea661ed085194"
+        },
+        {
+          "directoryLabel": "Adafruit GFX Library",
+          "name": "Adafruit GFX Library",
+          "version": "1.12.6",
+          "manifestSha256": "e6b702f2d0463216bf4b89d10c1701ae0de2aabbee42f7088054e9e21949cc31"
+        },
+        {
+          "directoryLabel": "ArduinoJson",
+          "name": "ArduinoJson",
+          "version": "7.4.3",
+          "manifestSha256": "45c8072598d097cf03031ee4f3230031105329903e022a2abd15b1c56157c770"
+        },
+        {
+          "directoryLabel": "GxEPD2",
+          "name": "GxEPD2",
+          "version": "1.6.9",
+          "manifestSha256": "6b31aec599921175a16e0e0c6ee6cb806f1539215c490a0d9f7de883806ed119"
+        },
+        {
+          "directoryLabel": "U8g2_for_Adafruit_GFX",
+          "name": "U8g2_for_Adafruit_GFX",
+          "version": "1.8.0",
+          "manifestSha256": "11078753bca28b24631173a317f3b3db89c9df9d46873f5ef1d922166ecdcd6c"
+        },
+        {
+          "directoryLabel": "WebSockets",
+          "name": "WebSockets",
+          "version": "2.7.3",
+          "manifestSha256": "d12af9343b0b972b81f5c33cbd70277bfca5be544f0efc67620174564a95f7a3"
+        },
+        {
+          "directoryLabel": "WiFiManager",
+          "name": "WiFiManager",
+          "version": "2.0.17",
+          "manifestSha256": "c960a55a98476c489c5620e7a4f05d2f85aefdd6b3c1fbeeaaf7ce7d51856fd0"
+        }
+      ]
+    },
+    {
+      "environment": "lilygo_epd47",
+      "platform": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+      "declaredLibraries": [
+        "https://github.com/Xinyuan-LilyGO/LilyGo-EPD47.git#391b0e25d7a39897e3a00af34053250df031d699",
+        "adafruit/Adafruit GFX Library@^1.11.9",
+        "adafruit/Adafruit BusIO@^1.16.1",
+        "olikraus/U8g2_for_Adafruit_GFX@^1.8.0",
+        "links2004/WebSockets@^2.6.1",
+        "bblanchon/ArduinoJson@^7.3.0",
+        "tzapu/WiFiManager@^2.0.17"
+      ],
+      "cacheObservation": "present",
+      "observedCachedLibraries": [
+        {
+          "directoryLabel": "Adafruit BusIO",
+          "name": "Adafruit BusIO",
+          "version": "1.17.4",
+          "manifestSha256": "1f1c13c18d84a15f71e8e833aeaf1ada2d505cc915485174167ea661ed085194"
+        },
+        {
+          "directoryLabel": "Adafruit GFX Library",
+          "name": "Adafruit GFX Library",
+          "version": "1.12.6",
+          "manifestSha256": "e6b702f2d0463216bf4b89d10c1701ae0de2aabbee42f7088054e9e21949cc31"
+        },
+        {
+          "directoryLabel": "ArduinoJson",
+          "name": "ArduinoJson",
+          "version": "7.4.3",
+          "manifestSha256": "45c8072598d097cf03031ee4f3230031105329903e022a2abd15b1c56157c770"
+        },
+        {
+          "directoryLabel": "Button2",
+          "name": "Button2",
+          "version": "2.3.2",
+          "manifestSha256": "a047eef7d338ed77b7599b9148033eaf7c27bf12d2fe8b1c13ad4faf4de477ea"
+        },
+        {
+          "directoryLabel": "LilyGo-EPD47",
+          "name": "LilyGo-EPD47",
+          "version": "1.1.0",
+          "manifestSha256": "71434d5c6d54b1bf1411cc58c9fdf238ddb69871c54a008479e9825c80c97994"
+        },
+        {
+          "directoryLabel": "SensorLib",
+          "name": "SensorLib",
+          "version": "0.3.1",
+          "manifestSha256": "2524bc48da2918e1bb93e1a9a7a7ddc7d3cd0bcdb694acf4c84ca1e4d5b41e5d"
+        },
+        {
+          "directoryLabel": "U8g2_for_Adafruit_GFX",
+          "name": "U8g2_for_Adafruit_GFX",
+          "version": "1.8.0",
+          "manifestSha256": "11078753bca28b24631173a317f3b3db89c9df9d46873f5ef1d922166ecdcd6c"
+        },
+        {
+          "directoryLabel": "WebSockets",
+          "name": "WebSockets",
+          "version": "2.7.3",
+          "manifestSha256": "d12af9343b0b972b81f5c33cbd70277bfca5be544f0efc67620174564a95f7a3"
+        },
+        {
+          "directoryLabel": "WiFiManager",
+          "name": "WiFiManager",
+          "version": "2.0.17",
+          "manifestSha256": "c960a55a98476c489c5620e7a4f05d2f85aefdd6b3c1fbeeaaf7ce7d51856fd0"
+        }
+      ]
+    },
+    {
+      "environment": "t_embed",
+      "platform": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+      "declaredLibraries": [
+        "lvgl/lvgl@^9.2.0",
+        "lovyan03/LovyanGFX@^1.2.0",
+        "adafruit/Adafruit NeoPixel@^1.12.3",
+        "adafruit/Adafruit PN532@^1.3.4",
+        "crankyoldgit/IRremoteESP8266@^2.8.6",
+        "links2004/WebSockets@^2.6.1",
+        "bblanchon/ArduinoJson@^7.3.0",
+        "tzapu/WiFiManager@^2.0.17"
+      ],
+      "cacheObservation": "present",
+      "observedCachedLibraries": [
+        {
+          "directoryLabel": "Adafruit BusIO",
+          "name": "Adafruit BusIO",
+          "version": "1.17.4",
+          "manifestSha256": "1f1c13c18d84a15f71e8e833aeaf1ada2d505cc915485174167ea661ed085194"
+        },
+        {
+          "directoryLabel": "Adafruit NeoPixel",
+          "name": "Adafruit NeoPixel",
+          "version": "1.15.5",
+          "manifestSha256": "91a42bcc6f06d3f6a828bd329c6c942dd2b61789276661f719c79e2f25e1120e"
+        },
+        {
+          "directoryLabel": "Adafruit PN532",
+          "name": "Adafruit PN532",
+          "version": "1.3.4",
+          "manifestSha256": "7ec2b70fc9ca393c00394a834dc8713400d04c0066e2154084962c55f1fed6d4"
+        },
+        {
+          "directoryLabel": "ArduinoJson",
+          "name": "ArduinoJson",
+          "version": "7.4.3",
+          "manifestSha256": "45c8072598d097cf03031ee4f3230031105329903e022a2abd15b1c56157c770"
+        },
+        {
+          "directoryLabel": "IRremoteESP8266",
+          "name": "IRremoteESP8266",
+          "version": "2.9.0",
+          "manifestSha256": "bf47d49d977c0b9e6d599d9edb52bbe61f3a108eace0d178bc474bca5df15a09"
+        },
+        {
+          "directoryLabel": "LovyanGFX",
+          "name": "LovyanGFX",
+          "version": "1.2.26",
+          "manifestSha256": "1ced5644088cb76a23123e922f82be7305a5ebf21b0e1e83c24e4d8d0a99bf55"
+        },
+        {
+          "directoryLabel": "WebSockets",
+          "name": "WebSockets",
+          "version": "2.7.3",
+          "manifestSha256": "d12af9343b0b972b81f5c33cbd70277bfca5be544f0efc67620174564a95f7a3"
+        },
+        {
+          "directoryLabel": "WiFiManager",
+          "name": "WiFiManager",
+          "version": "2.0.17",
+          "manifestSha256": "c960a55a98476c489c5620e7a4f05d2f85aefdd6b3c1fbeeaaf7ce7d51856fd0"
+        },
+        {
+          "directoryLabel": "lvgl",
+          "name": "lvgl",
+          "version": "9.5.0",
+          "manifestSha256": "be917c686b343434b5659fc1554ef45682519f8000cccf5803386b7a903a1a5f"
+        }
+      ]
+    },
+    {
+      "environment": "t_display_pro",
+      "platform": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+      "declaredLibraries": [
+        "lvgl/lvgl@^9.2.0",
+        "lovyan03/LovyanGFX@^1.2.0",
+        "lewisxhe/SensorLib@^0.2.4",
+        "links2004/WebSockets@^2.6.1",
+        "bblanchon/ArduinoJson@^7.3.0",
+        "tzapu/WiFiManager@^2.0.17"
+      ],
+      "cacheObservation": "present",
+      "observedCachedLibraries": [
+        {
+          "directoryLabel": "ArduinoJson",
+          "name": "ArduinoJson",
+          "version": "7.4.3",
+          "manifestSha256": "45c8072598d097cf03031ee4f3230031105329903e022a2abd15b1c56157c770"
+        },
+        {
+          "directoryLabel": "LovyanGFX",
+          "name": "LovyanGFX",
+          "version": "1.2.26",
+          "manifestSha256": "1ced5644088cb76a23123e922f82be7305a5ebf21b0e1e83c24e4d8d0a99bf55"
+        },
+        {
+          "directoryLabel": "SensorLib",
+          "name": "SensorLib",
+          "version": "0.2.6",
+          "manifestSha256": "684ffa06fbfa096492baa9a8f566ef51fe7a8925920af80848188124aa808eab"
+        },
+        {
+          "directoryLabel": "WebSockets",
+          "name": "WebSockets",
+          "version": "2.7.3",
+          "manifestSha256": "d12af9343b0b972b81f5c33cbd70277bfca5be544f0efc67620174564a95f7a3"
+        },
+        {
+          "directoryLabel": "WiFiManager",
+          "name": "WiFiManager",
+          "version": "2.0.17",
+          "manifestSha256": "c960a55a98476c489c5620e7a4f05d2f85aefdd6b3c1fbeeaaf7ce7d51856fd0"
+        },
+        {
+          "directoryLabel": "lvgl",
+          "name": "lvgl",
+          "version": "9.5.0",
+          "manifestSha256": "be917c686b343434b5659fc1554ef45682519f8000cccf5803386b7a903a1a5f"
+        }
+      ]
+    },
+    {
+      "environment": "ttgo",
+      "platform": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+      "declaredLibraries": [
+        "lvgl/lvgl@9.5.0",
+        "lovyan03/LovyanGFX@1.2.21",
+        "links2004/WebSockets@2.7.3",
+        "bblanchon/ArduinoJson@7.4.3",
+        "tzapu/WiFiManager@2.0.17"
+      ],
+      "cacheObservation": "present",
+      "observedCachedLibraries": [
+        {
+          "directoryLabel": "ArduinoJson",
+          "name": "ArduinoJson",
+          "version": "7.4.3",
+          "manifestSha256": "45c8072598d097cf03031ee4f3230031105329903e022a2abd15b1c56157c770"
+        },
+        {
+          "directoryLabel": "LovyanGFX",
+          "name": "LovyanGFX",
+          "version": "1.2.21",
+          "manifestSha256": "b8a89edffe204574c79da94c6b584bacb4310799c8bdd7b9b55801463e7da705"
+        },
+        {
+          "directoryLabel": "WebSockets",
+          "name": "WebSockets",
+          "version": "2.7.3",
+          "manifestSha256": "d12af9343b0b972b81f5c33cbd70277bfca5be544f0efc67620174564a95f7a3"
+        },
+        {
+          "directoryLabel": "WiFiManager",
+          "name": "WiFiManager",
+          "version": "2.0.17",
+          "manifestSha256": "c960a55a98476c489c5620e7a4f05d2f85aefdd6b3c1fbeeaaf7ce7d51856fd0"
+        },
+        {
+          "directoryLabel": "lvgl",
+          "name": "lvgl",
+          "version": "9.5.0",
+          "manifestSha256": "be917c686b343434b5659fc1554ef45682519f8000cccf5803386b7a903a1a5f"
+        }
+      ]
+    },
+    {
+      "environment": "esp32_c6_147",
+      "platform": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+      "declaredLibraries": [
+        "lvgl/lvgl@^9.2.0",
+        "lovyan03/LovyanGFX@^1.2.0",
+        "links2004/WebSockets@^2.6.1",
+        "bblanchon/ArduinoJson@^7.3.0",
+        "tzapu/WiFiManager@^2.0.17"
+      ],
+      "cacheObservation": "present",
+      "observedCachedLibraries": [
+        {
+          "directoryLabel": "ArduinoJson",
+          "name": "ArduinoJson",
+          "version": "7.4.3",
+          "manifestSha256": "45c8072598d097cf03031ee4f3230031105329903e022a2abd15b1c56157c770"
+        },
+        {
+          "directoryLabel": "LovyanGFX",
+          "name": "LovyanGFX",
+          "version": "1.2.21",
+          "manifestSha256": "b8a89edffe204574c79da94c6b584bacb4310799c8bdd7b9b55801463e7da705"
+        },
+        {
+          "directoryLabel": "WebSockets",
+          "name": "WebSockets",
+          "version": "2.7.3",
+          "manifestSha256": "d12af9343b0b972b81f5c33cbd70277bfca5be544f0efc67620174564a95f7a3"
+        },
+        {
+          "directoryLabel": "WiFiManager",
+          "name": "WiFiManager",
+          "version": "2.0.17",
+          "manifestSha256": "c960a55a98476c489c5620e7a4f05d2f85aefdd6b3c1fbeeaaf7ce7d51856fd0"
+        },
+        {
+          "directoryLabel": "lvgl",
+          "name": "lvgl",
+          "version": "9.5.0",
+          "manifestSha256": "be917c686b343434b5659fc1554ef45682519f8000cccf5803386b7a903a1a5f"
+        }
+      ]
+    },
+    {
+      "environment": "ips10",
+      "platform": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+      "declaredLibraries": [
+        "https://github.com/esphome-libs/esp-micro-speech-features.git#351c4c69530f5a802da5433581c4863afadf0a00",
+        "lvgl/lvgl@^9.2.0",
+        "links2004/WebSockets@^2.6.1",
+        "bblanchon/ArduinoJson@^7.3.0",
+        "tzapu/WiFiManager@^2.0.17"
+      ],
+      "cacheObservation": "present",
+      "observedCachedLibraries": [
+        {
+          "directoryLabel": "ArduinoJson",
+          "name": "ArduinoJson",
+          "version": "7.4.3",
+          "manifestSha256": "45c8072598d097cf03031ee4f3230031105329903e022a2abd15b1c56157c770"
+        },
+        {
+          "directoryLabel": "WebSockets",
+          "name": "WebSockets",
+          "version": "2.7.3",
+          "manifestSha256": "d12af9343b0b972b81f5c33cbd70277bfca5be544f0efc67620174564a95f7a3"
+        },
+        {
+          "directoryLabel": "WiFiManager",
+          "name": "WiFiManager",
+          "version": "2.0.17",
+          "manifestSha256": "c960a55a98476c489c5620e7a4f05d2f85aefdd6b3c1fbeeaaf7ce7d51856fd0"
+        },
+        {
+          "directoryLabel": "esp-micro-speech-features",
+          "name": "esp-micro-speech-features",
+          "version": "1.2.0",
+          "manifestSha256": "74f56d6c0a4d6f955b8f8dd961566ca5ff0c8ec23fba0230292b4f291ce4377e"
+        },
+        {
+          "directoryLabel": "lvgl",
+          "name": "lvgl",
+          "version": "9.5.0",
+          "manifestSha256": "be917c686b343434b5659fc1554ef45682519f8000cccf5803386b7a903a1a5f"
+        }
+      ]
+    }
+  ]
+}
