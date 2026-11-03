@@ -110,7 +110,7 @@ final class HostedAppIsolationTests: XCTestCase {
         holder.retryConnectionWaterfall()
         holder.setPreferredLocalBridge(url: invalidURL)
         holder.connectTo(url: invalidURL)
-        holder.schedulePreferredLocalRecovery(after: 0)
+        holder.scheduleSelectedHostRecovery(after: 0)
         holder.stopConnectionAttempts()
         holder.disconnectBridge()
         holder.prepareForTermination()

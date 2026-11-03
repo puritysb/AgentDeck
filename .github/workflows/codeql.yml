@@ -66,7 +66,9 @@ jobs:
   swift:
     name: CodeQL (swift-${{ matrix.target }})
     runs-on: macos-26
-    timeout-minutes: 45
+    # A cold macOS trace completed analysis at the old 45m deadline, then
+    # timed out during cleanup. Keep the complete analysis and cleanup budget.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:

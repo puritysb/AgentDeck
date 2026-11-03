@@ -229,7 +229,7 @@ object PairingCredential {
      * couple of knocks a minute, short enough that an operator watching the
      * Pair a Device window sees their approval take effect on the next knock.
      */
-    const val UNAUTHORIZED_REDIAL_HOLDOFF_MS = 30_000L
+    const val UNAUTHORIZED_REDIAL_HOLDOFF_MS = PairingCodeRules.CLIENT_RECONNECT_COOLDOWN_MS
 
     fun remember(url: String?, credentials: Map<String, String>): Map<String, String> {
         val endpoint = endpointOf(url) ?: return credentials

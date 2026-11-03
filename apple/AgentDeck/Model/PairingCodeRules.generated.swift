@@ -28,6 +28,9 @@ enum PairingCodeRules {
     /// Port a typed address means when it carries none.
     static let DEFAULT_DAEMON_PORT = 9120
 
+    /// Quiet period before retrying the same selected host, never another host.
+    static let clientReconnectCooldownMs = 30000
+
     /// State a daemon keeps for an open window, and all these rules read.
     struct WindowSnapshot: Sendable {
         var code: String
