@@ -400,8 +400,10 @@ function projectDelimCount(s: string, len: number): number {
 export function normalizeProjectForGrouping(project: string | undefined): string {
   const raw = (project || '').trim();
   const base = raw.split('/').filter(Boolean).pop() || raw;
-  const m = base.match(/^(.*?)\s*#\d+$/);
-  return trimProjectTail(m ? m[1] : base);
+  const hash = base.lastIndexOf('#');
+  const prefix = base.slice(0, hash).trimEnd();
+  const numbered = hash >= 0 && /^\d+$/.test(base.slice(hash + 1)) && !/[\r\n\u2028\u2029]/.test(prefix);
+  return trimProjectTail(numbered ? prefix : base);
 }
 
 /**

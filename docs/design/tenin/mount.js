@@ -290,6 +290,7 @@ window.AgentDeck = (function () {
 
   // ── mount ──
   function mount(cfg) {
+    if (!Object.hasOwn(builders, cfg.variant)) throw new Error('Unknown layout variant');
     const root = typeof cfg.root === 'string' ? document.querySelector(cfg.root) : (cfg.root || document.body);
     const orient = cfg.orient || 'landscape';
     root.className = 'screen';

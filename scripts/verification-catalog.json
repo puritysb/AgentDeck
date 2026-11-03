@@ -2,7 +2,7 @@
   "$comment": "What AgentDeck verifies, where, and what it does not. Rendered as the 'What we verify' tab of the GitHub Pages Build Health report (scripts/generate-html-report.py). Gated by scripts/__tests__/verification-catalog.test.ts: every workflow must be listed, every path must exist, and every test file must match a domain (domains are ordered; the first match wins). Edit this file in the same commit as a new gate, workflow or test area. Gate fields: `blocking` means a failure turns its workflow red; `required` means master branch protection lists the gate's check, so GitHub refuses the merge while it fails. Branch protection is a repository setting that CI cannot read, so `merge_policy.as_of` records when `required` was last checked against it.",
   "merge_policy": {
     "as_of": "2026-11-03",
-    "summary": "Branch protection on master requires ESP32 Sim Compile, npm/Python/Rust dependency audits, dependency review, all five CodeQL analysis jobs and the CodeQL result check. Other CI gates turn a PR red but are not individually required. Administrator enforcement remains disabled."
+    "summary": "Branch protection on master requires ESP32 Sim Compile, npm/Python/Rust dependency audits, dependency review, the five existing CodeQL jobs plus hosted-validated Kotlin analysis, the CodeQL result check and hosted-validated security pipeline freshness. Administrator enforcement and up-to-date branch checks are enabled. Swift jobs are promoted only after completed hosted validation."
   },
   "levels": {
     "unit": "One module in isolation; collaborators faked.",
@@ -385,6 +385,26 @@
   ],
   "gates": [
     {
+      "id": "security-pipeline-health",
+      "name": "Security pipeline freshness",
+      "level": [
+        "static"
+      ],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/security-health.yml",
+      "job": "freshness",
+      "trigger": "Every PR, master push, hourly and manual",
+      "blocking": true,
+      "required": true,
+      "command": "node scripts/security-pipeline-health.mjs",
+      "proves": [
+        "Latest default-branch scans and cron executions have separate evidence; disabled, stale, failed and stuck pipelines fail after explicit startup deadlines."
+      ],
+      "does_not_prove": [
+        "Future GitHub scheduler delivery; a first schedule within startup grace remains unverified, not healthy."
+      ]
+    },
+    {
       "id": "vitest",
       "name": "TypeScript suite (Vitest) + coverage floor",
       "level": [
@@ -665,6 +685,7 @@
         "bridge/src/__tests__/daemon-supervisor.test.ts",
         "bridge/src/__tests__/fm-helper-build.test.ts",
         "bridge/src/__tests__/usage-api-recovery.test.ts",
+        "bridge/src/__tests__/wifi-config.test.ts",
         "bridge/src/__tests__/apme-async-probes.test.ts"
       ],
       "proves": [
@@ -1062,6 +1083,48 @@
       "does_not_prove": [
         "No exploitable defects; Swift/Kotlin coverage; hardware behavior; a successful analysis job does not mean no alerts, which need separate triage."
       ]
+    },
+    {
+      "id": "codeql-java-kotlin",
+      "name": "CodeQL java-kotlin security analysis",
+      "level": [
+        "static",
+        "compile"
+      ],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/codeql.yml",
+      "job": "kotlin",
+      "trigger": "Every PR, master push, weekly and manual",
+      "blocking": true,
+      "required": true,
+      "command": "./gradlew :app:assembleDebug --no-build-cache --rerun-tasks",
+      "proves": [
+        "A clean manual build supplies java-kotlin sources to security-extended queries; build, extraction or analysis failure fails the job."
+      ],
+      "does_not_prove": [
+        "Absence of exploitable defects, physical-device behavior or release delivery; alerts require per-finding review."
+      ]
+    },
+    {
+      "id": "codeql-swift",
+      "name": "CodeQL swift security analysis",
+      "level": [
+        "static",
+        "compile"
+      ],
+      "where": "macos-26",
+      "workflow": ".github/workflows/codeql.yml",
+      "job": "swift",
+      "trigger": "Every PR, master push, weekly and manual",
+      "blocking": true,
+      "required": false,
+      "command": "xcodebuild build -scheme AgentDeck_macOS CODE_SIGNING_ALLOWED=NO",
+      "proves": [
+        "Clean manual macOS and iOS Simulator builds supply Swift sources to security-extended queries; build, extraction or analysis failure fails the job."
+      ],
+      "does_not_prove": [
+        "Absence of exploitable defects, physical-device behavior or release delivery; alerts require per-finding review."
+      ]
     }
   ],
   "not_a_gate": {
@@ -1110,6 +1173,8 @@
       "icon": "▣",
       "match": [
         "bridge/src/__tests__/http-auth-gate.test.ts",
+        "bridge/src/__tests__/private-files.test.ts",
+        "bridge/src/__tests__/check-deps.test.ts",
         "bridge/src/__tests__/auth-token-adoption.test.ts",
         "bridge/src/__tests__/credential-response-fence.test.ts",
         "bridge/src/__tests__/pairing-*.test.ts",
@@ -1140,6 +1205,7 @@
         "bridge/src/__tests__/*timeline*.test.ts",
         "bridge/src/__tests__/*orphan*.test.ts",
         "shared/src/__tests__/timeline*.test.ts",
+        "shared/src/__tests__/text-scanning.test.ts",
         "shared/src/__tests__/task-title.test.ts"
       ]
     },
@@ -1425,7 +1491,9 @@
         "scripts/__tests__/public-media.test.ts",
         "scripts/__tests__/product-tour-fixture.test.ts",
         "scripts/__tests__/aquarium-showcase-story.test.ts",
-        "scripts/__tests__/security-audit.test.ts"
+        "scripts/__tests__/security-audit.test.ts",
+        "scripts/__tests__/security-pipeline-health.test.ts",
+        "scripts/__tests__/dependency-security.test.ts"
       ]
     }
   ]

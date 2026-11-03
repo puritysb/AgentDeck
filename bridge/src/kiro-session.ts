@@ -1,4 +1,5 @@
-import { open, readdir, readFile, stat } from 'node:fs/promises';
+import { readBoundedRegularFileAsync } from './private-files.js';
+import { open, readdir, stat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -435,7 +436,7 @@ export async function readKiroSessionSnapshots(
       continue;
     }
     const [metadataRaw, transcriptRaw] = await Promise.all([
-      readFile(metadataPath, 'utf8').catch(() => ''),
+      readBoundedRegularFileAsync(metadataPath, MAX_TRANSCRIPT_SAMPLE_BYTES).then(bytes => bytes?.toString('utf8') ?? ''),
       readHeadAndTail(transcriptPath, 64 * 1024, MAX_TRANSCRIPT_SAMPLE_BYTES).catch(() => ''),
     ]);
     const metadata = parseKiroSessionMetadata(metadataRaw, sessionId);
@@ -520,7 +521,7 @@ export async function readKiroV3SessionSnapshots(
       continue;
     }
     const [metadataRaw, transcriptRaw] = await Promise.all([
-      readFile(candidate.metadataPath, 'utf8').catch(() => ''),
+      readBoundedRegularFileAsync(candidate.metadataPath, MAX_TRANSCRIPT_SAMPLE_BYTES).then(bytes => bytes?.toString('utf8') ?? ''),
       readHeadAndTail(candidate.transcriptPath, 64 * 1024, MAX_TRANSCRIPT_SAMPLE_BYTES).catch(() => ''),
     ]);
     const metadata = parseKiroSessionMetadata(metadataRaw, candidate.sessionId);

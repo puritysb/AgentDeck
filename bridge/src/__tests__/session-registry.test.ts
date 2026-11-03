@@ -3,11 +3,43 @@ import http from 'http';
 import {
   scanDaemonPortWindow, shouldConcedePortToOccupant, waitForDaemonExit, waitForPortBindable,
   resolveDaemonPortWindow, isDefaultDaemonPortWindow, DEFAULT_DAEMON_PORT_WINDOW,
+  readDaemonInfo, listActive,
 } from '../session-registry.js';
-import { readFileSync, mkdirSync, existsSync, rmSync } from 'fs';
+import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, existsSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { randomUUID } from 'crypto';
+
+describe('registry input boundary', () => {
+  const originalDir = process.env.AGENTDECK_DATA_DIR;
+  let directory: string;
+  beforeEach(() => {
+    directory = mkdtempSync(join(tmpdir(), 'agentdeck-registry-input-'));
+    process.env.AGENTDECK_DATA_DIR = directory;
+  });
+  afterEach(() => {
+    if (originalDir === undefined) delete process.env.AGENTDECK_DATA_DIR;
+    else process.env.AGENTDECK_DATA_DIR = originalDir;
+    rmSync(directory, { recursive: true, force: true });
+  });
+  it('rejects registry ports that could change a loopback URL authority', () => {
+    for (const port of ['9120@outside.invalid', '9120/path', '9120', 0, -1, 65536, 1.5, null, {}]) {
+      writeFileSync(join(directory, 'daemon.json'), JSON.stringify({ pid: process.pid, port }));
+      expect(readDaemonInfo()).toBeNull();
+    }
+    writeFileSync(join(directory, 'daemon.json'), JSON.stringify({ pid: process.pid, port: 9120 }));
+    expect(readDaemonInfo()?.port).toBe(9120);
+  });
+  it('retains valid session rows while rejecting malformed peer ports and pids', () => {
+    const valid = { id: 'valid', pid: process.pid, port: 9121, projectName: 'fixture', startedAt: new Date(0).toISOString() };
+    writeFileSync(join(directory, 'sessions.json'), JSON.stringify([
+      { ...valid, id: 'foreign-url', port: '9120@outside.invalid' },
+      { ...valid, id: 'fraction', port: 1.5 },
+      { ...valid, id: 'pid', pid: 'self' }, valid,
+    ]));
+    expect(listActive()).toEqual([valid]);
+  });
+});
 
 // We test session-registry internals by importing and overriding the file path.
 // Since the module uses hardcoded paths, we test via the exported functions

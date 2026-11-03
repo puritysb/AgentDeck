@@ -56,7 +56,7 @@
     "@agentdeck/shared": "workspace:*",
     "@anthropic-ai/sdk": "^0.111.0",
     "@resvg/resvg-js": "2.6.2",
-    "bonjour-service": "^1.3.0",
+    "bonjour-service": "^1.4.4",
     "commander": "^14.0.3",
     "esptool-js": "^0.6.1",
     "express": "^5.3.0",

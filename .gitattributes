@@ -6,3 +6,5 @@
 # Generated deterministic ZIP archives (scripts/generate-streamdeck-profiles.mjs).
 # Must never be eol-smudged or the byte-compared drift gate breaks on Windows.
 *.streamDeckProfile binary
+# Unified patch context prefixes legitimately precede upstream tab indentation.
+patches/*.patch -whitespace

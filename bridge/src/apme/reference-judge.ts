@@ -764,7 +764,7 @@ export function handledSince(store: ApmeStore, plan: ReferenceRunPlan, opts: { j
 }
 
 /** The `--run` command a dry run prints: its own filters, the pool pinned to
- *  `untilMs` and the pick list to its digest. */
+ *  `untilMs` and the pick list to its digest. Windows output targets PowerShell. */
 export function referenceRunCommand(opts: {
   untilMs: number; since: string; limit: number; model: string; effort: string; seed: string;
   category?: string; localBand?: string; projects: readonly string[]; timeoutSec?: number;
@@ -772,7 +772,7 @@ export function referenceRunCommand(opts: {
 }, platform: NodeJS.Platform = process.platform): string {
   const quote = (value: string): string => {
     if (/^[\w.,:@%+=/-]+$/.test(value)) return value;
-    return platform === 'win32' ? `"${value.replace(/"/g, '\\"')}"` : `'${value.replace(/'/g, "'\\''")}'`;
+    return platform === 'win32' ? `'${value.replace(/'/g, "''")}'` : `'${value.replace(/'/g, "'\\''")}'`;
   };
   const args = [
     'agentdeck', 'apme', 'reference-judge', '--run',

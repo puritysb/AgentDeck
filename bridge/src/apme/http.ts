@@ -18,6 +18,7 @@ import { APME_FEEDBACK_VERDICTS, APME_FEEDBACK_NOTE_BYTES } from '@agentdeck/sha
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { ApmeModule } from './index.js';
 import { loadApmeConfig } from './settings.js';
+import { debug } from '../logger.js';
 import { apmeDashboardHtml } from './dashboard-html.js';
 import { APME_COMPARISON_MIN_SAMPLES, EVAL_SCHEMA_VERSION } from '@agentdeck/shared';
 import { historyProjection, type HistoryKind } from './history-projection.js';
@@ -299,7 +300,8 @@ export async function handleApmeRequest(
     sendJson(res, 404, { error: 'unknown apme endpoint' });
     return true;
   } catch (err) {
-    sendJson(res, 500, { error: String(err) });
+    debug('APME', `HTTP request failed: ${String(err)}`);
+    sendJson(res, 500, { error: 'APME request failed' });
     return true;
   }
 }

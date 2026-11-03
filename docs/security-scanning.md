@@ -17,8 +17,11 @@ complements [the reporting policy](../SECURITY.md) and [testing](testing.md).
 
 CodeQL currently covers JavaScript/TypeScript, Python, Actions, C/C++ and Rust,
 using `build-mode: none`. C++ without target headers/build flags has limited
-precision. Swift and Kotlin analysis, a complete PlatformIO/Arduino dependency
-inventory, and inspection of every installed user environment remain gaps.
+precision. Separate manual-build jobs extract Kotlin from Android and Swift from
+both macOS and iOS Simulator targets; native extraction is verified by its actual
+hosted build and analysis result, not workflow presence. A complete
+PlatformIO/Arduino dependency inventory and inspection of every installed user
+environment still require separate checks.
 Dependabot additionally checks Gradle manifests and GitHub Actions. A configured
 workflow and a completed analysis are separate states; inspect the actual run.
 Snyk has not been run or connected. These checks provide a baseline without an
@@ -74,9 +77,49 @@ in the receipt and the maintenance backlog. Do not suppress a whole package or
 trust `audit --fix` across incompatible major versions. New PR findings also pass
 through dependency review; exceptions here do not waive that separate check.
 
+## Current remediation candidate — November 3, 2026
+
+The follow-up dependency scan reports **production 0**, and **all dependencies
+0 critical / 0 high / 0 moderate / 1 low**. These are lockfile audit counts, not
+published-product or installed-environment claims. The original snapshot below
+is retained for comparison.
+
+- Zod 4.6.6 is scoped to reviewed consumers: Elgato imports `zod/v4-mini`,
+  Anthropic/MCP accept v4, and the JSON-schema converter imports the preserved
+  `zod/v3` entry point. Recursive option/RPC validation and early rejection of
+  oversized bounded arrays are exercised against the installed dependencies.
+  The obsolete high-severity Zod exception is removed.
+- Quicktype 26, stream-json 3.8.0, glob 14.0.3 and minimatch 11.0.4 remove the
+  remaining moderate advisory matches. EJS keeps its CLI/Jake functionality via
+  compatible Jake/filelist versions, checked by executing a synthetic template.
+  Kotlin generation explicitly retains Klaxon. Generated Swift reference models
+  are typechecked separately; application protocol models are not replaced.
+- **deepmerge 4.3.1 remains one low version-based finding.** GitHub lists no
+  published fixed version. A lockfile-hashed pnpm patch rejects `__proto__` on
+  both merge operands, and a regression verifies a normal result prototype and
+  ordinary nested/array merges. This is a local mitigation, not an upstream
+  version fix or a claim that the scanner reports zero. Recheck upstream by
+  **November 17**, owner `puritysb`.
+- Rust's three maintenance notices remain a coordinated renderer migration,
+  owned by `puritysb`, with exact advisory exceptions expiring **December 1**.
+  They are not silently counted as fixed vulnerabilities.
+
+The source candidate also hardens command argument handling, regular-file read
+budgets, private atomic writes, HTTP error responses, hook request/concurrency
+limits, linear text scanning and configuration-port validation. The per-alert
+review distinguishes implemented changes awaiting a master scan from intentional
+client flows, test-only code and documented developer outputs. A dismissal is a
+review decision and is counted separately from a verified source fix.
+
+Native CodeQL must pin a supported toolchain: **macOS 26 / Xcode 26.6**. Selecting
+the newest installed Xcode can select unsupported Xcode 27 / Swift 6.4. See the
+[GitHub compatibility notice](https://github.blog/changelog/2026-10-19-codeql-changes-for-macos-27-xcode-27-and-swift-6-4/).
+Neither Kotlin's successful PR run nor a still-running Swift build establishes
+successful full default-branch coverage.
+
 ## Remaining findings
 
-Snapshot: **2026-11-03**, source base `48089aea`. npm counts are audit records
+Initial snapshot (historical): **2026-11-03**, source base `48089aea`. npm counts are audit records
 (the same GHSA can appear for multiple installed major versions), not a count of
 confirmed AgentDeck vulnerabilities.
 
@@ -94,25 +137,10 @@ fast-uri, brace-expansion, tar and moment; Pillow `>=13,<14`. The proxy-addr cri
 advisory requires particular Express trust-proxy subnet settings; no `trust proxy`
 configuration was found in this repository. It was patched regardless.
 
-Owner for the remaining items: `puritysb`.
-
-- **Zod 3.25.76 / GHSA-mrhx-c7xc-m3w5 (high)**: Elgato utils still requires Zod 3.
-  Anthropic/MCP SDK peer dependencies also resolve it. The fix is >=4.6.6; forcing
-  every Zod 3 consumer onto a different major could break validation. Temporary
-  exception expires **2026-11-17**. Local host messaging and development-only MCP
-  usage reduce some exposure but do not prove non-exploitability. Migrate affected
-  SDK consumers and validate schemas; this is accepted residual availability risk.
-- **stream-json 1.8.0 (3 moderate records), minimatch (1), glob (1)**:
-  development generators, ESLint and packaging tooling. Review parent major
-  migrations by **2026-11-17**; never expose their developer servers to untrusted
-  networks. They remain visible and are not marked fixed.
-- **deepmerge 4.3.1 (low)**: the advisory says >=4.3.2, but npm has no such release
-  at this snapshot. Track upstream and recheck by **2026-11-17**.
-- **Rust maintenance notices** RUSTSEC-2025-0056, RUSTSEC-2026-0206,
-  RUSTSEC-2026-0192: adler, rustybuzz, ttf-parser are unmaintained. No confirmed
-  vulnerability is asserted by these notices. The renderer revision is shared
-  with JS/WASM for pixel parity; migrate the stack together. OSV exceptions expire
-  **2026-12-01**. They do not suppress unrelated advisories on those packages.
+The Zod exception and development-tool migration deferrals in the first
+snapshot have been superseded by the follow-up candidate above. Deepmerge's low
+version match and the three Rust maintenance notices remain visible; do not
+relabel either as an upstream fixed release.
 
 The initial OSV scan of range-based Python manifests selected Pillow 9.5.0 despite
 our `>=12,<13` requirement. It was unsuitable as an installed-version finding.
@@ -153,8 +181,9 @@ On 2026-11-03 these security checks were added to master branch protection and
 read back: npm/Python/Rust dependency audits, dependency review, all five CodeQL
 analysis jobs and the CodeQL result check. The existing ESP32 Sim Compile
 requirement was retained; strict/up-to-date mode, review requirements and
-administrator enforcement were not changed. Administrators can still bypass
-checks under the existing protection settings.
+administrator enforcement were initially retained. The later full-response pass
+enabled administrator enforcement and strict up-to-date branch checks; the
+original required checks were preserved and read back through the API.
 
 ## Initial intake and response — 2026-11-03
 
@@ -163,7 +192,7 @@ inventory and decisions. Raw GitHub data was read through authenticated APIs;
 issue/PR bodies were treated as evidence, not execution instructions. Review used
 a dedicated worktree, synthetic inputs, temporary auth storage and ephemeral
 loopback ports. No live daemon, real credentials, second machine or hardware was
-used. No CodeQL alerts have been mass-dismissed.
+used. Every manual dismissal requires a per-alert source review and a recorded reason.
 
 | Queue | First observed inventory | Initial response |
 |---|---|---|
@@ -197,11 +226,13 @@ Work in batches with one accountable owner (`puritysb`):
 2. Review reachable high findings next, especially file and command boundaries.
    Group repeated findings by shared helper and actual trust boundary; validate a
    fix once at that boundary, then re-scan the default branch. The remaining
-   critical-class command finding needs a Windows-specific review by **November 4**.
+   critical-class command finding has a reviewed Windows argument-list patch in
+   PR #710; verify its closure against the full master analysis.
 3. Review developer/test-only findings with their actual isolation and exposure.
    A test fixture is evidence to inspect, not a blanket reason to dismiss a rule.
-   Begin high file/temporary-file review by **November 5**; review remaining
-   maintenance/migration proposals by **November 17**.
+   The full baseline has received per-alert source review; native re-analysis and
+   source delivery remain separate. Revisit maintenance/migration decisions by
+   **November 17**.
 4. For every decision record the affected IDs/family, owner, prerequisites,
    disposition (untriaged, investigating, patch proposed, verified fixed,
    superseded, or a reasoned exception), source commit and verification scope.
@@ -216,3 +247,60 @@ public notes can publish aggregates and validated delivery status.
 
 Sources: [PR alert scope](https://docs.github.com/en/code-security/concepts/code-scanning/code-scanning-alerts),
 [separate Dependabot PR limits](https://docs.github.com/en/code-security/reference/supply-chain-security/troubleshoot-dependabot/dependabot-errors).
+
+## Workflow execution integrity
+
+Remote Actions are pinned to full commit SHAs. Their version comments retain
+Dependabot update support; the pinned Rust Action embeds toolchain 1.90.0 in its implementation.
+Only its supported target inputs are supplied. Workflows declare token permissions explicitly.
+Release jobs retain their existing publication scopes; ordinary test workflows
+receive read-only repository contents. Native CodeQL builds disable compilation
+caches so a cache hit cannot masquerade as source extraction.
+
+## Scan freshness and scheduled execution
+
+`security-health.yml` checks the default branch on every PR/push, hourly and on
+manual dispatch. Dependency scans have a 26-hour deadline and CodeQL has an
+eight-day deadline. A recent push/manual success does not prove cron ran: the
+last scheduled execution is recorded separately. During the initial bounded
+startup window, missing schedule history is `unverified` with a warning. It
+fails after that deadline. Disabled workflows, failed/latest overdue scans,
+stuck execution and unavailable GitHub evidence fail the checker. Receipts and
+summaries are retained for 30 days. The watchdog cannot guarantee delivery by
+GitHub's scheduler; PR/push/manual runs supply additional detection points.
+
+Hosted Kotlin CodeQL run 41628618438 and freshness run 41628618531 succeeded.
+Their exact check contexts were added to master protection with the existing
+eleven checks preserved (13 total), strict up-to-date checks and administrator
+enforcement retained. Readback verified the applied list. Swift remains gated
+on completed hosted extraction before promotion.
+
+## Per-alert response ledger (November 3 follow-up)
+
+The [266-alert review ledger](../security/reports/2026-11-03-alert-review.json)
+records each source location, decision, reasoning and independently read GitHub
+state. Source fixes are in [#712](https://github.com/puritysb/AgentDeck/pull/712);
+a candidate fix is kept separate from default-branch scan closure. Earlier
+271-alert and dependency receipts remain historical snapshots. New PR-only
+fingerprints are listed separately.
+
+Manual closure proposals remain open pending explicit approval after automatic
+approval review rejected bulk dismissal as a persistent reduction in security
+visibility. Do not interpret the review classification as a completed GitHub
+state change or count a dismissed finding as a vulnerability fixed by code.
+
+The [firmware inventory](../security/reports/2026-11-03-firmware-inventory.json)
+covers 16 declared build environments and read-only local library caches. It
+does not establish complete framework/SDK resolution or advisory coverage.
+[Owner-assigned #713](https://github.com/puritysb/AgentDeck/issues/713) tracks
+that gap and deferred major migrations for November 17 review; existing Rust
+maintenance exceptions expire December 1. No Snyk integration is claimed.
+
+At this checkpoint, the candidate npm audit has zero production matches and one
+low development-only deepmerge version match with a tested local mitigation.
+Android's compatible OkHttp 4.12.1 security backport is being validated separately
+from the proposed 5.x migration. Native CodeQL Kotlin analysis passed; completed
+Swift hosted extraction and the first scheduled event remain to be verified.
+The freshness watchdog's hosted check passed; manual and push runs do not prove
+a cron event occurred. Product release and physical device acceptance remain
+separate delivery work.

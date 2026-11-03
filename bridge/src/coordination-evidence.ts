@@ -89,7 +89,10 @@ const MAX_DETAIL = 140;
 
 function attrs(raw: string): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const m of raw.matchAll(ATTR_RE)) out[m[1]] = m[2];
+  for (const m of raw.matchAll(ATTR_RE)) {
+    const key = m[1];
+    if (key === 'from' || key === 'from-name' || key === 'from-mode') out[key] = m[2];
+  }
   return out;
 }
 

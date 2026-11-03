@@ -354,7 +354,8 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
           res.end(JSON.stringify(dump));
         } catch (err) {
           res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: String(err) }));
+          debug('OpenClaw', `Diagnostic request failed: ${String(err)}`);
+          res.end(JSON.stringify({ error: 'Diagnostic request failed' }));
         }
         return;
       }

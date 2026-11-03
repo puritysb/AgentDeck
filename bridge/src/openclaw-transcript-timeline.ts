@@ -50,7 +50,8 @@
  *    both are consulted rather than picking one.
  */
 
-import { readFileSync, readdirSync, statSync } from 'fs';
+import { readdirSync, statSync } from 'fs';
+import { readBoundedRegularFile } from './private-files.js';
 import { homedir } from 'os';
 import { join } from 'path';
 import type { TimelineEntry } from '@agentdeck/shared';
@@ -117,9 +118,9 @@ export function listOpenClawSessions(opts: OpenClawStoreOptions = {}): OpenClawS
     const indexPath = join(agentsRoot, agent, 'sessions', 'sessions.json');
     let parsed: unknown;
     try {
-      const st = statSync(indexPath);
-      if (!st.isFile() || st.size > MAX_TRANSCRIPT_BYTES) continue;
-      parsed = JSON.parse(readFileSync(indexPath, 'utf-8'));
+      const bytes = readBoundedRegularFile(indexPath, MAX_TRANSCRIPT_BYTES);
+      if (!bytes) continue;
+      parsed = JSON.parse(bytes.toString('utf8'));
     } catch {
       continue;
     }
@@ -248,7 +249,9 @@ export function openClawTimelineForSession(
 
   let text: string;
   try {
-    text = readFileSync(transcript, 'utf-8');
+    const bytes = readBoundedRegularFile(transcript, MAX_TRANSCRIPT_BYTES);
+    if (!bytes) return [];
+    text = bytes.toString('utf8');
   } catch (err) {
     debug('daemon', `openclaw transcript read failed for ${sessionId}: ${String(err)}`);
     return [];

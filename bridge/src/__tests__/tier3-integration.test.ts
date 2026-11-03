@@ -310,7 +310,8 @@ describe('Voice transcription endpoint', () => {
 
     expect(res.status).toBe(500);
     const json = await res.json() as any;
-    expect(json.error).toContain('speech helper not found');
+    expect(json.error).toBe('Voice transcription failed');
+    expect(json.error).not.toContain('speech helper not found');
   });
 });
 

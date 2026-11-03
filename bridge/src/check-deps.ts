@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import type { AgentType } from './types.js';
 
 interface DepCheck {
@@ -60,7 +60,7 @@ export function checkDependencies(agentType?: AgentType): { ok: boolean; warning
       ? execSync(cmd, { ...opts, windowsHide: true })
       // windows-hide-exempt: the `isWin` branch above is the Windows one; this
       // arm runs a POSIX login shell and is never reached there.
-      : execSync(`${loginShell} -l -c '${cmd}'`, opts);
+      : execFileSync(loginShell, ['-l', '-c', cmd], opts);
 
   // Check agent-specific binary
   const agentDep = agentType ? AGENT_DEPS[agentType] : AGENT_DEPS['claude-code'];

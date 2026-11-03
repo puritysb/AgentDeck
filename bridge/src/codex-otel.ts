@@ -114,11 +114,12 @@ function recordArray(value: unknown): Record<string, unknown>[] {
  * plain map so callers can dot-key into it without re-parsing the envelope.
  */
 function flattenAttrs(raw: unknown): Attrs {
-  const out: Attrs = {};
+  const out: Attrs = Object.create(null);
   for (const kv of recordArray(raw)) {
     const key = kv.key;
     const wrap = kv.value;
     if (typeof key !== 'string' || !isRecord(wrap)) continue;
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
     if (typeof wrap.stringValue === 'string') { out[key] = wrap.stringValue; continue; }
     if (wrap.intValue !== undefined) {
       // OTLP encodes int64 as a number or a stringified number depending on SDK
