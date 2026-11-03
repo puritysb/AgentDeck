@@ -5272,7 +5272,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // count in moduleHealthProvider below.
   const startedModules = await initModules(
     deviceModules,
-    daemonModuleConfigs(posture, serialMode),
+    daemonModuleConfigs(posture, serialMode, loadDaemonSettings().udpDiscoveryEnabled === true),
     {
       port, authToken: core.authToken, projectName: 'AgentDeck', wsServer: core.wsServer,
       // AdbModule restricts `adb reverse` to USB transports under loopback —

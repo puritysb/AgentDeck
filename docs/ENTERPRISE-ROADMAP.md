@@ -323,8 +323,12 @@ Two things make this worse than it looks:
   has no `BroadcastModule.swift`). The two daemons already disagree; codifying "off by
   default" costs nothing in parity.
 
-**Fix**: default the broadcast module **off**, opt in via settings for the fork's users;
-and back the interval off when no client has ever been seen. **S** · ~0.5 day.
+**Implemented default:** the broadcast module is off unless Node settings explicitly
+contain `"udpDiscoveryEnabled": true`. mDNS remains the standard discovery path;
+`--local` and `--loopback` override this opt-in. Restart the daemon after changing
+this setting. The Swift daemon still emits no UDP beacon. When explicitly enabled,
+the existing 2-second compatibility interval remains; there is no receiver/ack
+signal in this protocol from which to infer whether an external client is using it.
 
 ### 2.4 P2 — every ESP32 board claims one `.local` hostname
 
@@ -551,7 +555,7 @@ nothing.
 | 7 | `--local` record derived from the module registry; fixes the `idotmatrix` leak (§4.1) | S | 0.5d | **done** — `allModulesOff()`; the leak was also in the *default* session record, not only `--local` |
 | 8 | `daemon start/install --enterprise`, persisted into the autostart unit (§4.2) | M | 1.5d | **done** — argv-baked into all three writers; `daemon restart` inherits via `/health` |
 | 9 | Pixoo auto-discovery default off, cloud call opt-in separately (§5) | S | 1d | **done** — default off (Node + Swift); `pixoo scan --no-cloud` splits the two disclosures |
-| 10 | UDP broadcast default off; back off when unused (§2.3) | S | 0.5d | **superseded** — off under `--local`/`--loopback`; a global default-off still open (§2.3) |
+| 10 | UDP broadcast default off; back off when unused (§2.3) | S | 0.5d | **default-off implemented** — explicit `udpDiscoveryEnabled: true` opt-in; restricted postures still override it (§2.3) |
 | 11 | Configurable port window + persistent CLI daemon port (§1.5) | S | 1d | **done** (08-17) — `--port-window`; `agentdeck daemon port` persists `daemonPort`; a kernel-held preferred port is waited out (20s) instead of conceding forever; exhaustion message separates own from foreign ports |
 | 12 | Swift-side enterprise posture toggle in Settings (§3) | M | 2d | **done** (08-17) — Settings → Local server toggles → `DaemonPosture` (loopback bind, Bonjour skipped, module registration gated deny-by-default); posture rides Swift `/health` for `qr`/`pair`/`restart` parity |
 

@@ -863,3 +863,13 @@ adopting an approval, saves its existing supported files under a private
 new cursor is durable. Later private edits require a fresh choice. Consumed or
 superseded decisions cannot replay. A pending choice remains visible until that
 profile reconnects. Disconnect leaves this history and all original files intact.
+
+
+### Legacy UDP discovery
+
+Node's legacy UDP discovery beacon is disabled by default. AgentDeck clients use
+mDNS or an explicitly paired endpoint. External clients that require UDP 9121 may
+opt in with `"udpDiscoveryEnabled": true` in the active Node profile's
+`settings.json`, then restart the daemon. `--local` and `--loopback` keep UDP off
+even with that setting. The opt-in preserves the existing two-second broadcast
+protocol without including credentials. The native Swift daemon has no UDP beacon.
