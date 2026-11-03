@@ -43,3 +43,20 @@ invocation. Hosted checks and master reanalysis remain separate in
 [PR #721](https://github.com/puritysb/AgentDeck/pull/721) and
 [the owner-assigned response record](https://github.com/puritysb/AgentDeck/issues/713).
 No signed Keychain, installed-client or physical-device acceptance is implied.
+
+A later complete master scan (`eadab28c`, run 41661877755) introduced alert
+#314 in the cron title parser. Its overlapping whitespace and label matches
+could retry quadratically on long malformed separators. The response replaces
+that expression with one header-boundary lookup and one separator lookup;
+synthetic 100,000-tab cases exercise malformed and valid headers. This finding
+is outside the historical 266-alert baseline and is recorded separately in
+[the additional response](security/reports/2026-11-04-additional-response.json).
+Its GitHub fixed state still requires post-merge reanalysis.
+
+The parser follow-up passed 90 focused timeline cases and all 7,570 Vitest
+cases (42 skips); changed-area verification passed 189 related cases including
+compiled Swift pixel parity. The first restricted run blocked Swift cache and
+loopback HTTP access. The permitted rerun passed product checks but selected
+system Bash 3 for design lint; rerunning that gate with `/opt/homebrew/bin`
+first passed. Changed verification then ran sequentially with that PATH.
+These environment failures are not counted as successful runs.
