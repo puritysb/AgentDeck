@@ -2282,6 +2282,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         build: startupBuildId,
         broadcastMetrics: core.wsServer.getBroadcastMetrics(),
         pairingToken: core.authToken,
+        calendar: glanceCalendar.diagnostics(),
         // Capability: this daemon drives remote sessions down their own push
         // socket (session_focus_down / session_command_down / session_event_up).
         // Workers require this flag before remote-attaching; the Swift daemon

@@ -463,6 +463,7 @@
 		7409E65BFDFE78944B389B63 /* TerrariumCloudFoldTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB282455F078889B6DB35F93 /* TerrariumCloudFoldTests.swift */; };
 		7445B7D3F13CDCC4D291B5EA /* ApmeJudgeApi.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46988130529D53105344C47F /* ApmeJudgeApi.swift */; };
 		747769DF2E3E1CD0A0CC3030 /* DaemonVoiceAssistant.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACF3E9B667BE141F81917F89 /* DaemonVoiceAssistant.swift */; };
+		74B758F87AFF69A58FABD478 /* Calendar-ThirdPartyNotices.txt in Resources */ = {isa = PBXBuildFile; fileRef = 941C21A4201526BB6A65CB09 /* Calendar-ThirdPartyNotices.txt */; };
 		74E593D4F0D95834541B5A42 /* PocketVectorReplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA9EF1BA3F966E4C3B7F58A1 /* PocketVectorReplay.swift */; };
 		7508D8DB27034D39CA026615 /* ClaudeStatuslineRulesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87B953D8E77FC4425B70B384 /* ClaudeStatuslineRulesTests.swift */; };
 		7522C688A73E2B84083FF1B4 /* DaemonRelayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89A7466694714DDCA0A8B49C /* DaemonRelayTests.swift */; };
@@ -937,6 +938,7 @@
 		F1C357A840E59D7A188C808B /* OnboardingScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9965CED8937C8C1F27DFCC68 /* OnboardingScreen.swift */; };
 		F1DD9A5EEB4B3C3A8EFEA230 /* CalendarSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5C2B1D27AEDE3CF0449CCE7 /* CalendarSettings.swift */; };
 		F20373DB53552C2F36204EDF /* TerrariumConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 403CDDF7DDFCF5D8702491EA /* TerrariumConfig.swift */; };
+		F2A1C0A5EC3FBB8465AB5FFA /* Calendar-ThirdPartyNotices.txt in Resources */ = {isa = PBXBuildFile; fileRef = 941C21A4201526BB6A65CB09 /* Calendar-ThirdPartyNotices.txt */; };
 		F2CC340FA1DBD8EEAEBC5BE9 /* OpenCodeObserverSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A0DFA9570E8B962381364E8 /* OpenCodeObserverSetupView.swift */; };
 		F30F046B8C2F044E12263AE8 /* DaemonPortFallbackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA9A38D1BD38841DF83F3017 /* DaemonPortFallbackTests.swift */; };
 		F3272430808C8067A5B15F7F /* AgentDeckPathsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D55999BEAD84484D03EEB51 /* AgentDeckPathsTests.swift */; };
@@ -1309,6 +1311,7 @@
 		92906E64B9FD81B41771E134 /* ApmeHotReadPlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeHotReadPlanTests.swift; sourceTree = "<group>"; };
 		92F84E0AB4261F8308A45186 /* AgentStateHolder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentStateHolder.swift; sourceTree = "<group>"; };
 		93BD940DFD8DBDE64431BDEF /* GitHubCIConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitHubCIConnection.swift; sourceTree = "<group>"; };
+		941C21A4201526BB6A65CB09 /* Calendar-ThirdPartyNotices.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Calendar-ThirdPartyNotices.txt"; sourceTree = "<group>"; };
 		94B060A15BF6B6EFD1848C81 /* ApmeClassifierBackendTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeClassifierBackendTests.swift; sourceTree = "<group>"; };
 		952A48256A53B55E304F7D67 /* MdnsIdentity.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MdnsIdentity.generated.swift; sourceTree = "<group>"; };
 		9539A9FD12E7B5C93867DE46 /* PixooBakedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixooBakedTests.swift; sourceTree = "<group>"; };
@@ -1864,7 +1867,7 @@
 			isa = PBXGroup;
 			children = (
 				AC651FF2220A85AE38F26FE6 /* AgentDeck */,
-				FDD54EBCBD2AEAA70DF73E53 /* agentdeck-2.0-integration */,
+				FDD54EBCBD2AEAA70DF73E53 /* agentdeck-672-calendar-compatibility */,
 				2A19A20A106E79B114EDF545 /* AgentDeckTests */,
 				64AA1BD02816AC44948E2CFF /* Products */,
 			);
@@ -2073,6 +2076,7 @@
 				83E77BCD933FB80831B3E6FD /* AgentDeck.entitlements */,
 				766909A21820E709DA63C7C2 /* apme-dashboard.html */,
 				2D2F35C5E4DF5DAE1C93F54B /* Assets.xcassets */,
+				941C21A4201526BB6A65CB09 /* Calendar-ThirdPartyNotices.txt */,
 				44C46B1B04DD2FB785CE6B1B /* CloudKitPoC-iOS.entitlements */,
 				9A51FE10488D3280B35E6F48 /* CloudKitPoC-macOS.entitlements */,
 				8521590B433F1C0B3F3FB330 /* dot-mcp-contract.json */,
@@ -2537,6 +2541,7 @@
 			files = (
 				B68E2AF5536FD85B5CB7DB33 /* 3d-residents.usdz in Resources */,
 				809CC98B24E5F976E5E84AF9 /* Assets.xcassets in Resources */,
+				F2A1C0A5EC3FBB8465AB5FFA /* Calendar-ThirdPartyNotices.txt in Resources */,
 				B3916202C52FF0DFD1C98D76 /* Glance-ThirdPartyNotices.txt in Resources */,
 				4B5835750D015281DCE5E795 /* LICENSE-CC-BY-SA-4.0.txt in Resources */,
 				190DE65C9F234AC406B0DCF5 /* NOTICE-PocketSansWorld.md in Resources */,
@@ -2564,6 +2569,7 @@
 			files = (
 				2A9F9EB1D882DA8C8DA64FE8 /* 3d-residents.usdz in Resources */,
 				5FBCFE8F4EBDCB7937FECA50 /* Assets.xcassets in Resources */,
+				74B758F87AFF69A58FABD478 /* Calendar-ThirdPartyNotices.txt in Resources */,
 				00F48CC97AF9EEE2F6BFE298 /* Glance-ThirdPartyNotices.txt in Resources */,
 				4D613C45336773D6006BB099 /* IBMPlexSans-Bold.ttf in Resources */,
 				6CC84504704EDB947EB46507 /* IBMPlexSans-Regular.ttf in Resources */,

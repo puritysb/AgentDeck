@@ -2,8 +2,8 @@
  * native configuration stores secrets in Keychain, never in Pocket learning. */
 import type { GlanceEvent } from '@agentdeck/shared';
 import { CALENDAR_POLICY as P } from './calendar-policy.generated.js';
-import { buildTodayEvents, parseIcsEvents, type IcsEvent } from './calendar-ics.js';
-export { unfoldIcsLines, parseIcsInstant, parseIcsEvents, occursOn, buildTodayEvents } from './calendar-ics.js';
+import { buildTodayEvents, parseIcsCalendar, emptyCalendarSkipped, type CalendarSkipped, type IcsEvent } from './calendar-ics.js';
+export { unfoldIcsLines, parseIcsInstant, parseIcsEvents, parseIcsCalendar, occursOn, buildTodayEvents } from './calendar-ics.js';
 export interface CalendarSettings { urls: string[]; timeZone?: string }
 export const CALENDAR_CACHE_MS = P.cacheMs;
 export const CALENDAR_STALE_SERVE_MS = P.staleMs;
@@ -27,9 +27,9 @@ export function parseCalendarSettings(settings: Record<string, unknown>): Calend
   if (zone !== undefined) { if (typeof zone !== 'string') return null; try { new Intl.DateTimeFormat('en', { timeZone: zone }); } catch { return null; } }
   return { urls: [...urls], ...(zone === undefined ? {} : { timeZone: zone as string }) };
 }
-export interface CalendarSnapshot { status: 'disabled' | 'fresh' | 'stale' | 'unknown'; events?: GlanceEvent[]; fetchedAt?: number }
+export interface CalendarSnapshot { status: 'disabled' | 'fresh' | 'stale' | 'unknown'; events?: GlanceEvent[]; fetchedAt?: number; skippedEvents?: number; skippedByReason?: CalendarSkipped }
 export class CalendarProvider {
-  private cache?: { at: number; events: IcsEvent[] };
+  private cache?: { at: number; events: IcsEvent[]; skippedByReason: CalendarSkipped; skippedEvents: number };
   private inflight?: Promise<void>;
   private controller?: AbortController;
   private key?: string;
@@ -55,14 +55,20 @@ export class CalendarProvider {
     if (this.key !== key || this.generation !== generation) return { status: 'disabled' };
     const cached = this.cache, elapsed = cached ? now - cached.at : Infinity;
     if (!cached || elapsed < 0 || elapsed >= P.staleMs) return { status: 'unknown' };
-    try { return { status: elapsed < P.cacheMs ? 'fresh' : 'stale', events: buildTodayEvents(cached.events, new Date(now), validated.timeZone), fetchedAt: cached.at }; }
+    try { return { status: elapsed < P.cacheMs ? 'fresh' : 'stale', events: buildTodayEvents(cached.events, new Date(now), validated.timeZone), fetchedAt: cached.at, skippedEvents: cached.skippedEvents, skippedByReason: { ...cached.skippedByReason } }; }
     catch { return { status: 'unknown' }; }
+  }
+  diagnostics(now = Date.now()): Omit<CalendarSnapshot, 'events'> {
+    if (!this.key) return { status: 'disabled' };
+    const cached = this.cache, age = cached ? now - cached.at : Infinity;
+    if (!cached || age < 0 || age >= P.staleMs) return { status: 'unknown' };
+    return { status: age < P.cacheMs ? 'fresh' : 'stale', fetchedAt: cached.at, skippedEvents: cached.skippedEvents, skippedByReason: { ...cached.skippedByReason } };
   }
   async get(cfg: CalendarSettings | null, now = Date.now()): Promise<GlanceEvent[] | undefined> { return (await this.snapshot(cfg, now)).events; }
   private async fetchFresh(cfg: CalendarSettings, now: number, generation: number, ctl: AbortController): Promise<void> {
     const timer = setTimeout(() => ctl.abort(), P.timeoutMs);
     try {
-      const all: IcsEvent[] = [];
+      const all: IcsEvent[] = []; const skippedByReason = emptyCalendarSkipped(); let skippedEvents = 0;
       for (const [index, url] of cfg.urls.entries()) {
         const res = await this.fetchImpl(url, { signal: ctl.signal, redirect: 'error', credentials: 'omit', cache: 'no-store', headers: { Accept: 'text/calendar' } });
         if (res.status !== 200 || !res.body) throw new Error('calendar_fetch');
@@ -74,12 +80,14 @@ export class CalendarProvider {
           }
         } finally { await reader.cancel().catch(() => {}); }
         const bytes = Buffer.concat(chunks);
-        all.push(...parseIcsEvents(new TextDecoder('utf-8', { fatal: true }).decode(bytes), String(index)));
-        if (all.length > P.maxEvents || ctl.signal.aborted) throw new Error('calendar_limit');
+        const parsed = parseIcsCalendar(new TextDecoder('utf-8', { fatal: true }).decode(bytes), String(index));
+        all.push(...parsed.events); skippedEvents += parsed.skippedEvents;
+        for (const reason of P.skipReasons) skippedByReason[reason] += parsed.skippedByReason[reason];
+        if (all.length + skippedEvents > P.maxEvents || ctl.signal.aborted) throw new Error('calendar_limit');
       }
       // Validate expansion before replacing good data, not only on its first read.
       buildTodayEvents(all, new Date(now), cfg.timeZone);
-      if (generation === this.generation && !ctl.signal.aborted) { this.cache = { at: now, events: all }; this.failedAt = undefined; }
+      if (generation === this.generation && !ctl.signal.aborted) { this.cache = { at: now, events: all, skippedByReason, skippedEvents }; this.failedAt = undefined; }
     } catch {
       if (generation === this.generation) { this.failedAt = now; this.log('[calendar] fetch failed'); }
     } finally { clearTimeout(timer); if (generation === this.generation) { this.inflight = undefined; this.controller = undefined; } }

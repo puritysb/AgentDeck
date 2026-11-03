@@ -64,6 +64,23 @@ private actor ReplyMode {
                 guard off.status == "disabled", try storage.load() == nil else { throw CalendarICS.Failure.invalid }
                 results = [["restored":true,"status":first.status,"events":first.events!.map(\.wire),"afterDisconnect":off.status,"keychainRemoved":true]]
             }
+        } else if CommandLine.arguments.contains("--provider-diagnostics") {
+            for v in input {
+                let memory = CalendarMemory(), connection = CalendarConnection(storage: memory.storage)
+                let mode = ReplyMode(v["ics"] as! String)
+                let provider = CalendarProvider(connection: connection, transport: .init(request: { _ in try await mode.request() }))
+                let now = (v["nowMs"] as! NSNumber).doubleValue
+                guard provider.diagnostics(nowMs: now)["status"] as? String == "disabled" else { throw CalendarICS.Failure.invalid }
+                try await connection.connect(urls: ["https://calendar.invalid/private"], consent: true)
+                let snapshot = await provider.snapshot(nowMs: now, zone: "UTC")
+                let diagnostic = provider.diagnostics(nowMs: now)
+                guard snapshot.skippedEvents == 1, await mode.requests == 1 else { throw CalendarICS.Failure.invalid }
+                results.append(diagnostic)
+                try await connection.disconnect(); provider.stop()
+                guard provider.diagnostics(nowMs: now)["status"] as? String == "disabled" else { throw CalendarICS.Failure.invalid }
+            }
+        } else if CommandLine.arguments.contains("--diagnostics") {
+            results = try input.map { try CalendarICS.parseDetailed($0["ics"] as! String).skippedByReason }
         } else if CommandLine.arguments.contains("--urls") {
             results = input.map { CalendarConfiguration.validURL($0["value"] as! String) }
         } else if CommandLine.arguments.contains("--cache") {

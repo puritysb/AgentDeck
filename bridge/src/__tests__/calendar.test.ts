@@ -1,3 +1,4 @@
+import { parseIcsCalendar } from '../calendar-ics.js';
 import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -193,8 +194,13 @@ describe('CalendarProvider', () => {
   });
 });
 
-const calendarVectors = JSON.parse(readFileSync('shared/calendar-vectors.json', 'utf8')) as Array<{ name: string; ics: string; nowMs: number; zone: string; expected: unknown }>;
+const calendarVectors = JSON.parse(readFileSync('shared/calendar-vectors.json', 'utf8')) as Array<{ name: string; ics: string; nowMs: number; zone: string; expected: unknown; expectedSkipped?: Record<string, number> }>;
 describe('shared calendar contract', () => {
+  it.each(calendarVectors.filter(v => v.expectedSkipped))('reports content-free omissions: $name', v => {
+    const parsed = parseIcsCalendar(v.ics);
+    expect(parsed.skippedByReason).toEqual(v.expectedSkipped);
+    expect(parsed.skippedEvents).toBe(1);
+  });
   it('keeps generated policy and wire bounds current', () => { for (const {path, expected} of outputs()) expect(readFileSync(path, 'utf8')).toBe(expected); });
   it.each(calendarVectors)('$name', v => { expect(buildTodayEvents(parseIcsEvents(v.ics), new Date(v.nowMs), v.zone)).toEqual(v.expected); });
   it.skipIf(process.platform !== 'darwin')('executes the actual Swift parser on every shared vector', () => {
@@ -204,6 +210,9 @@ describe('shared calendar contract', () => {
       execFileSync('swiftc', ['-module-cache-path',join(dir,'modules'),'-parse-as-library','apple/AgentDeck/Daemon/Server/CalendarPolicy.generated.swift','apple/AgentDeck/Daemon/Server/CalendarICS.swift','apple/AgentDeck/Daemon/Server/CalendarConnection.swift','apple/AgentDeck/Daemon/Server/CalendarProvider.swift','bridge/src/__tests__/fixtures/calendar-main.swift','-o',binary], { timeout:120000 });
       const native = JSON.parse(execFileSync(binary, { input:JSON.stringify(calendarVectors),encoding:'utf8',timeout:30000 }));
       expect(native).toEqual(calendarVectors.map(v => v.expected));
+      const omitted = calendarVectors.filter(v => v.expectedSkipped);
+      expect(JSON.parse(execFileSync(binary, ['--diagnostics'], {input:JSON.stringify(omitted),encoding:'utf8',timeout:15000}))).toEqual(omitted.map(v => v.expectedSkipped));
+      expect(JSON.parse(execFileSync(binary, ['--provider-diagnostics'], {input:JSON.stringify(omitted),encoding:'utf8',timeout:15000}))).toEqual(omitted.map(v => ({status:'fresh', fetchedAt:v.nowMs, skippedEvents:1,skippedByReason:v.expectedSkipped})));
       const urls = JSON.parse(readFileSync('shared/calendar-url-vectors.json','utf8')) as Array<{value:string;valid:boolean}>;
       expect(JSON.parse(execFileSync(binary,['--urls'],{input:JSON.stringify(urls),encoding:'utf8',timeout:15000}))).toEqual(urls.map(v => v.valid));
       const cases = JSON.parse(readFileSync('shared/calendar-cache-vectors.json','utf8'));
@@ -222,7 +231,10 @@ describe('calendar cache contract', () => {
     for (const s of v.steps) {
       fail = s.fail === true;
       const cfg = s.disabled ? null : { urls:['https://calendar.invalid/' + (s.source ?? 'a')], timeZone:'UTC' };
-      expect({...await provider.snapshot(cfg,v.nowMs+s.delta), requests:fetcher.mock.calls.length}).toEqual({status:s.status,requests:s.requests,...(s.events === undefined ? {} : {events:s.events}),...(s.stamp === undefined ? {} : {fetchedAt:v.nowMs+s.stamp})});
+      const snapshot = await provider.snapshot(cfg,v.nowMs+s.delta);
+      const { skippedEvents, skippedByReason, ...visible } = snapshot;
+      if (snapshot.events) { expect(skippedEvents).toBe(0); expect(skippedByReason).toEqual({unsupported_zone:0,unsupported_rule:0,invalid_event:0}); }
+      expect({...visible, requests:fetcher.mock.calls.length}).toEqual({status:s.status,requests:s.requests,...(s.events === undefined ? {} : {events:s.events}),...(s.stamp === undefined ? {} : {fetchedAt:v.nowMs+s.stamp})});
     }
     expect(logs.every(s => s === '[calendar] fetch failed')).toBe(true);
   });
@@ -271,5 +283,22 @@ describe('calendar network bounds', () => {
       const p = new CalendarProvider((async () => new Response(body)) as typeof fetch);
       expect(await p.snapshot({urls:['https://calendar.invalid/private']},NOW.getTime())).toEqual({status:'unknown'});
     }
+  });
+});
+
+
+describe('content-free calendar diagnostics', () => {
+  it('reports skipped entries without another network request and clears them on disconnect', async () => {
+    const fixture = calendarVectors.find(v => v.name === 'unknown-zone' && v.expectedSkipped !== undefined)!;
+    const fetcher = vi.fn(async () => new Response(fixture.ics));
+    const provider = new CalendarProvider(fetcher as typeof fetch);
+    expect(provider.diagnostics(fixture.nowMs)).toEqual({status:'disabled'});
+    const result = await provider.snapshot({urls:['https://calendar.invalid/private-source'],timeZone:'UTC'},fixture.nowMs);
+    expect(result).toEqual({status:'fresh',events:[],fetchedAt:fixture.nowMs,skippedEvents:1,skippedByReason:fixture.expectedSkipped});
+    expect(provider.diagnostics(fixture.nowMs)).toEqual({status:'fresh',fetchedAt:fixture.nowMs,skippedEvents:1,skippedByReason:fixture.expectedSkipped});
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(provider.diagnostics(fixture.nowMs + CP.staleMs)).toEqual({status:'unknown'});
+    await provider.snapshot(null,fixture.nowMs);
+    expect(provider.diagnostics(fixture.nowMs)).toEqual({status:'disabled'});
   });
 });

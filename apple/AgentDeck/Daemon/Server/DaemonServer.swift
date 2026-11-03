@@ -3609,12 +3609,16 @@ final class DaemonServer {
             let judgeBackend = await DaemonActor.run { [weak self] in self?.cachedJudgeBackendStatus }
             // Account usage source and diagnostic-only status-line receipt.
             let claudeUsage = await DaemonActor.run { [weak self] in self?.claudeUsageHealth() }
+            let calendar = await DaemonActor.run { [weak self] in
+                SendableDict(self?.calendarContext.diagnostics() ?? ["status": "disabled"])
+            }
             var payload: [String: Any] = [
                 "status": "ok", "mode": "daemon", "port": daemonPort,
                 "pid": ProcessInfo.processInfo.processIdentifier,
                 "uptime": ProcessInfo.processInfo.systemUptime,
                 "state": state,
                 "pairingToken": AuthManager.shared.token,
+                "calendar": calendar.value,
                 "modules": health["modules"] as Any,
                 "isSwift": true, "daemonRelay": true,
                 // Node parity: `agentdeck qr`/`pair` read this to warn instead

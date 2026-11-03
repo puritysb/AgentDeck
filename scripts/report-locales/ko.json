@@ -544,5 +544,6 @@
   "Installed App Store or Release delivery, real providers, source grants, physical writers or remote network partitions": "실제 App Store·Release 배포, 실제 제공자·소스 권한, 물리 기기 쓰기나 원격 네트워크 단절",
   "Absent-replica recovery, simultaneous durable-store loss, pins/settings/source-grant migration or staged-image distribution": "복제본 부재·동시 저장소 손실 복구, 핀·설정·소스 권한 이전이나 준비된 펌웨어 배포",
   "Physical X4 acceptance is deferred to companion-app integration": "X4 실기 검증은 컴패니언 앱 연동 시 진행합니다.",
-  "Opt-in display-only mode measures actual Mac sleep/wake edge delivery to isolated wire clients in Swift-only, Node-only and combined configurations": "선택 실행하는 화면 소등 모드는 Swift 단독·Node 단독·동시 실행에서 실제 Mac 화면 꺼짐과 복원의 격리 클라이언트 전달 시간을 측정합니다."
+  "Opt-in display-only mode measures actual Mac sleep/wake edge delivery to isolated wire clients in Swift-only, Node-only and combined configurations": "선택 실행하는 화면 소등 모드는 Swift 단독·Node 단독·동시 실행에서 실제 Mac 화면 꺼짐과 복원의 격리 클라이언트 전달 시간을 측정합니다.",
+  "native ICS source URL scope, Windows/IANA timezone and DST mapping, WKST week boundaries, monthly BYSETPOS, omission counts and cache/stale policy match Node; memory-only calendar context preserves aggregate Pocket storage": "네이티브 ICS URL 범위, Windows/IANA 시간대와 DST 매핑, WKST 주 경계, 월별 BYSETPOS, 제외 사유 집계 및 캐시 정책이 Node와 일치하며 캘린더 문맥은 메모리에만 보관합니다."
 }
