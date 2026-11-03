@@ -5,6 +5,9 @@ import { homedir, hostname, networkInterfaces } from 'os';
 import type { IncomingHttpHeaders } from 'http';
 import { getLanIp, localTrustVerdict, type LocalTrustVerdict } from '@agentdeck/shared';
 import { debug, log } from './logger.js';
+import { adoptPairingCredentials, rotatePairingCredentials, pairingCredentialGeneration, type PairingCredentials, type PairingRetirement } from '@agentdeck/shared';
+import { closePairingWindow, setPairingCredentialGeneration } from './pairing-window.js';
+import { readCredentialState, writeCredentialState, mutateCredentialState } from './pairing-credential-store.js';
 
 const LEGACY_DIR = join(homedir(), '.agentdeck');
 const TOKEN_LENGTH = 32; // 32 hex chars = 16 bytes
@@ -37,6 +40,38 @@ function acceptedFile(dir = dataDir()): string {
 // re-reads instead of serving the previous directory's credential.
 let cachedToken: { dir: string; token: string } | null = null;
 let cachedAccepted: { dir: string; tokens: string[] } | null = null;
+let cachedCredentials: { dir: string; state: PairingCredentials } | null = null;
+function persistedCredentials(): PairingCredentials | null {
+  const dir = dataDir();
+  if (cachedCredentials?.dir === dir) return cachedCredentials.state;
+  let state = readCredentialState(dir);
+  if (!state && dir !== LEGACY_DIR && !existsSync(tokenFile(dir))) {
+    state = readCredentialState(LEGACY_DIR);
+    if (state) writeCredentialState(dir, state);
+  }
+  if (state) cachedCredentials = { dir, state };
+  return state;
+}
+export function getPairingCredentials(): PairingCredentials {
+  const persisted = persistedCredentials();
+  if (persisted) return persisted;
+  const state: PairingCredentials = { version: 1, revision: 0, eventId: '', token: getOrCreateToken(), accepted: [...getAcceptedTokens()] };
+  cachedCredentials = {dir:dataDir(),state};
+  return state;
+}
+export function getPairingRetirement(): PairingRetirement {
+  const { version, revision, eventId } = getPairingCredentials();
+  return { version, revision, eventId };
+}
+export function getPairingGeneration(): string | undefined { return pairingCredentialGeneration(getPairingRetirement()); }
+setPairingCredentialGeneration(() => getPairingGeneration());
+function commitCredentials(state: PairingCredentials): void {
+  const dir = dataDir();
+  if (state.revision > 0) closePairingWindow();
+  cachedCredentials = { dir, state };
+  cachedToken = { dir, token: state.token };
+  cachedAccepted = { dir, tokens: state.accepted };
+}
 
 function readTokenFile(path: string): string | null {
   try {
@@ -50,6 +85,8 @@ function readTokenFile(path: string): string | null {
 
 /** Read existing token or generate a new one. */
 export function getOrCreateToken(): string {
+  const state = persistedCredentials();
+  if (state) return state.token;
   const dir = dataDir();
   if (cachedToken?.dir === dir) return cachedToken.token;
 
@@ -88,6 +125,8 @@ function isWellFormedToken(token: unknown): token is string {
 
 /** Tokens accepted for authentication but never handed out. */
 export function getAcceptedTokens(): string[] {
+  const state = persistedCredentials();
+  if (state) return [...state.accepted];
   const dir = dataDir();
   if (cachedAccepted?.dir === dir) return cachedAccepted.tokens;
   let tokens: string[] = [];
@@ -110,20 +149,10 @@ export function getAcceptedTokens(): string[] {
  *  accepted ring — without minting one when none exists. For scrubbing text
  *  that leaves the machine. */
 export function readKnownTokens(): string[] {
+  const state = readCredentialState(dataDir());
+  if (state) return [state.token, ...state.accepted];
   const served = readTokenFile(tokenFile());
   return [...(served ? [served] : []), ...getAcceptedTokens()];
-}
-
-function writeAcceptedTokens(tokens: string[]): void {
-  const dir = dataDir();
-  const bounded = tokens.slice(0, MAX_ACCEPTED_TOKENS);
-  cachedAccepted = { dir, tokens: bounded };
-  try {
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(acceptedFile(dir), bounded.map(t => t + '\n').join(''), { mode: 0o600 });
-  } catch (err) {
-    debug('auth', `Failed to write accepted-token file: ${err}`);
-  }
 }
 
 /**
@@ -146,26 +175,39 @@ function writeAcceptedTokens(tokens: string[]): void {
  * No new trust is granted — `probeDaemonHealth` dials 127.0.0.1, and
  * same-machine peers are already fully trusted by this daemon's access model.
  *
- * Returns true when the served token actually changed.
+ * Returns true when the served token or retirement fence changed.
  */
-export function adoptPeerToken(peerToken: unknown): boolean {
-  if (!isWellFormedToken(peerToken)) return false;
-  const adopted = peerToken.trim();
-  const current = getOrCreateToken();
-  if (adopted === current) return false;
-
-  const accepted = [current, ...getAcceptedTokens().filter(t => t !== current && t !== adopted)];
-  writeAcceptedTokens(accepted);
-
-  const dir = dataDir();
-  try {
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(tokenFile(dir), adopted + '\n', { mode: 0o600 });
-  } catch (err) {
-    debug('auth', `Failed to persist adopted token: ${err}`);
+export function adoptPeerToken(peerToken: unknown, retirement?: unknown): boolean {
+  // Missing/invalid tokens remain a no-op for legacy health frames. Retirement
+  // refusal is consequential: callers must not continue a stale handover.
+  if (!isWellFormedToken(peerToken)) {
+    if (retirement !== undefined) throw new Error('Pairing credential state unavailable; handover refused');
+    return false;
   }
-  cachedToken = { dir, token: adopted };
-  debug('auth', 'Adopted the incumbent daemon\'s pairing token; previous one still accepted');
+  const before = getPairingCredentials();
+  const transform = (current: PairingCredentials) => {
+    const result = adoptPairingCredentials(current, peerToken.trim(), retirement);
+    if (result.kind === 'refused') throw new Error(`Pairing credential handover refused: ${result.reason}`);
+    return result.state;
+  };
+  const proposed = transform(before);
+  if (proposed === before) return false;
+  let state: PairingCredentials;
+  try { state = mutateCredentialState(dataDir(), before, transform); }
+  catch (error) {
+    // Native SQLite is optional for ordinary legacy convergence. If no atomic
+    // authority has ever existed, keep the old mirrors-only path. This branch
+    // cannot create/overwrite retirement state and is never used by rotation.
+    if (before.revision !== 0 || proposed.revision !== 0 || readCredentialState(dataDir())) throw error;
+    mkdirSync(dataDir(), {recursive:true});
+    writeFileSync(acceptedFile(), proposed.accepted.map(t => t + '\n').join(''), {mode:0o600});
+    writeFileSync(tokenFile(), proposed.token + '\n', {mode:0o600});
+    state = proposed;
+    debug('auth', 'Legacy convergence persisted without retirement storage; rotation remains unavailable');
+  }
+  commitCredentials(state);
+  if (state.token === before.token && state.revision === before.revision) return false;
+  debug('auth', state.revision > 0 ? 'Adopted current pairing retirement; previous credentials refused' : 'Adopted peer pairing token; previous token retained');
   return true;
 }
 
@@ -304,17 +346,12 @@ export function logLocalTrustRefusal(
  * telling the user that. Added for issue #145 so a leaked token can be
  * retired without hand-editing the file.
  */
-export function rotateToken(): string {
-  const token = randomBytes(TOKEN_LENGTH / 2).toString('hex');
-  const dir = dataDir();
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(tokenFile(dir), token + '\n', { mode: 0o600 });
-  cachedToken = { dir, token };
-  // Retiring a leaked token has to retire the key ring with it, or the leaked
-  // one survives in the accepted list and rotation buys nothing.
-  writeAcceptedTokens([]);
-  debug('auth', `Rotated auth token → ${tokenFile(dir)}`);
-  return token;
+export function rotateToken(minimumRevision = 0): string {
+  const state = mutateCredentialState(dataDir(), getPairingCredentials(), current =>
+    rotatePairingCredentials(current, randomBytes(TOKEN_LENGTH / 2).toString('hex'), randomBytes(16).toString('hex'), minimumRevision));
+  commitCredentials(state);
+  debug('auth', 'Rotated pairing credentials and persisted retirement');
+  return state.token;
 }
 
 function matchesToken(candidate: string, stored: string): boolean {

@@ -45,6 +45,7 @@ export interface PairingRedemption {
 
 interface ActiveWindow extends PairingWindowSnapshot {
   openedAt: number;
+  credentialGeneration?: string;
   /** Every wrong-code attempt, so the CLI can show an attack as it happens. */
   failures: Array<{ at: number; ip: string }>;
   redemptions: PairingRedemption[];
@@ -62,6 +63,8 @@ interface ActiveWindow extends PairingWindowSnapshot {
 }
 
 let active: ActiveWindow | null = null;
+let generationProvider: () => string | undefined = () => undefined;
+export function setPairingCredentialGeneration(getter: () => string | undefined): void { generationProvider = getter; }
 
 /** Fires when a window closes, so the CLI's status stream can end promptly. */
 type CloseReason = 'expired' | 'redeemed' | 'attempts-exhausted' | 'operator';
@@ -175,6 +178,7 @@ export function openPairingWindow(opts: {
     failedAttempts: 0,
     redemptionsRemaining: redemptions,
     openedAt: now,
+    credentialGeneration: generationProvider(),
     failures: [],
     redemptions: [],
     adoptEsp32Ips,
@@ -253,6 +257,7 @@ export function closePairingWindow(): void {
  */
 function getActive(now = Date.now()): ActiveWindow | null {
   if (!active) return null;
+  if (active.credentialGeneration !== generationProvider()) { closeActive('operator'); return null; }
   if (now >= active.expiresAt) {
     closeActive('expired');
     return null;

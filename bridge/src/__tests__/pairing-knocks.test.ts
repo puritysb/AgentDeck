@@ -266,3 +266,20 @@ describe('deviceIdFromHeaders', () => {
     expect(deviceIdFromHeaders(undefined, 'x-agentdeck-device')).toBeNull();
   });
 });
+
+
+describe('approval retirement generation', () => {
+  it('fences old grants, persists a new grant generation and refuses a later retirement', () => {
+    approvePeer(`device:${DEV_A}`);
+    expect(isApprovedPeer(IP,DEV_A)).toBe(true);
+    expect(isApprovedPeer(IP,DEV_A,'1:'+'a'.repeat(32))).toBe(false);
+    expect(pairingApprovals('1:'+'a'.repeat(32))).toEqual([]);
+    approvePeer(`device:${DEV_A}`,Date.now(),'1:'+'a'.repeat(32));
+    resetPairingKnocksForTests();
+    expect(isApprovedPeer(IP,DEV_A,'1:'+'a'.repeat(32))).toBe(true);
+    expect(isApprovedPeer(IP,DEV_A,'2:'+'b'.repeat(32))).toBe(false);
+    // A delayed request admitted before retirement can only issue an old grant.
+    approvePeer(`device:${DEV_B}`,Date.now(),undefined);
+    expect(isApprovedPeer(IP,DEV_B,'1:'+'a'.repeat(32))).toBe(false);
+  });
+});

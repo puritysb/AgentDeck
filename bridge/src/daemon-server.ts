@@ -216,7 +216,7 @@ import { CLAUDE_STATUSLINE_ROUTE, parseClaudeStatusline } from '@agentdeck/share
 import { TASK_JUDGE_DRAIN_WINDOW_MS } from './apme/runner.js';
 import { stopClaudeUsageRecoveryChildren } from './claude-usage-recovery.js';
 import { AGENT_IDLE_GAP_MS, canonicalBoardId, resolveGatewayHealth } from '@agentdeck/shared';
-import { getOrCreateToken, isLocalConnection, localTrustOf, logLocalTrustRefusal, validateToken } from './auth.js';
+import { getOrCreateToken, getPairingRetirement, getPairingGeneration, rotateToken, isLocalConnection, localTrustOf, logLocalTrustRefusal, validateToken } from './auth.js';
 import { buildPublicHealth, gateHttpRequest, isAuthorizedHttpRequest } from './http-auth-gate.js';
 import {
   closePairingWindow,
@@ -317,6 +317,8 @@ import {
   parsePocketAutonomyConfig,
 } from './pocket-autonomy.js';
 import { WeatherProvider, parseWeatherSettings } from './weather.js';
+import { fenceCredentialResponse } from './credential-response-fence.js';
+import { PAIRING_CREDENTIALS } from '@agentdeck/shared';
 import { CalendarProvider, parseCalendarSettings } from './calendar.js';
 import { loadLearningPack, matchesLearningPackRequest, type SurfaceLearningPack } from './learning-pack.js';
 import { loadFontPack, matchesFontPackRequest, type SurfaceFontPack } from './font-pack.js';
@@ -2158,6 +2160,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   });
 
   const httpServer = createServer((req, res) => {
+    const credentialGeneration = getPairingGeneration();
+    let permitsCredentialChange = false;
+    fenceCredentialResponse(res, () => permitsCredentialChange || credentialGeneration === getPairingGeneration());
     // LAN default-deny (issue #145): a request that is neither from a local
     // program nor token-bearing reaches exactly one route — a minimal GET
     // /health with no pairingToken, no module/device inventory, no session
@@ -2259,6 +2264,30 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // (the LAN gate above serves unauthenticated peers buildPublicHealth
     // instead). pairingToken stays here for local consumers: sibling bridges,
     // the TUI, and the macOS companion's file-less fallback.
+    if (req.method === 'POST' && pathname === '/pair/rotate') {
+      // An old paired LAN token must never authorize rotation. Only a trusted
+      // same-machine program may retire the active owner's credential.
+      if (!isLocalConnection(req.socket.remoteAddress ?? '') || localTrustOf(req) !== 'trusted') {
+        res.writeHead(403); res.end(); return;
+      }
+      void (async () => {
+        try {
+          const body = await readJsonBody(req, 4096);
+          if (body.confirm !== true || typeof body.minimumRevision !== 'number') throw new Error('invalid rotation request');
+          rotateToken(body.minimumRevision);
+          closePairingWindow();
+          permitsCredentialChange = true;
+          core.wsServer.reauthenticateClients();
+          res.once('finish', () => httpServer.closeAllConnections());
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+          res.end(JSON.stringify({ rotated: true, scope: PAIRING_CREDENTIALS.rotationScope, globalRevocation: PAIRING_CREDENTIALS.globalRevocation, pairingRetirement: getPairingRetirement() }));
+        } catch {
+          res.writeHead(409, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Pairing rotation was not confirmed; read owner state before retrying' }));
+        }
+      })();
+      return;
+    }
     if (req.method === 'GET' && pathname === '/health') {
       const snap = core.stateMachine.getSnapshot();
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -2282,6 +2311,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         build: startupBuildId,
         broadcastMetrics: core.wsServer.getBroadcastMetrics(),
         pairingToken: core.authToken,
+        pairingRetirement: getPairingRetirement(),
+        pairingRotation: true,
         // Capability: this daemon drives remote sessions down their own push
         // socket (session_focus_down / session_command_down / session_event_up).
         // Workers require this flag before remote-attaching; the Swift daemon
@@ -2424,7 +2455,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           lastSeen: k.lastSeen,
           staleToken: k.staleToken,
         })),
-        approved: pairingApprovals().map((a) => ({
+        approved: pairingApprovals(getPairingGeneration()).map((a) => ({
           key: a.key,
           deviceId: a.deviceId ?? '',
           lastIP: a.lastIP,
@@ -2446,7 +2477,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         }
         res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
         if (pathname === '/pair/approve') {
-          approvePeer(key);
+          approvePeer(key, Date.now(), credentialGeneration);
           log(`[agentdeck] Operator approved peer ${key}`);
           res.end(JSON.stringify({ approved: key }));
         } else if (pathname === '/pair/revoke') {
@@ -5408,7 +5439,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // a session bridge sharing WsServer must not answer "is this peer approved?"
   // from a second, unowned copy of it.
   core.wsServer.setPairingApprovalHooks({
-    isApproved: (ip, deviceId) => isApprovedPeer(ip, deviceId),
+    isApproved: (ip, deviceId) => isApprovedPeer(ip, deviceId, getPairingGeneration()),
     record: (ip, deviceId, staleToken) => recordKnock(ip, deviceId, staleToken),
   });
 

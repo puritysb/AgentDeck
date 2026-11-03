@@ -73,6 +73,13 @@ enum AgentDeckPaths {
 
     static var daemonJson: URL { baseDirectory.appendingPathComponent("daemon.json") }
     static var daemonCrashLog: URL { baseDirectory.appendingPathComponent("daemon-crash.log") }
+    #if os(macOS)
+    static func authCredentials(in directory: URL) -> URL { directory.appendingPathComponent(PairingCredentialRules.file) }
+    static func authCredentialLock(in directory: URL) -> URL { directory.appendingPathComponent(PairingCredentialRules.lockFile) }
+    static var authCredentials: URL { authCredentials(in: baseDirectory) }
+    #endif
+    static func authToken(in directory: URL) -> URL { directory.appendingPathComponent("auth-token") }
+    static func authTokenAccepted(in directory: URL) -> URL { directory.appendingPathComponent("auth-token-accepted") }
     static var authToken: URL { baseDirectory.appendingPathComponent("auth-token") }
     /// Tokens still accepted but no longer handed out — see `AuthManager.adoptPeerToken`.
     static var authTokenAccepted: URL { baseDirectory.appendingPathComponent("auth-token-accepted") }

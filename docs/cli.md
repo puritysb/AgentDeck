@@ -251,7 +251,7 @@ Enterprise and shared-network posture](daemon.md#enterprise-and-shared-network-p
 | `agentdeck devices` | Connected devices (WS, ESP32, Pixoo, Timebox, ADB) |
 | `agentdeck qr` | Pairing QR code + URL |
 | `agentdeck pair` | Pair a device with a one-time code — no camera, no cable (`-t <seconds>`, `-n <devices>`) |
-| `agentdeck token [show\|rotate]` | Print the pairing token, or rotate it after a leak (all paired clients then re-pair; restart the daemon afterwards) |
+| `agentdeck token [show\|rotate]` | Print the local profile token, or rotate the confirmed active daemon and re-pair its clients; no restart required. Offline/older daemons remain unconfirmed; see [rotation scope](daemon.md#lan-security-model-issue-145) |
 | `agentdeck diag` | Daemon diagnostic dump (`-a` for AI analysis) |
 | `agentdeck diag agents [--json]` | Privacy-safe version, compatibility and registration-file evidence for normal Claude/Codex/OpenCode launches; activation and event reception are explicitly unverified; no daemon or paid probe required |
 | `agentdeck hermes-observer [--home <profile>] [--port <port> \| --registry]` | Install/update the opt-in observer, select a loopback receiver if needed, and print setup readiness; Hermes enablement/restart remain explicit |

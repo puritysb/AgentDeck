@@ -4,12 +4,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // ~/.agentdeck/auth-token file.
 const authMocks = vi.hoisted(() => ({
   isLocal: false,
+  generation: undefined as string | undefined,
 }));
 
 // `localTrustOf` stays real: it reads only the request's own headers.
 vi.mock('../auth.js', async (importOriginal) => ({
   isLocalConnection: () => authMocks.isLocal,
   validateToken: (t: string) => t === 'machine-token',
+  getPairingGeneration: () => authMocks.generation,
   localTrustOf: (await importOriginal<typeof import('../auth.js')>()).localTrustOf,
 }));
 
@@ -209,6 +211,7 @@ describe('operator approval authorizes an HTTP request', () => {
 
   afterEach(async () => {
     const { rmSync } = await import('fs');
+    authMocks.generation = undefined;
     delete process.env.AGENTDECK_DATA_DIR;
     resetPairingKnocksForTests();
     rmSync(dir, { recursive: true, force: true });
@@ -266,5 +269,19 @@ describe('operator approval authorizes an HTTP request', () => {
     expect(isAuthorizedHttpRequest(
       fakeReq({ remoteAddress: IP, deviceId: DEV }),
     )).toBe(false);
+  });
+
+  it('retires address and device approvals on each credential generation', () => {
+    const address = peerKey(IP, null);
+    const device = peerKey(IP, DEV);
+    const requests = [fakeReq({remoteAddress: IP}), fakeReq({remoteAddress: '192.0.2.99', deviceId: DEV})];
+    approvePeer(address); approvePeer(device);
+    for (const req of requests) expect(isAuthorizedHttpRequest(req)).toBe(true);
+    for (const generation of ['1:' + 'a'.repeat(32), '2:' + 'b'.repeat(32)]) {
+      authMocks.generation = generation;
+      for (const req of requests) expect(isAuthorizedHttpRequest(req)).toBe(false);
+      approvePeer(address, Date.now(), generation); approvePeer(device, Date.now(), generation);
+      for (const req of requests) expect(isAuthorizedHttpRequest(req)).toBe(true);
+    }
   });
 });

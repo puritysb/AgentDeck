@@ -104,6 +104,7 @@ export interface PairingApproval {
   lastIP: string;
   approvedAt: number;
   deviceId: string | null;
+  credentialGeneration?: string;
 }
 
 /**
@@ -207,6 +208,7 @@ function loadApprovals(): Map<string, PairingApproval> {
           lastIP: typeof r.lastIP === 'string' ? r.lastIP : '',
           approvedAt: toEpoch(r.approvedAt),
           deviceId: deviceIdOfKey(r.key),
+          credentialGeneration: r.credentialGeneration === undefined ? undefined : typeof r.credentialGeneration === 'string' ? r.credentialGeneration : 'invalid',
         });
         continue;
       }
@@ -313,11 +315,11 @@ export function dismissKnock(key: string): boolean {
  * Approving is what a pairing code would have done, minus the typing: from here
  * on this peer authenticates by its key. Persisted immediately.
  */
-export function approvePeer(key: string, now = Date.now()): boolean {
+export function approvePeer(key: string, now = Date.now(), credentialGeneration?: string): boolean {
   if (!key) return false;
   const approved = loadApprovals();
   const lastIP = pending.get(key)?.ip ?? approved.get(key)?.lastIP ?? '';
-  approved.set(key, { key, lastIP, approvedAt: now, deviceId: deviceIdOfKey(key) });
+  approved.set(key, { key, lastIP, approvedAt: now, deviceId: deviceIdOfKey(key), credentialGeneration });
   pending.delete(key);
   persist(approved);
   return true;
@@ -339,16 +341,16 @@ export function revokePeer(key: string): boolean {
  * device approved by address before it learned to send an id must not be locked
  * out by the upgrade that taught it.
  */
-export function isApprovedPeer(ip: string, deviceId: unknown): boolean {
+export function isApprovedPeer(ip: string, deviceId: unknown, credentialGeneration?: string): boolean {
   const approved = loadApprovals();
   const normalized = normalizeDeviceId(deviceId);
-  if (normalized && approved.has(`device:${normalized}`)) return true;
+  if (normalized && approved.get(`device:${normalized}`)?.credentialGeneration === credentialGeneration && approved.has(`device:${normalized}`)) return true;
   if (!ip) return false;
-  return approved.has(`ip:${ip}`);
+  return approved.has(`ip:${ip}`) && approved.get(`ip:${ip}`)?.credentialGeneration === credentialGeneration;
 }
 
-export function pairingApprovals(): PairingApproval[] {
-  return [...loadApprovals().values()].sort((a, b) => b.approvedAt - a.approvedAt);
+export function pairingApprovals(credentialGeneration?: string): PairingApproval[] {
+  return [...loadApprovals().values()].filter(a => a.credentialGeneration === credentialGeneration).sort((a, b) => b.approvedAt - a.approvedAt);
 }
 
 /** Read the device id a client offered on the handshake, if any. */

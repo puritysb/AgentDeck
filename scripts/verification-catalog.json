@@ -652,6 +652,7 @@
         "bridge/src/__tests__/apme-retention-parity.test.ts",
         "bridge/src/__tests__/antigravity-observation.test.ts",
         "bridge/src/__tests__/calendar.test.ts",
+        "bridge/src/__tests__/pairing-retirement.test.ts",
         "bridge/src/__tests__/pixoo-baked.test.ts",
         "bridge/src/__tests__/pocket-autonomy-parity.test.ts",
         "bridge/src/__tests__/glance-frame-parity.test.ts",
@@ -667,7 +668,7 @@
         "bridge/src/__tests__/apme-async-probes.test.ts"
       ],
       "proves": [
-        "the Node rules and their generated Swift mirrors execute the same vectors and agree: daemon policies, the CI-wait command classifier, the IPS10 roster kernel, matrix expressions (including iDotMatrix creature ownership, attention preemption, background lower bounds and CI/child separation) and the native TUI samples",
+        "the Node rules and their generated Swift mirrors execute the same vectors and agree: daemon policies, the CI-wait command classifier, the IPS10 roster kernel, matrix expressions (including iDotMatrix creature ownership, attention preemption, background lower bounds and CI/child separation) and the native TUI samples; pairing retirement vectors and concurrent Node/Swift rotations preserve the durable fence",
         "the launchd supervisor probe answers on a real launchd, and the Foundation Models helper builds and signs with the runner's Swift toolchain",
         "native Glance uses the pinned common rasterizer and bundled fonts to match Node SVG, every packed 1bpp byte, content signatures, physical orientation and decoded PNG pixels; Swift routes preserve conditional responses, Surface identity and listener authentication",
         "native Pixoo baked loops use fixed bundled pixel code in system JavaScriptCore to match every Node RGB byte; bounded input/cache, palindrome playback and upload packing are checked",
@@ -1010,6 +1011,7 @@
       "match": [
         "bridge/src/__tests__/http-auth-gate.test.ts",
         "bridge/src/__tests__/auth-token-adoption.test.ts",
+        "bridge/src/__tests__/credential-response-fence.test.ts",
         "bridge/src/__tests__/pairing-*.test.ts",
         "bridge/src/__tests__/network-posture.test.ts",
         "bridge/src/__tests__/discovery-security.test.ts",
@@ -1017,7 +1019,8 @@
         "bridge/src/__tests__/local-trust-*.test.ts",
         "bridge/src/__tests__/setup-status.test.ts",
         "shared/src/__tests__/local-trust*.test.ts",
-        "shared/src/__tests__/pairing-code*.test.ts"
+        "shared/src/__tests__/pairing-code*.test.ts",
+        "shared/src/__tests__/pairing-credentials.test.ts"
       ]
     },
     {

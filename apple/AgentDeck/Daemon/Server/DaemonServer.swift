@@ -3029,7 +3029,7 @@ final class DaemonServer {
         // a web page on this machine.
         let authenticated = tokenValid || (!sameMachine && PairingKnockStore.shared.isApproved(
             ip: request.remoteIP,
-            deviceId: request.headers[PairingCodeRules.DEVICE_ID_HEADER]))
+            deviceId: request.headers[PairingCodeRules.DEVICE_ID_HEADER], credentialGeneration: AuthManager.shared.credentialGeneration))
         if let localTrust, localTrust != .trusted, !authenticated {
             LocalTrust.logRefusal(surface: "HTTP", verdict: localTrust, headers: request.headers)
         }
@@ -3475,6 +3475,8 @@ final class DaemonServer {
         // exactly one route — a minimal GET /health with no pairingToken, no
         // module inventory, no session state. Everything else 401s before
         // route dispatch (stream routes included — see HTTPServer.handle).
+        await PairingWindowStore.shared.setCredentialGeneration { AuthManager.shared.credentialGeneration }
+        await httpServer.setCredentialGeneration { AuthManager.shared.credentialGeneration }
         await httpServer.setAccessPolicy { [weak self] request in
             let pairingOpen = await PairingWindowStore.shared.isOpen()
             if let denied = Self.accessPolicyResponse(for: request, daemonPort: daemonPort, pairingWindowOpen: pairingOpen) { return denied }
@@ -3543,7 +3545,7 @@ final class DaemonServer {
         // able to approve itself would be granting itself a credential.
         await httpServer.get("/pair/knocks") { _ in
             let knocks = PairingKnockStore.shared.knocks()
-            let approvals = PairingKnockStore.shared.approvals()
+            let approvals = PairingKnockStore.shared.approvals(credentialGeneration: AuthManager.shared.credentialGeneration)
             return .json([
                 "knocks": knocks.map {
                     [
@@ -3571,7 +3573,7 @@ final class DaemonServer {
             guard let key = Self.jsonBody(request.body)["key"] as? String, !key.isEmpty else {
                 return .json(["error": "key required"], status: 400)
             }
-            PairingKnockStore.shared.approve(key: key)
+            PairingKnockStore.shared.approve(key: key, credentialGeneration: HTTPRequestContext.credentialGeneration)
             DaemonLogger.shared.info("WS: operator approved \(key)")
             return .json(["approved": key])
         }
@@ -3596,6 +3598,28 @@ final class DaemonServer {
             return .json(["dismissed": key])
         }
 
+        await httpServer.post("/pair/rotate") { [weak self] request in
+            guard AuthManager.shared.isLocalConnection(request.remoteIP),
+                  LocalTrust.verdict(for: request, port: Int(daemonPort)) == .trusted else { return .json(["error": "local_operator_required"], status: 403) }
+            let body = Self.jsonBody(request.body)
+            guard let confirmed = body["confirm"] as? NSNumber,
+                  CFGetTypeID(confirmed) == CFBooleanGetTypeID(), confirmed.boolValue,
+                  let floor = PairingCredentialRules.revision(body["minimumRevision"]) else { return .json(["error": "invalid_rotation"], status: 400) }
+            do {
+                await PairingWindowStore.shared.close()
+                let state = try await AuthManager.shared.rotate(minimumRevision: floor)
+                await self?.wsServer.reauthenticateClients()
+                var response = HTTPServer.HTTPResponse.json(["rotated": true, "scope": PairingCredentialRules.rotationScope, "globalRevocation": PairingCredentialRules.globalRevocation, "pairingRetirement": state.retirement.json])
+                response.permitsCredentialChange = true
+                // Flush the rotation receipt before retiring plain HTTP/SSE
+                // sockets, including the one carrying this request.
+                response.afterSend = { [weak self] in
+                    Task { await self?.wsServer.reauthenticateClients(includeHTTP: true) }
+                }
+                return response
+            } catch { return .json(["error": "rotation_not_confirmed_read_owner_before_retry"], status: 409) }
+        }
+
         await httpServer.get("/health") { [weak self] _ in
             let health = await self?.buildModuleHealth().value ?? ["state": "disconnected"]
             let state = health["state"] as? String ?? "disconnected"
@@ -3609,12 +3633,15 @@ final class DaemonServer {
             let judgeBackend = await DaemonActor.run { [weak self] in self?.cachedJudgeBackendStatus }
             // Account usage source and diagnostic-only status-line receipt.
             let claudeUsage = await DaemonActor.run { [weak self] in self?.claudeUsageHealth() }
+            let credentials = AuthManager.shared.credentials
             var payload: [String: Any] = [
                 "status": "ok", "mode": "daemon", "port": daemonPort,
                 "pid": ProcessInfo.processInfo.processIdentifier,
                 "uptime": ProcessInfo.processInfo.systemUptime,
                 "state": state,
-                "pairingToken": AuthManager.shared.token,
+                "pairingToken": AuthManager.shared.rotationAvailable ? credentials.token as Any : NSNull(),
+                "pairingRetirement": AuthManager.shared.rotationAvailable ? credentials.retirement.json as Any : NSNull(),
+                "pairingRotation": AuthManager.shared.rotationAvailable,
                 "modules": health["modules"] as Any,
                 "isSwift": true, "daemonRelay": true,
                 // Node parity: `agentdeck qr`/`pair` read this to warn instead
@@ -4827,7 +4854,7 @@ final class DaemonServer {
     /// falls through to the connection-agnostic `handleCommand`. Module
     /// callers (ADB, D200H) keep using `handleCommand` directly.
     private func handleWSCommand(_ cmd: [String: Any], from conn: WebSocketConnection) {
-        guard !startupStopped, !handoverPreparing else { return }
+        guard !startupStopped, !handoverPreparing, !conn.isDisconnected else { return }
         if cmd["type"] as? String == "client_register" {
             handleClientRegister(cmd, from: conn)
             return

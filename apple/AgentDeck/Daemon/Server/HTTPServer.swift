@@ -41,6 +41,9 @@ actor HTTPServer {
     /// through, or a response to short-circuit with (401 / minimal /health).
     /// Installed by DaemonServer; policy lives there because it needs
     /// AuthManager and the daemon port.
+    private var credentialGeneration: (@Sendable () -> String?)?
+    func setCredentialGeneration(_ getter: @escaping @Sendable () -> String?) { credentialGeneration = getter }
+
     private var accessPolicy: (@Sendable (HTTPRequest) async -> HTTPResponse?)?
 
     func setAccessPolicy(_ policy: @escaping @Sendable (HTTPRequest) async -> HTTPResponse?) {
@@ -60,6 +63,8 @@ actor HTTPServer {
         let status: Int
         let headers: [String: String]
         let body: Data?
+        var afterSend: (@Sendable () -> Void)? = nil
+        var permitsCredentialChange = false
 
         static func json(_ obj: Any, status: Int = 200) -> HTTPResponse {
             let data = try? JSONSerialization.data(withJSONObject: obj)
@@ -88,7 +93,7 @@ actor HTTPServer {
         func allowingAnyOrigin() -> HTTPResponse {
             var headers = self.headers
             headers[HTTPServer.allowAnyOriginHeader] = "*"
-            return HTTPResponse(status: status, headers: headers, body: body)
+            return HTTPResponse(status: status, headers: headers, body: body, afterSend: afterSend, permitsCredentialChange: permitsCredentialChange)
         }
     }
 
@@ -98,12 +103,15 @@ actor HTTPServer {
 
     final class StreamConnection: @unchecked Sendable {
         fileprivate let raw: NWConnection
+        private let authorityIsCurrent: @Sendable () -> Bool
 
-        fileprivate init(raw: NWConnection) {
+        fileprivate init(raw: NWConnection, authorityIsCurrent: @escaping @Sendable () -> Bool = { true }) {
             self.raw = raw
+            self.authorityIsCurrent = authorityIsCurrent
         }
 
         func send(_ data: Data, completion: @escaping @Sendable (Bool) -> Void) {
+            guard authorityIsCurrent() else { raw.cancel(); completion(false); return }
             raw.send(content: data, completion: .contentProcessed { error in
                 completion(error == nil)
             })
@@ -289,6 +297,8 @@ actor HTTPServer {
 
     /// Route a request, including long-lived stream routes. Returns true if handled.
     func handle(_ request: HTTPRequest, on conn: NWConnection) async -> Bool {
+        let generation = credentialGeneration
+        let admitted: String? = generation?()
         // Stream routes (SSE etc.) bypass route(), so the access policy must
         // run here too — a denied stream request gets the policy's response
         // instead of a long-lived unauthenticated subscription.
@@ -298,7 +308,7 @@ actor HTTPServer {
             return true
         }
         for route in streamRoutes where route.method == request.method && route.path == request.path {
-            await route.handler(request, StreamConnection(raw: conn))
+            await route.handler(request, StreamConnection(raw: conn, authorityIsCurrent: { generation?() == admitted }))
             return true
         }
 
@@ -307,12 +317,18 @@ actor HTTPServer {
         let peerClose = HTTPPeerCloseSignal()
         Self.watchPeerClose(on: conn, signal: peerClose)
         let response = await HTTPRequestContext.$peerClose.withValue(peerClose) {
-            await route(request)
+            await HTTPRequestContext.$credentialGeneration.withValue(admitted) { await route(request) }
         }
         peerClose.finish()
+        // A request admitted under an old credential may still be awaiting a
+        // handler when rotation commits. It must never receive the new token.
+        guard response.permitsCredentialChange || generation?() == admitted else {
+            conn.cancel(); response.afterSend?(); return true
+        }
         let raw = Self.formatHTTPResponse(response)
         conn.send(content: raw, completion: .contentProcessed({ _ in
             conn.cancel()
+            response.afterSend?()
         }))
         return true
     }
@@ -534,6 +550,7 @@ final class HTTPPeerCloseSignal: @unchecked Sendable {
 /// handler deep inside `DaemonServer` can reach its own request's connection
 /// state without the route signature carrying it.
 enum HTTPRequestContext {
+    @TaskLocal static var credentialGeneration: String?
     @TaskLocal static var peerClose: HTTPPeerCloseSignal?
 }
 #endif

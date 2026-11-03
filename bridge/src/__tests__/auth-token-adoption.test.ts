@@ -34,6 +34,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   delete process.env.AGENTDECK_DATA_DIR;
   rmSync(dir, { recursive: true, force: true });
 });
@@ -140,4 +141,87 @@ describe('data-dir resolution', () => {
       rmSync(fakeHome, { recursive: true, force: true });
     }
   });
+});
+
+describe('persisted pairing retirement', () => {
+  it('does not resurrect a leaked token after adopting a rotated peer and restarting', async () => {
+    writeFileSync(join(dir, 'auth-token'), TOKEN_A + '\n');
+    auth.adoptPeerToken(TOKEN_B);
+    const metadata = { version: 1, revision: 1, eventId: '1'.repeat(32) };
+    expect(auth.adoptPeerToken(TOKEN_C, metadata)).toBe(true);
+    expect(auth.validateToken(TOKEN_A)).toBe(false);
+    expect(auth.validateToken(TOKEN_B)).toBe(false);
+    // Even a stale legacy writer must not outrank the atomic retirement.
+    writeFileSync(join(dir, 'auth-token'), TOKEN_A + '\n');
+    writeFileSync(join(dir, 'auth-token-accepted'), TOKEN_A + '\n' + TOKEN_B + '\n');
+    const reloaded = await loadAuth();
+    expect(reloaded.getOrCreateToken()).toBe(TOKEN_C);
+    expect(reloaded.getAcceptedTokens()).toEqual([]);
+    expect(() => reloaded.adoptPeerToken(TOKEN_A)).toThrow('retired-peer-state');
+    expect(reloaded.validateToken(TOKEN_A)).toBe(false);
+    expect(reloaded.validateToken(TOKEN_C)).toBe(true);
+  });
+
+  it('refuses conflicting and stale peer retirement state without changing the token', () => {
+    const token = auth.rotateToken();
+    const metadata = auth.getPairingRetirement();
+    expect(() => auth.adoptPeerToken(TOKEN_A, { ...metadata, eventId: '2'.repeat(32) })).toThrow('conflicting-retirement');
+    expect(() => auth.adoptPeerToken(TOKEN_A, { ...metadata, revision: 0, eventId: '' })).toThrow('retired-peer-state');
+    expect(auth.getOrCreateToken()).toBe(token);
+  });
+
+  it('never falls back to old files when authoritative state is corrupt', async () => {
+    auth.rotateToken();
+    writeFileSync(join(dir, 'auth-credentials.json'), '{broken');
+    const reloaded = await loadAuth();
+    expect(() => reloaded.getOrCreateToken()).toThrow('Pairing credential state is invalid; refusing legacy fallback');
+    expect(() => reloaded.validateToken(TOKEN_A)).toThrow();
+  });
+
+  it('keeps an acknowledged retirement in a private atomic state file', async () => {
+    const token = auth.rotateToken();
+    const state = JSON.parse(readFileSync(join(dir, 'auth-credentials.json'), 'utf8'));
+    expect(state).toMatchObject({ token, accepted: [], revision: 1 });
+    const reloaded = await loadAuth();
+    expect(reloaded.getPairingRetirement()).toEqual(auth.getPairingRetirement());
+    expect(reloaded.getOrCreateToken()).toBe(token);
+  });
+});
+
+
+describe('legacy convergence without optional native storage', () => {
+  it('preserves ordinary legacy adoption while rotation never falls back', async () => {
+    writeFileSync(join(dir,'auth-token'),TOKEN_A + '\n');
+    const store = await import('../pairing-credential-store.js');
+    vi.spyOn(store,'mutateCredentialState').mockImplementation(() => {throw new Error('native SQLite unavailable');});
+    expect(auth.adoptPeerToken(TOKEN_B)).toBe(true);
+    expect(auth.validateToken(TOKEN_A)).toBe(true);
+    expect(existsSync(join(dir,'auth-credentials.json'))).toBe(false);
+    expect(() => auth.rotateToken()).toThrow('unavailable');
+    expect(auth.getOrCreateToken()).toBe(TOKEN_B);
+  });
+  it('never falls back to mirrors after an authoritative fence exists', async () => {
+    auth.rotateToken();
+    const store = await import('../pairing-credential-store.js');
+    vi.spyOn(store,'mutateCredentialState').mockImplementation(() => {throw new Error('storage busy');});
+    const metadata = {...auth.getPairingRetirement(),revision:2,eventId:'f'.repeat(32)};
+    expect(() => auth.adoptPeerToken(TOKEN_A,metadata)).toThrow('storage busy');
+    expect(auth.validateToken(TOKEN_A)).toBe(false);
+  });
+});
+
+
+it('refuses an explicitly unavailable corrected peer rather than treating it as tokenless legacy health', () => {
+  expect(auth.adoptPeerToken(undefined)).toBe(false);
+  expect(() => auth.adoptPeerToken(null,null)).toThrow('unavailable');
+  expect(() => auth.adoptPeerToken(null,{version:1,revision:0,eventId:''})).toThrow('unavailable');
+});
+
+
+it('closes a previously opened pairing code when retirement is committed', async () => {
+  const window = await import('../pairing-window.js');
+  window.openPairingWindow();
+  expect(window.pairingWindowOpen()).toBe(true);
+  auth.rotateToken();
+  expect(window.pairingWindowOpen()).toBe(false);
 });
