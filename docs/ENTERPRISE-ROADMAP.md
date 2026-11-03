@@ -293,23 +293,24 @@ daemon belonging to someone else, then one that predates the TXT keys. It is a
 preference, never a filter — attaching across users is a legitimate ask (it is
 what `--daemon-host` is for), so a daemon is only ever demoted, never dropped.
 
-**Still open, and these are the surfaces where the failure actually hurts:**
+**Selection source and remaining acceptance:**
 
-- **ESP32** (`esp32/src/net/mdns_discovery.cpp`) still takes the first service
-  whose TXT says `agent=daemon`. Two changes belong together there: prefer the
-  stored bridge endpoint when it appears among the discovered services, and
-  stop re-dialling an endpoint that closed us 4001 while other daemons were
-  discovered — retrying the one daemon that rejected us, forever, with nothing
-  on screen the user can act on, is the whole complaint. Costs an OTA cut and
-  hardware verification, so it is its own change.
+- **ESP32** (`esp32/src/net/mdns_discovery.cpp`):
+  [PR #685](https://github.com/puritysb/AgentDeck/pull/685) supplies the source
+  correction for current-endpoint preference and ambiguous-list refusal.
+  Authentication-refusal recovery remains open: the pinned WebSockets client
+  discards incoming close codes before the disconnect callback. An ordinary
+  disconnect cannot safely trigger credential fallback to a different host.
+  Physical reconnect/radio checks and firmware delivery remain tracked in #674;
+  a source PR is not an OTA or installed-device receipt.
 - **Apple / Android — completed in current source (2026-11-03 audit).**
   Apple `PairingCredential.preferredURL` selects the saved/manual endpoint;
   Android `AutoConnectRules.pickDaemon` receives `selectedUrl ?: pairedUrl` and
   matches that endpoint. Without a selected endpoint, both refuse an ambiguous
   multi-daemon list instead of choosing its first entry. The discovery windows
   collect peers before an unknown single endpoint is chosen. Credential
-  retention and endpoint selection are both implemented; the outstanding
-  first-seen selection work above is ESP32-specific. Source and regression
+  retention and endpoint selection are both implemented; remaining firmware
+  recovery and delivery work is tracked above. Source and regression
   references: `apple/AgentDeck/State/AgentStateHolder.swift`,
   `apple/AgentDeckTests/PairingCredentialTests.swift`,
   `android/app/src/main/kotlin/dev/agentdeck/net/BridgeAutoConnect.kt` and
@@ -549,7 +550,7 @@ nothing.
 | 2 | UID check on `/shutdown`, `/stand-down`, `/pair/*`, and the Swift reclaim decision (§1.3) | M | 2d | **done on the calling side** (08-17) — every path where our code acts on another daemon, including the daemon's own port-window sweep, which used to shut down every colleague's macOS app. Receiving side is not UID-checkable over TCP (§1.2) |
 | 3 | Daemon port-scan fallback must not attach to another UID's daemon (§1.4) | S | 1d | **done** (08-17) — `findDaemonPortAsync` skips foreign ports, keeps sweeping, and names what it refused |
 | 4 | Unique mDNS instance name per host+user, both daemons (§2.1) | M | 2d | **done** (08-17) — `shared/src/mdns-identity.ts` SSOT + generated Swift mirror; `host`/`user` TXT keys added, `v` stays `3` |
-| 5 | Clients prefer their paired endpoint over first-seen (§2.2) | M | 2d | **partial** (08-17) — Node `sortDiscoveredDaemons` ranks by identity; **ESP32 remains first-seen; Apple/Android saved-endpoint preference and ambiguity refusal are implemented** |
+| 5 | Clients prefer their paired endpoint over first-seen (§2.2) | M | 2d | **partial** — Node ranks by identity; Apple/Android saved-endpoint preference and ambiguity refusal are implemented. ESP32 selection correction is in #685; refusal recovery and firmware acceptance/delivery remain open in #674. |
 
 **P1 — the enterprise off switch.**
 
