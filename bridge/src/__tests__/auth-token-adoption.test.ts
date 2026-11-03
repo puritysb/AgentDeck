@@ -13,6 +13,11 @@ import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync, existsSync
 import { join } from 'path';
 import { tmpdir } from 'os';
 
+// Custom profiles may inherit the real home's retirement authority. Keep the
+// legacy profile disposable too, regardless of the operator's rotation history.
+const testHome = vi.hoisted(() => ({ current: '' }));
+vi.mock('os', async original => ({ ...(await original<typeof import('os')>()), homedir: () => testHome.current }));
+
 const TOKEN_A = 'a'.repeat(32);
 const TOKEN_B = 'b'.repeat(32);
 const TOKEN_C = 'c'.repeat(32);
@@ -29,6 +34,7 @@ async function loadAuth(): Promise<typeof import('../auth.js')> {
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'agentdeck-auth-'));
+  testHome.current = join(dir, 'home');
   process.env.AGENTDECK_DATA_DIR = dir;
   auth = await loadAuth();
 });
@@ -138,16 +144,15 @@ describe('data-dir resolution', () => {
     const fakeHome = mkdtempSync(join(tmpdir(), 'agentdeck-home-'));
     mkdirSync(join(fakeHome, '.agentdeck'), { recursive: true });
     writeFileSync(join(fakeHome, '.agentdeck', 'auth-token'), TOKEN_A + '\n');
-    const realHome = process.env.HOME;
-    process.env.HOME = fakeHome;
+    const previousHome = testHome.current;
+    testHome.current = fakeHome;
     try {
       const mod = await loadAuth();
       expect(mod.getOrCreateToken()).toBe(TOKEN_A);
       // …and carries it into the new dir, so later reads are self-contained.
       expect(readFileSync(join(dir, 'auth-token'), 'utf-8').trim()).toBe(TOKEN_A);
     } finally {
-      if (realHome === undefined) delete process.env.HOME;
-      else process.env.HOME = realHome;
+      testHome.current = previousHome;
       rmSync(fakeHome, { recursive: true, force: true });
     }
   });

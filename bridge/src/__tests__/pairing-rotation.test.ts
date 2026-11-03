@@ -39,10 +39,25 @@ describe('active owner rotation', () => {
   it('never retries an ambiguous transport failure or mutates a fallback profile', async () => {
     post.mockRejectedValue(new Error('lost response'));
     await expect(rotateActivePairingToken()).rejects.toThrow(); expect(post).toHaveBeenCalledTimes(1);
+    expect(registry.probe).toHaveBeenCalledTimes(1);
+  });
+  it('recovers one unavailable post-retirement read without rotating again', async () => {
+    registry.probe.mockReset().mockResolvedValueOnce(health(0)).mockResolvedValueOnce(null).mockResolvedValueOnce(health(1));
+    await rotateActivePairingToken();
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(registry.probe).toHaveBeenCalledTimes(3);
+    expect(registry.probe.mock.calls).toEqual([[19123], [19123], [19123]]);
+  });
+  it('bounds unavailable readback recovery and retains the ambiguous-outcome warning', async () => {
+    registry.probe.mockReset().mockResolvedValueOnce(health(0)).mockResolvedValue(null);
+    await expect(rotateActivePairingToken()).rejects.toThrow('may have committed');
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(registry.probe).toHaveBeenCalledTimes(3);
   });
   it('requires same-owner readback and never treats a lost receipt as success', async () => {
     registry.probe.mockReset().mockResolvedValueOnce(health(0)).mockResolvedValueOnce({...health(1),pid:456});
     await expect(rotateActivePairingToken()).rejects.toThrow('may have committed'); expect(post).toHaveBeenCalledTimes(1);
+    expect(registry.probe).toHaveBeenCalledTimes(2);
   });
   it('accepts a later confirmed rotation without writing an older snapshot back to disk', async () => {
     registry.probe.mockReset().mockResolvedValueOnce(health(0)).mockResolvedValueOnce(health(2));
@@ -51,5 +66,6 @@ describe('active owner rotation', () => {
   it('refuses a conflicting readback at the receipt revision', async () => {
     registry.probe.mockReset().mockResolvedValueOnce(health(0)).mockResolvedValueOnce({...health(1),pairingRetirement:{...metadata(1),eventId:'f'.repeat(32)}});
     await expect(rotateActivePairingToken()).rejects.toThrow('may have committed');
+    expect(registry.probe).toHaveBeenCalledTimes(2);
   });
 });
