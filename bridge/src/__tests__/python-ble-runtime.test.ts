@@ -118,6 +118,73 @@ describe('optional Python BLE runtime', () => {
     expect(calls).toHaveLength(1);
     expect(existsSync(paths.readyMarker)).toBe(false);
   });
+
+  it('installs changed managed requirements even when imports and a legacy environment still work', () => {
+    const root = join(tempDir(), 'bridge'), dataDir = join(tempDir(), 'data');
+    makePackage(root);
+    const paths = resolveBleRuntimePaths({ packageRoot: root, dataDir, env: {}, platform: 'linux' });
+    const calls: Array<{command: string; args: string[]}> = [];
+    const options = { packageRoot: root, dataDir, env: {}, platform: 'linux' as const,
+      run: (command: string, args: string[]) => {
+        calls.push({command,args});
+        if (args.includes('venv')) write(paths.venvPython);
+        return {status: 0};
+      } };
+    ensureBleRuntime(options);
+    calls.length = 0;
+    ensureBleRuntime(options);
+    expect(calls.some(c => c.args.includes('pip'))).toBe(false);
+    write(paths.legacyPython);
+    write(paths.requirements, 'bleak>=2.1,<3\nPillow>=13,<14\nidotmatrix==0.0.9\n');
+    expect(getBleRuntimeStatus(options).ready).toBe(false);
+    calls.length = 0;
+    const runtime = ensureBleRuntime(options);
+    expect(runtime.python).toBe(paths.venvPython);
+    expect(calls.some(c => c.command === paths.venvPython && c.args.includes('pip') && c.args.includes(paths.requirements))).toBe(true);
+    expect(calls.some(c => c.command === paths.legacyPython)).toBe(false);
+    expect(getBleRuntimeStatus(options)).toMatchObject({ready: true, python: paths.venvPython});
+  });
+
+  it('keeps a failed managed upgrade unready instead of blessing imports or falling back to legacy', () => {
+    const root = join(tempDir(), 'bridge'), dataDir = join(tempDir(), 'data');
+    makePackage(root);
+    const paths = resolveBleRuntimePaths({ packageRoot: root, dataDir, env: {}, platform: 'linux' });
+    let failInstall = false;
+    const options = { packageRoot: root, dataDir, env: {}, platform: 'linux' as const,
+      run: (_command: string, args: string[]) => {
+        if (args.includes('venv')) write(paths.venvPython);
+        return {status: failInstall && args.includes('pip') ? 1 : 0};
+      } };
+    ensureBleRuntime(options);
+    write(paths.legacyPython);
+    write(paths.requirements, 'bleak>=2.1,<3\nPillow>=13,<14\nidotmatrix==0.0.9\n');
+    failInstall = true;
+    expect(() => ensureBleRuntime(options)).toThrow('Failed to install optional BLE dependencies');
+    expect(getBleRuntimeStatus(options).ready).toBe(false);
+    expect(existsSync(paths.readyMarker)).toBe(false);
+  });
+
+  it('reinstalls for an old unversioned marker even if it already claims the current requirements digest', () => {
+    const root = join(tempDir(), 'bridge'), dataDir = join(tempDir(), 'data');
+    makePackage(root);
+    const paths = resolveBleRuntimePaths({ packageRoot: root, dataDir, env: {}, platform: 'linux' });
+    const calls: string[][] = [];
+    const options = { packageRoot: root, dataDir, env: {}, platform: 'linux' as const,
+      run: (_command: string, args: string[]) => {
+        calls.push(args);
+        if (args.includes('venv')) write(paths.venvPython);
+        return {status: 0};
+      } };
+    ensureBleRuntime(options);
+    const marker = JSON.parse(readFileSync(paths.readyMarker, 'utf8'));
+    delete marker.version;
+    write(paths.readyMarker, JSON.stringify(marker));
+    expect(getBleRuntimeStatus(options).ready).toBe(false);
+    calls.length = 0;
+    ensureBleRuntime(options);
+    expect(calls.some(args => args.includes('pip') && args.includes(paths.requirements))).toBe(true);
+    expect(getBleRuntimeStatus(options).ready).toBe(true);
+  });
 });
 
 describe('bridge npm BLE assets', () => {
