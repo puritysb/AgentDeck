@@ -819,6 +819,8 @@ Delayed release does not arm unrelated spoken replies. A two-second initial wait
 from holding work forever. `voice.claudeDelivery: "terminal"` explicitly selects the
 previous terminal path. Busy-session queued directives and device approval remain
 separate paths.
+At most eight reply listeners are retained across custom temporary directories;
+additional directories use the terminal fallback before any inbox write.
 
 Actual Claude Code 2.1.316 tests used temporary profiles, a synthetic loopback model
 server and OS-enforced denial of external network, real profiles and the real daemon.

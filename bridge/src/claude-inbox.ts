@@ -96,6 +96,9 @@ export class ClaudeInbox {
   private replyServer(target: Target): Promise<string | undefined> {
     const dir = dirname(target.path), existing = this.servers.get(dir);
     if (existing) return existing.ready;
+    // Custom per-session socket directories must not accumulate listeners for
+    // the daemon's lifetime. No write has occurred, so fallback remains safe.
+    if (this.servers.size >= 8) return Promise.resolve(undefined);
     const path = join(dir, `${process.pid}.sock`), clients = new Set<import('node:net').Socket>();
     const server = createServer(socket => {
       if (clients.size >= 8) { socket.destroy(); return; }

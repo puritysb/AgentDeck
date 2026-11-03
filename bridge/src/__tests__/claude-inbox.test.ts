@@ -95,4 +95,31 @@ describe.skipIf(process.platform === 'win32')('Claude local inbox delivery', () 
       await vi.waitFor(() => expect(peer.destroyed).toBe(true));
     } finally { clearInterval(chatter); peer.destroy(); }
   });
+  it('bounds reply listeners across completed deliveries to separate temporary directories', async () => {
+    dir=mkdtempSync(join(tmpdir(),'claude-inbox-'));chmodSync(dir,0o700);
+    inbox=new ClaudeInbox();const recipients: Server[]=[];let writes=0;
+    try {
+      for (let n=0;n<9;n++) {
+        const child=mkdtempSync(join(dir,'s-'));chmodSync(child,0o700);
+        const sid=randomUUID(), path=join(child,'r.sock'), transcript=join(child,sid+'.jsonl');
+        const recipient=createServer(socket => {
+          clients.add(socket);socket.on('close',()=>clients.delete(socket));socket.on('error',()=>{});
+          socket.once('data',bytes=> {
+            writes++;const frame=JSON.parse(bytes.toString());
+            receipt(frame,path,'delivered');socket.end();
+          });
+        });
+        recipients.push(recipient);
+        await new Promise<void>(resolve=>recipient.listen(path,resolve));chmodSync(path,0o600);
+        inbox.note(sid,process.pid,path,transcript);
+        expect(await inbox.deliver(sid,process.pid,'dictation')).toMatchObject(n<8
+          ? {ok:true,written:true,status:'delivered'}
+          : {ok:false,written:false,status:'unavailable'});
+      }
+      expect(writes).toBe(8);
+    } finally {
+      inbox.close();for (const client of clients) client.destroy();
+      await Promise.all(recipients.map(recipient=>new Promise<void>(resolve=>recipient.close(()=>resolve()))));
+    }
+  });
 });
