@@ -1,0 +1,87 @@
+name: Security scan
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  schedule:
+    - cron: '23 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dependencies:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          version: 11.5.0
+          run_install: false
+      # Auditing the lockfile needs no dependency install or lifecycle scripts.
+      - run: pnpm security:audit
+      - name: Publish audit summary
+        if: always()
+        run: |
+          if [ -f diagnostics/security-audit/summary.md ]; then
+            cat diagnostics/security-audit/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: dependency-audit
+          path: diagnostics/security-audit/
+          retention-days: 30
+
+  python:
+    name: Python dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Audit resolved Python requirements
+        run: |
+          python3 -m venv "$RUNNER_TEMP/audit"
+          "$RUNNER_TEMP/audit/bin/pip" install pip-audit==2.10.1
+          mkdir -p diagnostics/python-audit
+          status=0
+          "$RUNNER_TEMP/audit/bin/pip-audit" -r bridge/python/requirements-ble.txt -f json -o diagnostics/python-audit/ble.json || status=1
+          "$RUNNER_TEMP/audit/bin/pip-audit" -r esp32/robot/requirements.txt -f json -o diagnostics/python-audit/robot.json || status=1
+          exit "$status"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: python-dependency-audit
+          path: diagnostics/python-audit/
+          retention-days: 30
+
+  rust:
+    name: Rust dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install checksum-pinned OSV Scanner
+        run: |
+          curl --fail --location --retry 3 https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_linux_amd64 -o "$RUNNER_TEMP/osv-scanner"
+          echo '160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b  '"$RUNNER_TEMP/osv-scanner" | sha256sum --check
+          chmod +x "$RUNNER_TEMP/osv-scanner"
+      - name: Scan Rust lockfile without executing build scripts
+        run: |
+          mkdir -p diagnostics/rust-audit
+          "$RUNNER_TEMP/osv-scanner" scan source --config security/osv-scanner.toml --lockfile shared/glance-raster/Cargo.lock --format json --output-file diagnostics/rust-audit/osv.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: rust-dependency-audit
+          path: diagnostics/rust-audit/
+          retention-days: 30

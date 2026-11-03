@@ -45,6 +45,7 @@
       "docs"
     ],
     "exclusions": {
+      "docs/security-scanning.md": "Security scanning runbook and dated findings; operational evidence rather than a design specification.",
       "docs/dot-connection-explained.ko.md": "Dated Korean reader explainer with connection diagrams and private-preview/public-distribution boundaries; derived from dot-distribution-decision.md, not a new canonical product specification.",
       "docs/dot-mcp-events-plan.md": "Earlier Dot transport plan and dated experimental evidence; private tunnel request/report interoperability is proven separately, while real Events acceptance remains unverified.",
       "docs/dot-distribution-decision.md": "Dated integration research and release-gated distribution plan; proposed local plugin and private Events routes are not shipped capability claims.",
