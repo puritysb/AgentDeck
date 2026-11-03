@@ -33,7 +33,7 @@ budget. The Actions group is limited to minor/patch changes so one proposal does
 not silently combine multiple runner/action major migrations. Existing backlog
 still needs review; a lower PR limit does not resolve it.
 
-[The runbook](docs/security-scanning.md#initial-intake-and-response--2026-11-03)
+[The runbook](docs/security-scanning.md#initial-intake-and-response-2026-11-03)
 owns the response cadence and evidence states. Raw alert paths/messages stay in
 GitHub Security and ignored local evidence; the public ledger retains aggregates,
 source references and decisions without publishing unpatched exploit details.
