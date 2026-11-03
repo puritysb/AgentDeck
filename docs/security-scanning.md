@@ -398,3 +398,19 @@ provider lookups ignore inherited paid API keys and require an explicit temporar
 profile directory. Regression fixtures exercise both refusal and the permitted
 temporary-profile path without reading a real credential. This narrows the
 isolation claim to the APME paths covered by the tests.
+
+### Superseded PR runs
+
+CI, Apple Tests and CodeQL share a workflow-specific PR-number concurrency
+policy: a newer commit cancels an older run for that PR. Required checks still
+apply to the latest commit. Master pushes, scheduled events and manual runs use
+unique run groups so a PR update cannot cancel those audits. Cancelled results
+are preserved as cancelled, never counted as a successful scan. This addresses
+the observed queue of obsolete native builds during remediation.
+
+The Node test setup now directs module home lookups to a temporary home and
+seeds its default auth directory with a synthetic token. Temporary explicit
+HOME fixtures remain supported for legacy migration scenarios. This prevents
+an empty test data directory from importing a real legacy credential state;
+the fixture also verifies authoritative retirement inheritance. This is a
+module/fixture boundary, not a disposable OS sandbox for every subprocess.

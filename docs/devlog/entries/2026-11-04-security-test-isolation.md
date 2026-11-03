@@ -1,0 +1,45 @@
+# 2026-11-04 — Security verification exposed ambient credential fixtures
+
+The security follow-up used a dedicated worktree and temporary data directories,
+but those alone did not isolate every credential lookup. In the Node auth suite,
+a fresh custom profile inherited the developer's legacy retirement state. The
+private-state assertion observed revision 2 instead of 1; the mocked storage-busy
+case instead stopped at conflicting-retirement. Diagnosis used failure metadata and source; no manual inspection of the real
+credential file or token was needed.
+
+Vitest now gives both named and default `os` imports a temporary home and seeds
+its default auth directory with a synthetic token for child fixtures. Explicit
+HOME fixtures beneath the OS temporary root remain usable by legacy and
+Node/Swift convergence tests. The inheritance fixture supplies revision 3 and
+checks that rotation produces revision 4. This keeps production migration
+behavior under test with controlled credentials. It is a module/fixture boundary;
+subprocesses still need explicit temporary paths and this is not OS sandboxing.
+
+The Apple APME harness had a related fallback: an absent secure-store fixture
+could select development-file lookup. Hosted lookups now refuse implicit profiles
+and inherited paid-provider environment keys; an inert preferences profile returns
+no legacy key. Nine credential cases run in the full macOS Debug and optimized
+Preview suites, using storage doubles and temporary profiles.
+
+A separate preliminary integration run overlapped a package build with the
+source/dist identity test. Its copied and workspace byte totals diverged. Running
+the completed build and verification sequentially passed. Do not mutate dist
+while that comparison runs. Adding verification explanations also correctly
+failed the Korean-catalog coverage gate until all new copy had translations.
+
+Obsolete PR native runs accumulated while commits and the master baseline moved.
+CI, Apple Tests and CodeQL now group runs by workflow and PR number; a newer PR
+commit cancels the older run. Master, scheduled and manual runs use unique groups.
+Required checks still belong to the current head; cancellation is recorded
+separately from success. The first transition also required cancelling older runs
+that had no concurrency group.
+
+Local evidence: final quick checks passed 7,568 tests with 42 skips. The unchanged
+native source passed macOS Debug (1,525 executed, five skips), optimized Preview
+(1,545 executed, 12 skips), Android (577 tests), universal macOS Release and both
+iOS configurations. All completed with zero failures. Workflow expression/YAML
+validation passed actionlint 1.7.12; unchanged shell steps were outside that lint
+invocation. Hosted checks and master reanalysis remain separate in
+[PR #721](https://github.com/puritysb/AgentDeck/pull/721) and
+[the owner-assigned response record](https://github.com/puritysb/AgentDeck/issues/713).
+No signed Keychain, installed-client or physical-device acceptance is implied.
