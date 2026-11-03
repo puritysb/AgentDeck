@@ -5461,7 +5461,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // from a second, unowned copy of it.
   core.wsServer.setPairingApprovalHooks({
     isApproved: (ip, deviceId) => isApprovedPeer(ip, deviceId, getPairingGeneration()),
-    record: (ip, deviceId, staleToken) => recordKnock(ip, deviceId, staleToken),
+    record: (ip, deviceId, staleToken) => recordKnock(ip, deviceId, staleToken, Date.now(), getPairingGeneration()),
   });
 
   // WS-path display_state re-sync: the 5s serial heartbeat above only covers

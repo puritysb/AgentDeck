@@ -269,6 +269,25 @@ describe('deviceIdFromHeaders', () => {
 
 
 describe('approval retirement generation', () => {
+  it.each([null, DEV_A])('shows a new knock for a retired grant (%s) without restoring access', deviceId => {
+    const key = peerKey(IP, deviceId);
+    const generation = '1:' + 'a'.repeat(32);
+    approvePeer(key);
+    resetPairingKnocksForTests();
+    expect(isApprovedPeer(IP, deviceId, generation)).toBe(false);
+    recordKnock(IP, deviceId, true, Date.now(), generation);
+    expect(pairingKnocks()).toMatchObject([{ key, ip: IP, staleToken: true, attempts: 1 }]);
+    expect(isApprovedPeer(IP, deviceId, generation)).toBe(false);
+    approvePeer(key, Date.now(), generation);
+    recordKnock(IP, deviceId, true, Date.now(), generation);
+    expect(pairingKnocks()).toEqual([]);
+    expect(isApprovedPeer(IP, deviceId, generation)).toBe(true);
+    const next = '2:' + 'b'.repeat(32);
+    recordKnock(IP, deviceId, false, Date.now(), next);
+    expect(pairingKnocks()).toMatchObject([{ key, staleToken: false }]);
+    expect(isApprovedPeer(IP, deviceId, next)).toBe(false);
+  });
+
   it('fences old grants, persists a new grant generation and refuses a later retirement', () => {
     approvePeer(`device:${DEV_A}`);
     expect(isApprovedPeer(IP,DEV_A)).toBe(true);

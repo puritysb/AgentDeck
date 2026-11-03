@@ -8,7 +8,7 @@ import { connect } from 'node:net';
 import WebSocket, { WebSocketServer } from 'ws';
 import { RelayHub, RelayUplink } from '../daemon-relay.js';
 import { SessionSlotManager, type DeckLayout } from '../../../plugin/src/session-slot-manager.js';
-import { isApprovedPeer, resetPairingKnocksForTests } from '../pairing-knocks.js';
+import { isApprovedPeer, pairingKnocks, recordKnock, resetPairingKnocksForTests } from '../pairing-knocks.js';
 import { pairingCredentialGeneration } from '@agentdeck/shared';
 import type { SessionInfo } from '@agentdeck/shared';
 const SD_PLUS_LAYOUT: DeckLayout = { columns: 4, rows: 2, keyCount: 8, family: 'streamdeckplus' };
@@ -135,6 +135,7 @@ describe.skipIf(process.platform!=='darwin')('real mixed Node/Swift relay socket
    for(let revision=1;revision<=2;revision++) {
     await request('/approve','POST');
     expect(await (await request('/approval')).json()).toEqual({approved:true});
+    expect(await (await request('/knock','POST')).json()).toEqual({knocks:0});
     const previousDir=globalThis.process.env.AGENTDECK_DATA_DIR;
     try {
      globalThis.process.env.AGENTDECK_DATA_DIR=process.dataDir;resetPairingKnocksForTests();
@@ -154,6 +155,15 @@ describe.skipIf(process.platform!=='darwin')('real mixed Node/Swift relay socket
      await vi.waitFor(()=>expect(process.frames.filter(f=>f.event==='slow-started')).toHaveLength(revision),{timeout:3000});
      expect(await (await request('/advance','POST')).json()).toEqual({advanced:true});
      expect(await (await request('/approval')).json()).toEqual({approved:false});
+     expect(await (await request('/knock','POST')).json()).toEqual({knocks:1});
+     const previousDir=globalThis.process.env.AGENTDECK_DATA_DIR;
+     try {
+      globalThis.process.env.AGENTDECK_DATA_DIR=process.dataDir;resetPairingKnocksForTests();
+      const generation=pairingCredentialGeneration(JSON.parse(readFileSync(join(process.dataDir,'auth-credentials.json'),'utf8')));
+      recordKnock('192.0.2.1','a'.repeat(32),true,Date.now(),generation);
+      expect(pairingKnocks()).toMatchObject([{key:'device:'+'a'.repeat(32),staleToken:true}]);
+      expect(isApprovedPeer('192.0.2.1','a'.repeat(32),generation)).toBe(false);
+     } finally {if(previousDir===undefined)delete globalThis.process.env.AGENTDECK_DATA_DIR;else globalThis.process.env.AGENTDECK_DATA_DIR=previousDir;resetPairingKnocksForTests();}
      input.send(JSON.stringify({type:'retired-command-probe'}));
      await inputClosed;
      expect(process.frames.filter(f=>f.event==='generation-command-received')).toEqual([]);

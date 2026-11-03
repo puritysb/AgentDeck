@@ -63,6 +63,10 @@ private final class Memory: @unchecked Sendable {
                 await http.get("/approval") { _ in
                     .json(["approved": PairingKnockStore.shared.isApproved(ip: "192.0.2.1", deviceId: String(repeating: "a", count: 32), credentialGeneration: AuthManager.shared.credentialGeneration)])
                 }
+                await http.post("/knock") { _ in
+                    PairingKnockStore.shared.record(ip: "192.0.2.1", deviceId: String(repeating: "a", count: 32), staleToken: true, credentialGeneration: AuthManager.shared.credentialGeneration)
+                    return .json(["knocks": PairingKnockStore.shared.knocks().count])
+                }
             }
             if mode == "retirement" {
                 await http.stream("/held-stream") { _, connection in

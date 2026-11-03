@@ -406,7 +406,7 @@ actor WebSocketServer {
                 // Record before refusing: the refusal is the only moment the
                 // daemon learns this device wants in, and until it was surfaced
                 // a device with no credential retried forever into a log.
-                PairingKnockStore.shared.record(ip: remoteIP, deviceId: deviceId, staleToken: !token.isEmpty)
+                PairingKnockStore.shared.record(ip: remoteIP, deviceId: deviceId, staleToken: !token.isEmpty, credentialGeneration: credentialGeneration)
                 // The two cases read very differently to an operator: a peer
                 // that presented nothing is usually an unpaired client, while a
                 // peer presenting a token we do not accept is a provisioned
