@@ -4,7 +4,7 @@ import { mkdtempSync, chmodSync, appendFileSync, rmSync, symlinkSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { ClaudeInbox } from '../claude-inbox.js';
+import { ClaudeInbox, temporaryInboxPath } from '../claude-inbox.js';
 let dir: string, server: Server | undefined, inbox: ClaudeInbox | undefined;
 const clients = new Set<Socket>();
 afterEach(async () => {
@@ -28,6 +28,12 @@ function receipt(frame: any, path: string, status: string, extra = {}) {
   socket.on('connect',() => socket.end(JSON.stringify({type:'control',action:'peer_message_status',from:'uds:'+path,orig_msg_id:frame.msg_id,status,...extra})+'\n'));
 }
 describe.skipIf(process.platform === 'win32')('Claude local inbox delivery', () => {
+  it('contains inbox lookups inside temporary roots, including traversal and prefix boundaries', () => {
+    expect(temporaryInboxPath('/tmp/cc-socks/123.sock')).toBe('/tmp/cc-socks/123.sock');
+    expect(temporaryInboxPath('/private/tmp/cc-socks/123.sock')).toBe('/private/tmp/cc-socks/123.sock');
+    expect(temporaryInboxPath(join(tmpdir(),'claude/123.sock'))).toBe(join(tmpdir(),'claude/123.sock'));
+    for (const path of ['/tmp/../../etc/passwd','/private/tmp/../../etc/passwd','/tmp-other/123.sock','/private/tmp-other/123.sock','/etc/passwd','relative.sock','/tmp/invalid\n.sock']) expect(temporaryInboxPath(path)).toBeUndefined();
+  });
   it('confirms the actual recipient UUID rather than a successful write or unrelated transcript row', async () => {
     const target=await setup((frame,path) => {
       expect(frame).toMatchObject({type:'user',session_id:target.sid,message:{role:'user'}});

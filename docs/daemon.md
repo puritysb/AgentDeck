@@ -803,6 +803,10 @@ advertise only `CLAUDE_CODE_MESSAGING_SOCKET`; the exported child token is never
 forwarded or stored. The binding is private, supplied by trusted same-machine hooks,
 and tied to the observed session UUID and PID. It is not included in session lists,
 timeline/APME, diagnostics or device data. Windows retains terminal delivery.
+Inbox lookups stay inside OS temporary roots, including their canonical aliases;
+resolved paths must remain inside the same root, and the socket and parent must
+pass the private same-user checks. A custom inbox outside those roots uses the
+terminal fallback.
 
 This is a **peer message**, subject to Claude's own inbound controls, not typed user
 input or permission approval. `delivered` requires a correlated receiver receipt or

@@ -4,7 +4,8 @@
 import { createConnection, createServer, type Server } from 'node:net';
 import { randomUUID } from 'node:crypto';
 import { openSync, closeSync, fstatSync, readSync, lstatSync, realpathSync, chmodSync, unlinkSync, constants } from 'node:fs';
-import { basename, dirname, isAbsolute, join } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
+import { tmpdir } from 'node:os';
 import type { VoiceDeliveryStatus } from '@agentdeck/shared';
 
 export type InboxStatus = VoiceDeliveryStatus;
@@ -17,13 +18,33 @@ const result = (status: InboxStatus, written = true): InboxResult => ({
   reason: ({delivered:'Claude received the dictated peer message',held:'Claude is holding the peer message for approval',refused:'Claude refused the peer message',denied:'Claude approval was declined',expired:'Claude approval expired',dropped:'Claude dropped the peer message',submitted:'Peer message submitted; Claude receipt unconfirmed',unavailable:'Claude inbox unavailable'} as const)[status],
 });
 
+const temporaryRoots = [...new Set([tmpdir(), '/tmp', '/private/tmp'].flatMap(value => {
+  const root = resolve(value);
+  try { return [root, realpathSync(root)]; } catch { return [root]; }
+}))];
+/** Restrict hook-advertised inboxes to OS temporary roots before any lookup.
+ * A custom socket outside these roots uses the existing terminal fallback. */
+export function temporaryInboxPath(path: string): string | undefined {
+  if (!isAbsolute(path) || Buffer.byteLength(path) > 103 || /[\x00\r\n]/.test(path)) return;
+  const candidate = resolve(path);
+  for (const root of temporaryRoots) {
+    if (candidate.startsWith(root + sep)) return candidate;
+  }
+}
+
 function privateSocket(path: string): string | undefined {
   try {
-    if (!isAbsolute(path) || Buffer.byteLength(path) > 103 || /[\x00\r\n]/.test(path)) return;
-    const canonical = realpathSync(path), socket = lstatSync(path), parent = lstatSync(dirname(canonical));
-    if (!socket.isSocket() || socket.isSymbolicLink() || (socket.mode & 0o077) !== 0 || (parent.mode & 0o022) !== 0) return;
-    if (socket.uid !== process.getuid?.() || parent.uid !== socket.uid) return;
-    return canonical;
+    const candidate = temporaryInboxPath(path); if (!candidate) return;
+    for (const root of temporaryRoots) {
+      if (!candidate.startsWith(root + sep)) continue;
+      const canonical = realpathSync(candidate);
+      const canonicalRoot = realpathSync(root);
+      if (!canonical.startsWith(canonicalRoot + sep) || Buffer.byteLength(canonical) > 103) return;
+      const socket = lstatSync(candidate), parent = lstatSync(dirname(canonical));
+      if (!socket.isSocket() || socket.isSymbolicLink() || (socket.mode & 0o077) !== 0 || (parent.mode & 0o022) !== 0) return;
+      if (socket.uid !== process.getuid?.() || parent.uid !== socket.uid) return;
+      return canonical;
+    }
   } catch { return; }
 }
 
