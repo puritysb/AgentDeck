@@ -105,3 +105,11 @@ The [dated checkpoint](security/reports/2026-11-03-master-response.json) retains
 source locations, actual states, review reasoning and pending master jobs.
 The [readable list](security/reports/2026-11-03-review-closures.md) mirrors the
 current proposal; the earlier 266-row receipt remains historical.
+
+Dependabot recreated the exact MCP SDK development pin as #718 after the
+initial compatible group was consolidated. The installed 1.32.2 follow-up
+retains a zero-production/one-low-development npm audit. Its first quick run
+failed three unchanged session-registry cases with EADDRINUSE on test ports
+29320/29323/29325; no process was stopped to clear them. The ports were free
+before a full rerun passed 7,562 tests with 42 skips. Preserve the port-collision
+receipt separately; isolated worktrees do not isolate hard-coded loopback ports.
