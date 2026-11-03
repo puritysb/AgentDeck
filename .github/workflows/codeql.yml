@@ -26,7 +26,7 @@ jobs:
         language: [javascript-typescript, python, actions, c-cpp, rust]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: github/codeql-action/init@793b778da9c9275a0f276522b27cb5fc14bba279 # v4
+      - uses: github/codeql-action/init@093c0af4c358e174c90d33c5672595fb14c89183 # v4
         with:
           languages: ${{ matrix.language }}
           build-mode: none
@@ -51,7 +51,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
         with:
           cache-disabled: true
-      - uses: github/codeql-action/init@793b778da9c9275a0f276522b27cb5fc14bba279 # v4
+      - uses: github/codeql-action/init@093c0af4c358e174c90d33c5672595fb14c89183 # v4
         with:
           languages: java-kotlin
           build-mode: manual
@@ -97,7 +97,7 @@ jobs:
           brew install xcodegen
           cd apple
           xcodegen generate
-      - uses: github/codeql-action/init@793b778da9c9275a0f276522b27cb5fc14bba279 # v4
+      - uses: github/codeql-action/init@093c0af4c358e174c90d33c5672595fb14c89183 # v4
         with:
           languages: swift
           build-mode: manual
