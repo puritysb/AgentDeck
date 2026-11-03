@@ -166,3 +166,32 @@ Darwin Keychain-dependent E2E remains explicitly skipped.
 The isolated whole-suite retry passed all 7,561 tests (42 skipped) on the
 same source after those fixture ports were free. No native check was repeated
 because the retry changed no source or native build input.
+
+While hosted checks were running, master advanced to `eadab28c` through PR #717.
+Its BLE readiness and installed-app launch fixes are retained unchanged. Those
+upstream changes do not alter native app build inputs or the reconnect repair.
+The earlier native verification therefore remains evidence for those unchanged
+inputs; this is not a claim that a Full deployment was repeated on the new merge.
+
+The `31cef546` Swift macOS CodeQL job completed compilation, analysis, SARIF
+upload and all post steps successfully, but exceeded its 45-minute job budget
+while finishing cleanup. GitHub marked the required job cancelled, so the
+successful analysis upload was not treated as a passing required check. The
+same-head retry was superseded by the later master integration. Give both Swift
+analysis jobs 60 minutes, retaining the exact compiler, queries and upload steps;
+the measured 45m40s execution needs cleanup headroom rather than weaker checks.
+
+Quick on this later integration exposed two existing auth-test assumptions:
+only the custom data directory was isolated, while the legacy home still came
+from the operator's machine. A persisted retirement there can intentionally be
+inherited into a new data directory, changing the expected revision. Both
+failures reproduced in the isolated test file. Mock `homedir()` to a fresh
+fixture for every case and preserve the custom-directory environment through
+Vitest stubs; the legacy migration case changes that fixture instead of the
+process HOME. Product authentication and the operator's credentials are untouched.
+The isolated auth tests passed 19/19, then Quick passed 7,567 tests
+(42 skipped) on the final working merge. Native app source and generated
+build inputs are unchanged from the earlier verified integration. The older
+`31cef546` same-SHA retry subsequently passed all 15 then-required CI checks,
+but strict up-to-date protection already required the newer master. Those
+results are retained as older-head evidence, not credited to the new commit.
