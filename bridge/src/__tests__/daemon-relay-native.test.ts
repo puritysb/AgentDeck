@@ -8,7 +8,7 @@ import { connect } from 'node:net';
 import WebSocket, { WebSocketServer } from 'ws';
 import { RelayHub, RelayUplink } from '../daemon-relay.js';
 import { SessionSlotManager, type DeckLayout } from '../../../plugin/src/session-slot-manager.js';
-import { isApprovedPeer, resetPairingKnocksForTests } from '../pairing-knocks.js';
+import { isApprovedPeer, pairingKnocks, recordKnock, resetPairingKnocksForTests } from '../pairing-knocks.js';
 import { pairingCredentialGeneration } from '@agentdeck/shared';
 import type { SessionInfo } from '@agentdeck/shared';
 const SD_PLUS_LAYOUT: DeckLayout = { columns: 4, rows: 2, keyCount: 8, family: 'streamdeckplus' };
@@ -38,6 +38,11 @@ describe.skipIf(process.platform!=='darwin')('real mixed Node/Swift relay socket
   return {child,frames,dataDir:data,errors:()=>errors};
  }
  async function freePort(){const s=createServer();await new Promise<void>(r=>s.listen(0,'127.0.0.1',r));const port=(s.address() as {port:number}).port;await new Promise<void>(r=>s.close(()=>r()));return port;}
+ async function waitForReady(process:ReturnType<typeof native>){
+  await vi.waitFor(()=>expect(process.frames.some(f=>f.event==='ready'),
+   `Native fixture did not become ready (exit=${process.child.exitCode}, signal=${process.child.signalCode}): ${process.errors()}`
+  ).toBe(true),{timeout:6000});
+ }
  it('Swift worker publishes to Node hub, reconnects once without duplicates, and refuses unsupported commands',async()=>{
   const http=createServer((_,res)=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({mode:'daemon',daemonRelay:true}));});
   const wss=new WebSocketServer({server:http});const hub=new RelayHub({instanceId:'node-hub',onChange:()=>{}});let peer:WebSocket|undefined;let refusals=0,pings=0;
@@ -81,7 +86,7 @@ describe.skipIf(process.platform!=='darwin')('real mixed Node/Swift relay socket
   const port=await freePort(),process=native('hub',port);
   let uplink:RelayUplink|undefined;const executed:unknown[]=[];
   try {
-   await vi.waitFor(()=>expect(process.frames.some(f=>f.event==='ready')).toBe(true),{timeout:6000});
+   await waitForReady(process);
    for(const token of ['', 'wrong']) {
     const status=await new Promise<number>((resolve,reject)=>{const ws=new WebSocket(`ws://127.0.0.1:${port}?token=${token}`,{origin:'https://untrusted.example',handshakeTimeout:2000});ws.on('unexpected-response',(_,res)=>{resolve(res.statusCode!);ws.terminate();});ws.on('error',()=>{});ws.on('open',()=>{ws.close();reject(new Error('unauthenticated relay upgraded'));});});
     expect(status).toBe(401);
@@ -109,7 +114,7 @@ describe.skipIf(process.platform!=='darwin')('real mixed Node/Swift relay socket
   const port=await freePort(),process=native('retirement',port);
   let ws:WebSocket|undefined;
   try {
-   await vi.waitFor(()=>expect(process.frames.some(f=>f.event==='ready')).toBe(true),{timeout:6000});
+   await waitForReady(process);
    const held=connect(port,'127.0.0.1');
    try {
     let data='';held.on('data',chunk=>{data+=chunk.toString();});
@@ -130,11 +135,12 @@ describe.skipIf(process.platform!=='darwin')('real mixed Node/Swift relay socket
  it('fences old native approvals, delayed HTTP replies and WebSocket sends/commands across successive retirements',async()=>{
   const port=await freePort(),process=native('generation',port);
   try {
-   await vi.waitFor(()=>expect(process.frames.some(f=>f.event==='ready')).toBe(true),{timeout:6000});
+   await waitForReady(process);
    const request=(path:string,method='GET')=>fetch(`http://127.0.0.1:${port}${path}`,{method,signal:AbortSignal.timeout(4000)});
    for(let revision=1;revision<=2;revision++) {
     await request('/approve','POST');
     expect(await (await request('/approval')).json()).toEqual({approved:true});
+    expect(await (await request('/knock','POST')).json()).toEqual({knocks:0});
     const previousDir=globalThis.process.env.AGENTDECK_DATA_DIR;
     try {
      globalThis.process.env.AGENTDECK_DATA_DIR=process.dataDir;resetPairingKnocksForTests();
@@ -154,6 +160,15 @@ describe.skipIf(process.platform!=='darwin')('real mixed Node/Swift relay socket
      await vi.waitFor(()=>expect(process.frames.filter(f=>f.event==='slow-started')).toHaveLength(revision),{timeout:3000});
      expect(await (await request('/advance','POST')).json()).toEqual({advanced:true});
      expect(await (await request('/approval')).json()).toEqual({approved:false});
+     expect(await (await request('/knock','POST')).json()).toEqual({knocks:1});
+     const previousDir=globalThis.process.env.AGENTDECK_DATA_DIR;
+     try {
+      globalThis.process.env.AGENTDECK_DATA_DIR=process.dataDir;resetPairingKnocksForTests();
+      const generation=pairingCredentialGeneration(JSON.parse(readFileSync(join(process.dataDir,'auth-credentials.json'),'utf8')));
+      recordKnock('192.0.2.1','a'.repeat(32),true,Date.now(),generation);
+      expect(pairingKnocks()).toMatchObject([{key:'device:'+'a'.repeat(32),staleToken:true}]);
+      expect(isApprovedPeer('192.0.2.1','a'.repeat(32),generation)).toBe(false);
+     } finally {if(previousDir===undefined)delete globalThis.process.env.AGENTDECK_DATA_DIR;else globalThis.process.env.AGENTDECK_DATA_DIR=previousDir;resetPairingKnocksForTests();}
      input.send(JSON.stringify({type:'retired-command-probe'}));
      await inputClosed;
      expect(process.frames.filter(f=>f.event==='generation-command-received')).toEqual([]);
