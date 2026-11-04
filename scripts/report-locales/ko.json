@@ -589,5 +589,13 @@
   "Every PR, master push, daily schedule and manual": "모든 PR·master 푸시·매일 예약 실행·수동 실행",
   "Both Android runtime variants resolve their transitive Maven components and artifacts; unresolved or unmapped components/artifacts fail collection.": "Android의 debug·release 런타임에서 전이 Maven 구성 요소와 실제 파일을 해석합니다. 해석하지 못하거나 Maven 좌표에 연결할 수 없는 항목이 있으면 수집이 실패합니다.",
   "Exact selected versions are queried against OSV with positional result validation, complete bounded pagination and a queried-only known-vulnerable control; findings and service/schema errors fail the job.": "실제로 선택된 버전을 OSV에 조회하고 결과 순서·제한된 전체 페이지 수집·설치하지 않는 취약 버전 대조군을 검증합니다. 취약점 일치 또는 서비스·응답 형식 오류가 있으면 검사가 실패합니다.",
-  "Complete advisory coverage, exploitability, AAR-internal native or Android/SDK OS vulnerabilities, installed-device versions, or APK delivery; release-note and physical-client checks remain separate.": "모든 보안 권고의 수록 여부, 실제 악용 가능성, AAR 내부 네이티브 코드·Android 운영체제·SDK의 취약점, 기기에 설치된 버전 또는 APK 배포를 입증하지 않습니다. 릴리스 노트 검토와 실제 기기 검증은 별도입니다."
+  "Complete advisory coverage, exploitability, AAR-internal native or Android/SDK OS vulnerabilities, installed-device versions, or APK delivery; release-note and physical-client checks remain separate.": "모든 보안 권고의 수록 여부, 실제 악용 가능성, AAR 내부 네이티브 코드·Android 운영체제·SDK의 취약점, 기기에 설치된 버전 또는 APK 배포를 입증하지 않습니다. 릴리스 노트 검토와 실제 기기 검증은 별도입니다.",
+  "AgentDeck token detection": "AgentDeck 토큰 탐지",
+  "ESP32 dependency inventory": "ESP32 의존성 인벤토리",
+  "Context-bound token shapes have synthetic positive and negative tests; current tracked text is scanned without emitting credential values.": "문맥을 함께 검사하는 토큰 패턴을 합성 양성·음성 사례로 검증하고, 현재 추적 중인 텍스트를 자격 증명 값을 출력하지 않고 검사합니다.",
+  "Exact native-fixture digests and match counts fence reviewed synthetic tokens; unreadable or oversized text fails collection.": "검토한 네이티브 합성 토큰은 파일 해시와 일치 건수로 제한하며, 읽을 수 없거나 제한 크기를 넘는 텍스트는 수집 실패로 처리합니다.",
+  "GitHub custom-pattern activation or server-side Hyperscan acceptance, historical or binary/ignored-file coverage, arbitrary secret encodings, or credential validity.": "GitHub 사용자 정의 패턴 활성화·서버 측 Hyperscan 검증, 과거 이력·바이너리·무시된 파일 검사, 임의 인코딩 또는 자격 증명 유효성을 입증하지 않습니다.",
+  "All configured environments resolve in a fresh isolated project and package store using pinned PlatformIO; missing transitives or required packages fail collection.": "고정한 PlatformIO 버전과 새로 격리한 프로젝트·패키지 저장소에서 설정된 모든 환경의 의존성을 해석합니다. 전이 의존성이나 필수 패키지가 없으면 수집이 실패합니다.",
+  "Selected versions, dependency edges, full package content hashes, build-time patch inputs and explicitly unmapped SDK manifests are retained.": "선택된 버전, 의존성 연결, 패키지 전체 내용 해시, 빌드 시 적용되는 패치의 입력과 버전 매핑을 확인하지 못한 SDK 매니페스트를 보존합니다.",
+  "Complete SDK/advisory coverage, deterministic version locking, applied build-time patches, firmware compilation, flashing, or installed-device acceptance.": "SDK·보안 권고의 완전한 검사, 결정적인 버전 잠금, 빌드 패치 적용, 펌웨어 컴파일·플래시 또는 설치된 기기 검증을 입증하지 않습니다."
 }

@@ -17,6 +17,53 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  tokens:
+    name: AgentDeck token detection
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - run: node --test scripts/__tests__/token-patterns.test.mjs
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - run: python3 -m pip install hyperscan==0.9.1
+      - run: python3 scripts/__tests__/token-hyperscan.test.py
+      - run: node scripts/scan-agentdeck-tokens.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: agentdeck-token-scan
+          path: diagnostics/token-scan/receipt.json
+          retention-days: 30
+
+  firmware:
+    name: ESP32 dependency inventory
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - run: python3 scripts/__tests__/esp32-inventory.test.py
+      - run: python3 -m pip install platformio==6.1.19
+      - name: Resolve every configured target in an isolated project and package store
+        run: python3 scripts/inventory-esp32-dependencies.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: esp32-dependency-inventory
+          path: |
+            diagnostics/esp32-inventory/receipt.json
+            diagnostics/esp32-inventory/*/inventory.json
+            diagnostics/esp32-inventory/*/install.log
+            diagnostics/esp32-inventory/*/collect.log
+          retention-days: 30
+
   dependencies:
     name: Dependency audit
     runs-on: ubuntu-latest

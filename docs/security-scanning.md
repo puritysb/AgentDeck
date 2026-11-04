@@ -12,6 +12,8 @@ complements [the reporting policy](../SECURITY.md) and [testing](testing.md).
 | OSV Scanner 2.7.0 | PR, master push, daily, manual | Any non-excepted Rust finding or execution error | Cargo.lock JSON; 30-day artifact |
 | Android runtime OSV audit | PR, master push, daily, manual | Any Maven advisory match, unresolved graph/artifact, malformed/incomplete response, failed positive control or timeout | Debug/release resolved inventory, source hashes, complete per-query pages, control and coverage limits; 30-day artifact |
 | Dependency review | PR | Newly introduced high/critical advisory | PR check |
+| AgentDeck token detection | PR, master push, daily, manual | Contextual 32-hex credential match, changed synthetic fixture or scan error | Values withheld; file/line/rule metadata and explicitly skipped binary/symlink files; 30-day artifact |
+| ESP32 dependency inventory | PR, master push, daily, manual | Resolution failure, missing transitive/required tool, unknown package version or content-read error | All configured environments, exact selected versions, dependency edges, package content hashes and SDK unknowns; 30-day artifact |
 | CodeQL `security-extended` | PR, master push, weekly, manual | Extraction/analysis failures fail the job; alerts need separate triage | GitHub Security → Code scanning |
 | Dependabot | Continuous alerts; weekly version PRs | Maintainer review, no automatic merge | Security → Dependabot, update PRs |
 | Secret scanning + push protection | GitHub service | Existing provider-secret protections retained | GitHub Security → Secret scanning |
@@ -82,6 +84,72 @@ native code, the Android OS/SDK or installed device versions. It does not replac
 upstream release-note review: the earlier OkHttp certificate correction was
 necessary even when OSV returned no match. A zero-match result is not a zero-CVE
 claim. The exact-input inventory and scan receipt remain dated evidence.
+
+## AgentDeck token patterns
+
+`node --test scripts/__tests__/token-patterns.test.mjs` uses runtime-constructed
+synthetic values. `python scripts/__tests__/token-hyperscan.test.py` also compiles
+and tests the exact policy using the pinned `hyperscan==0.9.1` native binding;
+then `node scripts/scan-agentdeck-tokens.mjs` checks tracked text.
+The SSOT is [agentdeck-token-patterns.json](../security/agentdeck-token-patterns.json).
+It combines 32-hex values with pairing-field, bearer or WebSocket URL context;
+bare checksums are not classified as credentials. Bearer/URL matches can belong
+to another product and require review. Values, excerpts and token fingerprints
+are never emitted by this scanner. Binary/symlink omissions are explicit;
+oversized text and unreadable inputs fail instead of reporting a clean scan.
+
+Two pre-existing native endpoint-identity fixtures have exact file-digest,
+rule and count exceptions in
+[token-fixture-exceptions.json](../security/token-fixture-exceptions.json).
+Any file or match-count change requires renewed review; test directories are
+not excluded. The pattern tests, repository scan and custody/redaction tests
+prove different things. This scanner does not inspect ignored files, history,
+arbitrary encodings or standalone token files, and cannot establish validity.
+
+The GitHub custom-pattern API returned **404 / Feature not available in this
+repository** on November 4. Provider secret scanning and push protection remain
+enabled. These local tests do not prove GitHub Hyperscan acceptance, historical
+scanning or custom push protection. The policy uses the documented portable
+subset and can supply a future draft; verify GitHub dry-run results before
+activation. [GitHub custom-pattern syntax](https://docs.github.com/en/code-security/reference/secret-security/custom-patterns)
+and [API](https://docs.github.com/en/rest/secret-scanning/custom-patterns).
+
+## ESP32 resolved package inventory
+
+Use a disposable Python 3.12 environment with `platformio==6.1.19`, then run
+`python scripts/inventory-esp32-dependencies.py --output <fresh-directory>`.
+`--environment ttgo` limits a local diagnostic; CI resolves every environment
+discovered from `platformio.ini`, including test environments. `--list-environments`
+needs only Python's standard library. Reusing a started output directory is
+refused. Each run creates temporary PlatformIO stores, separated by platform
+specification, and a staged project outside the checkout. It removes that owned
+workspace afterward; receipts and install logs remain in the output directory. Upstream
+package installation hooks can execute in that disposable environment. No build,
+project extra-script execution, upload, serial open or installed-device check is
+performed. Inherited PlatformIO/IDF directory overrides are cleared for resolution and
+restored afterward; personal PlatformIO caches are not used or modified.
+
+Each target is collected in a fresh Python process, so an earlier target cannot
+supply stale PlatformIO package-cache results. Distinct platform specifications
+use separate stores because official and pioarduino installers share package
+names but can select incompatible framework versions.
+
+The pinned PlatformIO adapter resolves platform, framework/tool packages and
+library dependency edges, refusing missing transitives or unknown selected
+package versions. pioarduino file-based tool aliases require the exact selected
+name/version, an origin in the isolated core and identical source/copy content
+hashes; a same-named cache is insufficient. Full package content hashes catch local source modifications
+that a manifest hash misses. VCS/Python caches and installer metadata are excluded;
+symlinks hash their link target text without following it. Project build-time patch
+scripts are hashed as inputs, not applied by this resolution-only command.
+
+SDK/component manifests are indexed with hashes and explicit unknown independent
+version/advisory mappings. This is not complete SDK SBOM/CVE coverage, an OSV
+scan, a deterministic lockfile or firmware-build acceptance. Both incomplete
+and failed collection retain error receipts; they cannot reuse an earlier pass.
+PlatformIO's [package list](https://docs.platformio.org/en/stable/core/userguide/pkg/cmd_list.html)
+describes the package categories; Core 6.1.19 has no JSON list mode, so the
+version-pinned adapter is tested separately.
 
 ## Triage and exceptions
 

@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "fixtures": [
+    {
+      "path": "android/app/src/test/kotlin/dev/agentdeck/net/PairingCredentialTest.kt",
+      "sha256": "b5bbbccb9a01ba2092b258ab5f37643ee6896f76faf9c8327b23d599bad622f2",
+      "pattern": "websocket-query",
+      "count": 1,
+      "reason": "Fixed synthetic endpoint-identity fixture at RFC1918 192.168.1.10; never registered as a credential. Exact file digest and match count must remain unchanged."
+    },
+    {
+      "path": "apple/AgentDeckTests/PairingCredentialTests.swift",
+      "sha256": "04fc785cd73f0df71075872b04486dcb9457336ea3268a9184c12c7eb2662c2d",
+      "pattern": "websocket-query",
+      "count": 1,
+      "reason": "Fixed synthetic endpoint-identity fixture at RFC1918 192.168.1.10; never registered as a credential. Exact file digest and match count must remain unchanged."
+    }
+  ]
+}
