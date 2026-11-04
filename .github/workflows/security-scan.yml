@@ -64,6 +64,37 @@ jobs:
           path: diagnostics/python-audit/
           retention-days: 30
 
+  android:
+    name: Android runtime dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+      - name: Verify Gradle collector with offline synthetic Maven fixtures
+        run: node --test scripts/__tests__/android-runtime-collector.test.mjs
+      - name: Resolve both runtime variants and query OSV
+        run: node scripts/audit-android-runtime.mjs
+      - name: Publish Android audit summary
+        if: always()
+        run: |
+          if [ -f diagnostics/android-audit/summary.md ]; then
+            cat diagnostics/android-audit/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: android-runtime-audit
+          path: diagnostics/android-audit/
+          retention-days: 30
+
   rust:
     name: Rust dependency audit
     runs-on: ubuntu-latest

@@ -10,6 +10,7 @@ complements [the reporting policy](../SECURITY.md) and [testing](testing.md).
 | `pnpm security:audit` | PR, master push, daily, manual | Unreviewed high/critical npm advisory, expired exception, registry/schema/execution error | Raw all/production JSON, lockfile and policy hashes, receipt, job summary; 30-day artifact |
 | pip-audit 2.10.1 | PR, master push, daily, manual | Any finding or resolution/execution error | Resolved BLE and Robot JSON; 30-day artifact |
 | OSV Scanner 2.7.0 | PR, master push, daily, manual | Any non-excepted Rust finding or execution error | Cargo.lock JSON; 30-day artifact |
+| Android runtime OSV audit | PR, master push, daily, manual | Any Maven advisory match, unresolved graph/artifact, malformed/incomplete response, failed positive control or timeout | Debug/release resolved inventory, source hashes, complete per-query pages, control and coverage limits; 30-day artifact |
 | Dependency review | PR | Newly introduced high/critical advisory | PR check |
 | CodeQL `security-extended` | PR, master push, weekly, manual | Extraction/analysis failures fail the job; alerts need separate triage | GitHub Security → Code scanning |
 | Dependabot | Continuous alerts; weekly version PRs | Maintainer review, no automatic merge | Security → Dependabot, update PRs |
@@ -58,6 +59,29 @@ osv-scanner scan source --config security/osv-scanner.toml \
 ```
 
 Do not enable Rust call analysis in this scan: it can execute build scripts.
+
+For Android, use JDK 17 and run `node scripts/audit-android-runtime.mjs` from a
+POSIX build host. The Gradle init script resolves both runtime configurations,
+including their transitive components and artifacts, without modifying the app's
+build file or installing an APK. `--offline` uses an already-populated Gradle
+cache and is recorded in the receipt; OSV queries still require network access.
+CI resolves online. No npm dependency installation is needed for this command.
+
+The [OSV batch API](https://google.github.io/osv.dev/post-v1-querybatch/) guarantees
+positional results and gives each query its own pagination token. The audit
+checks the result count, drains those tokens, limits response size/time/pages and
+retains each exact coordinate's affected debug/release variants. A queried-only
+Guava 27.0-jre positive control must match an advisory; it is never installed.
+Any product advisory match fails this new CI job; it is not yet a required branch
+protection context. Resolution, service or schema failure replaces an earlier
+pass with explicit error evidence.
+
+This closes the automation gap in [#713](https://github.com/puritysb/AgentDeck/issues/713),
+not the entire Android coverage task. Maven matching does not inspect AAR-internal
+native code, the Android OS/SDK or installed device versions. It does not replace
+upstream release-note review: the earlier OkHttp certificate correction was
+necessary even when OSV returned no match. A zero-match result is not a zero-CVE
+claim. The exact-input inventory and scan receipt remain dated evidence.
 
 ## Triage and exceptions
 
