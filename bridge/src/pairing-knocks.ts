@@ -267,11 +267,15 @@ export function recordKnock(
   deviceId: unknown,
   staleToken: boolean,
   now = Date.now(),
+  credentialGeneration?: string,
 ): void {
   if (!ip) return;
   const normalized = normalizeDeviceId(deviceId);
   const key = peerKey(ip, normalized);
-  if (loadApprovals().has(key)) return; // already let in; not a knock
+  // A retired grant still exists on disk but no longer admits this peer. It
+  // must not hide the fresh request the operator needs in order to re-approve.
+  const approval = loadApprovals().get(key);
+  if (approval && approval.credentialGeneration === credentialGeneration) return;
 
   const existing = pending.get(key);
   if (existing) {

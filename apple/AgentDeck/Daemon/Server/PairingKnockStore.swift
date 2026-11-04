@@ -125,13 +125,15 @@ final class PairingKnockStore: @unchecked Sendable {
 
     /// Called from the refusal path. Cheap on purpose — it runs for every
     /// rejected handshake, and a looping device produces one every few seconds.
-    func record(ip: String, deviceId: String?, staleToken: Bool, now: Date = Date()) {
+    func record(ip: String, deviceId: String?, staleToken: Bool, now: Date = Date(), credentialGeneration: String? = nil) {
         guard !ip.isEmpty else { return }
         let normalizedId = PairingCodeRules.normalizeDeviceId(deviceId)
         let key = Self.peerKey(ip: ip, deviceId: normalizedId)
         lock.lock()
         defer { lock.unlock() }
-        if approved[key] != nil { return }   // already let in; not a knock
+        // Retired grants remain persisted, but cannot suppress a new request
+        // for the operator to approve at the current credential generation.
+        if let approval = approved[key], approval.credentialGeneration == credentialGeneration { return }
         if var existing = pending[key] {
             existing.attempts += 1
             existing.lastSeen = now
