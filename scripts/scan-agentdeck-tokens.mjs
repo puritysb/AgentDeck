@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync, lstatSync, mkdirSync, writeFileSync, openSync, readSync, closeSync } from 'node:fs';
+import { readFileSync, fstatSync, mkdirSync, writeFileSync, openSync, readSync, closeSync, constants } from 'node:fs';
 import { dirname, join, resolve, relative, isAbsolute, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -28,22 +28,46 @@ export function detectTokens(text, path = 'fixture') {
   return findings.sort((a, b) => a.line - b.line || a.pattern.localeCompare(b.pattern));
 }
 
-export function scanPaths(root, paths) {
+export function scanPaths(root, paths, operations = {}) {
   const findings = [], skipped = [];
   let scanned = 0;
+  if (typeof constants.O_NOFOLLOW !== 'number') throw new Error('Safe scanning requires O_NOFOLLOW support');
+  const open = operations.open ?? openSync, read = operations.read ?? readSync;
   for (const path of paths) {
     const full = resolve(root, path);
     const rel = relative(resolve(root), full);
     if (isAbsolute(rel) || rel === '..' || rel.startsWith('..' + sep) || path.includes('\0')) throw new Error('Invalid tracked path');
-    const stat = lstatSync(full);
-    if (!stat.isFile()) { skipped.push({ path, reason: 'non-regular file; symlinks are not followed' }); continue; }
-    const prefix = Buffer.alloc(Math.min(stat.size, 8192)), fd = openSync(full, 'r');
-    try { readSync(fd, prefix, 0, prefix.length, 0); } finally { closeSync(fd); }
-    if (prefix.includes(0)) { skipped.push({ path, reason: 'binary' }); continue; }
-    if (stat.size > 32 * 1024 * 1024) throw new Error('Tracked text file exceeds scan limit; no clean scan is claimed');
-    const bytes = readFileSync(full);
-    if (bytes.includes(0)) { skipped.push({ path, reason: 'binary' }); continue; }
-    findings.push(...detectTokens(bytes.toString('utf8'), path)); scanned++;
+    let fd;
+    try { fd = open(full, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK); }
+    catch (error) {
+      if (error.code !== 'ELOOP') throw error;
+      skipped.push({ path, reason: 'symlink; not followed' }); continue;
+    }
+    try {
+      const before = fstatSync(fd, { bigint: true });
+      if (!before.isFile()) { skipped.push({ path, reason: 'non-regular file' }); continue; }
+      const stable = () => {
+        const after = fstatSync(fd, { bigint: true });
+        if (['dev', 'ino', 'size', 'mtimeNs', 'ctimeNs'].some(key => before[key] !== after[key])) throw new Error('Tracked file changed while scanning');
+      };
+      const prefix = Buffer.alloc(Number(before.size < 8192n ? before.size : 8192n));
+      const used = read(fd, prefix, 0, prefix.length, 0);
+      if (prefix.subarray(0, used).includes(0)) { stable(); skipped.push({ path, reason: 'binary' }); continue; }
+      const limit = 32 * 1024 * 1024;
+      if (before.size > BigInt(limit)) throw new Error('Tracked text file exceeds scan limit; no clean scan is claimed');
+      const chunks = []; let position = 0;
+      for (;;) {
+        const chunk = Buffer.alloc(64 * 1024), count = read(fd, chunk, 0, chunk.length, position);
+        if (!count) break;
+        position += count;
+        if (position > limit) throw new Error('Tracked text file exceeds scan limit; no clean scan is claimed');
+        chunks.push(chunk.subarray(0, count));
+      }
+      stable();
+      const bytes = Buffer.concat(chunks);
+      if (bytes.includes(0)) { skipped.push({ path, reason: 'binary' }); continue; }
+      findings.push(...detectTokens(bytes.toString('utf8'), path)); scanned++;
+    } finally { closeSync(fd); }
   }
   return { scanned, skipped, findings };
 }

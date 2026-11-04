@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, symlinkSync, rmSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, symlinkSync, rmSync, mkdirSync, renameSync, openSync, readSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -66,4 +66,30 @@ test('synthetic exceptions require the exact reviewed file and count; new findin
 test('large match sets fail explicitly and many line numbers remain correct', () => {
   assert.throws(() => detectTokens(`Bearer ${token}\n`.repeat(1001)), /Too many/);
   assert.equal(detectTokens('\n'.repeat(10000) + `Bearer ${token}`)[0].line, 10001);
+});
+test('a last-moment symlink replacement cannot redirect a tracked read', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'token-open-race-'));
+  try {
+    writeFileSync(join(dir, 'tracked'), 'safe source');
+    writeFileSync(join(dir, 'outside'), `Bearer ${token}`);
+    const result = scanPaths(dir, ['tracked'], { open: (path, flags) => {
+      renameSync(path, join(dir, 'original'));
+      symlinkSync(join(dir, 'outside'), path);
+      return openSync(path, flags);
+    } });
+    assert.equal(result.scanned, 0); assert.equal(result.findings.length, 0);
+    assert.equal(result.skipped[0].reason, 'symlink; not followed');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+test('same-file content changes during descriptor reads refuse a clean result', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'token-content-race-'));
+  try {
+    const path = join(dir, 'tracked'); writeFileSync(path, 'initial source');
+    let first = true;
+    assert.throws(() => scanPaths(dir, ['tracked'], { read: (...args) => {
+      const count = readSync(...args);
+      if (first) { first = false; writeFileSync(path, `Bearer ${token}`); }
+      return count;
+    } }), /changed while scanning/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

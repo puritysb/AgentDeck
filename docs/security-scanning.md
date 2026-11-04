@@ -97,6 +97,10 @@ bare checksums are not classified as credentials. Bearer/URL matches can belong
 to another product and require review. Values, excerpts and token fingerprints
 are never emitted by this scanner. Binary/symlink omissions are explicit;
 oversized text and unreadable inputs fail instead of reporting a clean scan.
+The scanner requires a host with `O_NOFOLLOW`, opens each path once, verifies
+regular-file status on that descriptor and reads only through that descriptor.
+Content/size/timestamp changes during a read refuse a clean result. Regression
+cases replace a file with a symlink just before open and mutate it during reads.
 
 Two pre-existing native endpoint-identity fixtures have exact file-digest,
 rule and count exceptions in
