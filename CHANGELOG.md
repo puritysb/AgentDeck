@@ -54,7 +54,11 @@ Channel applicability and pending work are tracked in the
 - **Reconnect after changing daemons.** Apple and Android clients retry the selected host after retry exhaustion, retain authentication backoff, and respect an explicit Disconnect. Older Play installations need the forthcoming signed client update. Existing devices with retired approvals can request pairing again instead of disappearing from the approval list.
 - **More reliable local ownership and devices.** Recover uncertain pairing-rotation readback without repeating the rotation; hand foreground Swift custody to the active daemon once. Bound macOS USB registry discovery and repair current BLE requirements before reporting readiness. Launch the installed Mac app independently of test copies.
 - **Security maintenance.** Harden runtime input and transport boundaries, credential handling and retained inbox resources; update reviewed dependencies and require native security scans and fresh CI evidence. Details under coordinated disclosure remain private.
+- **Observed-session control.** Read live cmux workspace/surface titles and deliver supported Claude dictation through a bounded private peer inbox, retaining the selected recipient and reporting correlated delivered/held/refused status. Stream Deck and Ulanzi update the selected VOICE tile; standalone Swift peer inbox support is not included.
+- **Firmware trust and recovery.** Keep each board's endpoint and credential bound across reboot, refuse ambiguous discovery and confirmed authentication failures, and repaint USB re-pair guidance. Installed firmware identity and optical acceptance remain separate checks.
 - **Pixoo64 candidate.** Preserve the bottom usage HUD, give Dot a separate readable Tide slot, route the ordinary scene through its habitat renderer, and make preview follow the configured panel scene. Apple Store builds continue to exclude Dot.
+
+The development Rollup resolver no longer installs unused deepmerge (#725).
 
 The merged [#723](https://github.com/puritysb/AgentDeck/pull/723) re-pair correction is included. The separate local Dot experiment remains under scope review, not a verified delivery. No release delivery is implied by this list.
 

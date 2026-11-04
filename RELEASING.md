@@ -112,6 +112,10 @@ and channel decision is recorded before packaging.
 | Runtime security and CI | Input/transport boundaries, credential custody, retained inbox resources and reviewed dependency updates; native CodeQL and scan freshness checks | [#690](https://github.com/puritysb/AgentDeck/pull/690), [#707](https://github.com/puritysb/AgentDeck/pull/707), [#709](https://github.com/puritysb/AgentDeck/pull/709), [#711](https://github.com/puritysb/AgentDeck/pull/711), [#712](https://github.com/puritysb/AgentDeck/pull/712), [#721](https://github.com/puritysb/AgentDeck/pull/721); includes native key storage and Android credential-backup exclusion; keep private report details private |
 | Pixoo64 | Restore the panel-specific Tide scene on this desk, reserve readable Dot space, preserve the bottom provider usage rows, and preview the selected scene | Candidate branch; verification and deployment evidence recorded with its PR. Dot remains Node/development-preview only; ordinary Apple Store builds exclude Dot |
 | Node / Swift re-pair feedback | Re-pair requests remain visible after an old credential generation is retired | [#723](https://github.com/puritysb/AgentDeck/pull/723), merged and integrated; retired grants still require explicit approval |
+| Node observed sessions | Live cmux workspace/surface titles and receipt-correlated Claude peer dictation, with terminal ownership checks and bounded inbox resources | [#709](https://github.com/puritysb/AgentDeck/pull/709); public package delivery and physical controller acceptance remain on [#544](https://github.com/puritysb/AgentDeck/issues/544) / [#675](https://github.com/puritysb/AgentDeck/issues/675); standalone Swift peer inbox support is not claimed |
+| ESP32 trust and recovery | Persist the selected endpoint and credential together; refuse ambiguous discovery and confirmed authentication failures until trusted provisioning; repaint re-pair guidance | [#709](https://github.com/puritysb/AgentDeck/pull/709) and [#722](https://github.com/puritysb/AgentDeck/pull/722); firmware artifacts and installed builds have separate evidence in [#674](https://github.com/puritysb/AgentDeck/issues/674) |
+| Stream Deck / Ulanzi | Present correlated peer-delivery status and refresh the selected VOICE tile; retain the recipient identity | [#709](https://github.com/puritysb/AgentDeck/pull/709); these are controller source changes since the public 2.0 tags, not host-only changes |
+| Development dependencies | Remove unused deepmerge from the Rollup resolver with an exact-consumer patch and removal override | [#725](https://github.com/puritysb/AgentDeck/pull/725), integrated into the candidate; consumer regressions and the dated removal receipt remain authoritative |
 
 All six immutable 2.0 tags remain the comparison baseline. Store-submission
 metadata fixes (#668–#671), Korean terminology documentation (#706), and security
@@ -123,6 +127,47 @@ ESP32, Stream Deck and Ulanzi receive no cosmetic version bump for changes that
 only affect their host daemon. Re-evaluate channel applicability from the final
 diff before cutting any artifacts. Full release/archive gates and portal build
 floor readback remain required for an actual release.
+
+#### Pre-release disposition — 2026-11-04
+
+The candidate is [#724](https://github.com/puritysb/AgentDeck/pull/724). Its
+November 4 review includes the latest master security dependency correction
+(#725); earlier CI/receipts describe their own heads, not this integration.
+No product version/build manifest has been advanced. The final per-channel
+version decision, exact-head verification and release artifacts remain release
+conditions; the collection name alone does not satisfy them.
+
+| Remaining item | Disposition before delivery | Tracking |
+| --- | --- | --- |
+| Exact candidate checks and review | Run clean full verification after integration; resolve current-head CI and review before source merge. A local ARM64 native run does not replace universal signed archives or hosted Windows acceptance | #724; release workflows and this document's channel procedures |
+| Public corrected clients/packages | Publish only channels with changed executable content. Rebuild each changed controller/firmware channel from its final diff; host-only fixes do not require empty device releases | [#673](https://github.com/puritysb/AgentDeck/issues/673), [#674](https://github.com/puritysb/AgentDeck/issues/674) |
+| Client signing and recovery matrix | Lenovo's Play signer requires the matching Play route; preserve app data. Retain iPhone's explicitly deferred final post-handover check as unverified, alongside its earlier successful dashboard receipt | #673 / #674; no forced uninstall or token rotation to clear a checklist |
+| D200X labels / INFO / VOICE | Public live-title/peer-status delivery and physical recipient acceptance remain pending; automated renderer and receiver tests do not establish the physical result | [#544](https://github.com/puritysb/AgentDeck/issues/544), [#675](https://github.com/puritysb/AgentDeck/issues/675) |
+| E-ink optical measurements | Operator-deferred camera latency/ghosting checks remain open for all three panels. Prior release waivers do not automatically waive this candidate's lab gates | [#551](https://github.com/puritysb/AgentDeck/issues/551) |
+| Private security coordination | Original macOS 2.0 Store delivery condition is met; finish coordination in the private channel separately. Do not publish report details in candidate notes | [#635](https://github.com/puritysb/AgentDeck/issues/635) |
+| Security maintenance | deepmerge removal is complete. Scheduled-scan acceptance, renderer/Rust migrations, custom token-pattern coverage and firmware/dependency inventory retain their recorded owners and deadlines; new actionable advisories take priority | [#713](https://github.com/puritysb/AgentDeck/issues/713); this is not a list of unresolved confirmed vulnerabilities |
+| Native Dot experiment | Preserve `codex/dot-native-local-wip` outside the candidate; it is neither reviewed release scope nor a Store feature | #724; ordinary Apple builds continue to exclude Dot |
+
+The local 67-file staged integration prototype was preserved with its base,
+binary patch, index snapshot and SHA-256 manifest. Forty-eight staged files
+match current master; the remaining differences include older inbox admission,
+teardown, credential binding and repaint behavior superseded by merged fixes.
+They are archived review material, not additional candidate changes to replay.
+The original dirty worktree is retained until its owner can retire it; no shared
+index was reset. The extra #723 verification receipt has an identical preserved
+diagnostics copy. Clean completed branches and missing worktree registrations
+may be retired only after preservation and an active-owner check.
+
+#### Apple delivery evidence — 2026-11-04
+
+The completed [read-only ASC run 41700029816](https://github.com/puritysb/AgentDeck/actions/runs/41700029816)
+observed at **04:09 KST on November 4** reports both **macOS and iOS 2.0.0
+READY_FOR_SALE**, their submissions COMPLETE, and matching **10201** builds
+VALID/unexpired. This supersedes the older macOS waiting-for-review checkpoints
+below. It establishes delivery of the submitted 2.0 artifacts, not inclusion of
+later #709/#721/#722/#723 or this candidate's changes. The remaining condition
+on #635 is private coordination. No new upload or submission was made during
+this review.
 
 ### Native delivery readback 2026-11-03
 
