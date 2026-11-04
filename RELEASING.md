@@ -95,6 +95,34 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### 2.1.0 candidate collection — 2026-11-04
+
+The owner requested **2.1.0** as the next collection bucket. This is an
+unreleased planning label, not a tag, uploaded build or claim of Store delivery.
+The current delta repairs existing 2.0 promises (patch-class changes under the
+policy above); no new minor feature is invented to justify the bucket. Keep
+manifests and consumed Store build numbers unchanged until the final version
+and channel decision is recorded before packaging.
+
+| Scope | Candidate content | Source / boundary |
+| --- | --- | --- |
+| Apple / Android connectivity | Recover the selected host after bounded retries; preserve explicit Disconnect, authentication cooldown and stale-attempt fencing | [#680](https://github.com/puritysb/AgentDeck/pull/680); old installed Play clients still need a correctly signed update |
+| Node / Swift ownership and pairing | Bounded CLI rotation readback; single foreground Swift custody handoff | [#722](https://github.com/puritysb/AgentDeck/pull/722); does not silently approve new devices |
+| Node / Swift device reliability | Bounded macOS USB registry discovery; current BLE dependency installation and installed app identity | [#678](https://github.com/puritysb/AgentDeck/pull/678), [#717](https://github.com/puritysb/AgentDeck/pull/717) |
+| Runtime security and CI | Input/transport boundaries, credential custody, retained inbox resources and reviewed dependency updates; native CodeQL and scan freshness checks | [#690](https://github.com/puritysb/AgentDeck/pull/690), [#707](https://github.com/puritysb/AgentDeck/pull/707), [#709](https://github.com/puritysb/AgentDeck/pull/709), [#711](https://github.com/puritysb/AgentDeck/pull/711), [#712](https://github.com/puritysb/AgentDeck/pull/712); keep private report details private |
+| Pixoo64 | Restore the panel-specific Tide scene on this desk, reserve readable Dot space, preserve the bottom provider usage rows, and preview the selected scene | Candidate branch; verification and deployment evidence recorded with its PR. Dot remains Node/development-preview only; ordinary Apple Store builds exclude Dot |
+| Pending integration | Re-pair requests remain visible after an old credential generation is retired | [#723](https://github.com/puritysb/AgentDeck/pull/723), open at collection; not counted as merged |
+
+All six immutable 2.0 tags remain the comparison baseline. Store-submission
+metadata fixes (#668–#671), Korean terminology documentation (#706), and security
+verification receipts are retained in history rather than presented as newly
+shipped user features. The separate `codex/dot-native-local-wip` experiment is
+preserved outside this candidate; it is not a merged or Store-ready feature.
+ESP32, Stream Deck and Ulanzi receive no cosmetic version bump for changes that
+only affect their host daemon. Re-evaluate channel applicability from the final
+diff before cutting any artifacts. Full release/archive gates and portal build
+floor readback remain required for an actual release.
+
 ### Native delivery readback 2026-11-03
 
 The [read-only ASC run 41560313213](https://github.com/puritysb/AgentDeck/actions/runs/41560313213)

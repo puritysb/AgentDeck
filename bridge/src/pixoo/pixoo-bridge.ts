@@ -1,6 +1,6 @@
 import { PixooBakedRenderer } from './pixoo-baked.js';
 import { PIXOO_LOOP_POLICY as LOOP_POLICY } from './pixoo-loop-policy.generated.js';
-import { paintDotPixels, dotDeckPresentation, type DotDeckSnapshot } from '@agentdeck/shared';
+import { paintDotPixels, TERRARIUM_RULES, DOT_HABITAT_RULES, type DotDeckSnapshot } from '@agentdeck/shared';
 /**
  * Pixoo64 Bridge — safe adaptive HTTP animation driver.
  *
@@ -32,8 +32,8 @@ import {
   type TimelineEntry,
 } from '@agentdeck/shared';
 import { pushFrame, pushFrames, setBrightness, clearText, getDeviceBackoffStatus, switchToCustomChannel, onDeviceStatusChange, stopProbeTimer, checkDeviceContent } from './pixoo-client.js';
-import { renderFrame, renderDisconnectedFrame, formatResetDetailed, PIXOO_LOOP } from './pixoo-renderer.js';
-import { renderTideLoop, TIDE_LOOP, tideSignature, tideDecision, TIDE_POLICY, type TideUploadRecord } from './pixoo-tide.js';
+import { renderFrame, renderDisconnectedFrame, formatResetDetailed, PIXOO_LOOP, getUsageProviderCount } from './pixoo-renderer.js';
+import { renderTideFrame, renderTideLoop, TIDE_LOOP, tideSignature, tideDecision, TIDE_POLICY, type TideUploadRecord } from './pixoo-tide.js';
 import { isToolEventRow } from '../board-timeline-entry.js';
 import { debug } from '../logger.js';
 
@@ -498,8 +498,7 @@ function doStateCheckAndPush(): void {
   const bakedSignature = devices.some(d => d.animation === 'loop')
     ? bakedRenderer.signature({ state: lastStateEvent, usage: lastUsageEvent, sessions: lastSessions, nowMs: now, subagents: currentSubagentActivity(now) }) ?? 'invalid-baked-input' : '';
   const tideSig = devices.some(pixooTideEnabled)
-    ? (() => { const signature = tideSignature(lastStateEvent, lastUsageEvent, lastSessions);
-      return { ...signature, hud: signature.hud + "|" + (lastDot?.configured ? dotDeckPresentation(lastDot, now).label + "|" + (lastDot.appearance?.id ?? "") : "") }; })() : null;
+    ? tideSignature(lastStateEvent, lastUsageEvent, lastSessions, lastDot, now) : null;
   const due = devices.flatMap(dev => {
     if (tideSig && pixooTideEnabled(dev)) {
       const decision = tideDecision(
@@ -538,7 +537,7 @@ function doStateCheckAndPush(): void {
           if (content !== 'stale') return;
         }
         const frames = mode === 'tide'
-          ? renderTideLoop(lastStateEvent, lastUsageEvent, lastSessions, now)
+          ? renderTideLoop(lastStateEvent, lastUsageEvent, lastSessions, now, lastDot)
           : dev.animation === 'loop'
             ? bakedRenderer.render({ state: lastStateEvent, usage: lastUsageEvent, sessions: lastSessions, nowMs: now, subagents: currentSubagentActivity(now), loop: mode === 'loop' })
             : [renderFrame(
@@ -549,8 +548,11 @@ function doStateCheckAndPush(): void {
               64,
               'standard',
               currentSubagentActivity(now),
+              { dot: lastDot },
             )];
-        for (const frame of frames) paintDotPixels(frame, 64, lastDot, now);
+        // The ordinary and Tide renderers own Dot placement. The fixed baked
+        // profile intentionally excludes Dot; only that path needs an overlay.
+        if (dev.animation === 'loop') for (const frame of frames) paintBakedDot(frame, now);
         const count = frames.length;
         const speed = mode === 'tide' ? TIDE_LOOP.picSpeedMs : count > 1 ? PIXOO_LOOP.picSpeedMs : 1000;
         const epoch = displayEpoch;
@@ -580,6 +582,12 @@ function doStateCheckAndPush(): void {
   }
 }
 
+function paintBakedDot(frame: Uint8Array, now: number): Uint8Array {
+  const bottom = 64 - getUsageProviderCount(lastUsageEvent) * TERRARIUM_RULES.pixooUsageRowHeight;
+  return paintDotPixels(frame, 64, lastDot, now, { x: 64 * DOT_HABITAT_RULES.homeX,
+    y: Math.min(64 * DOT_HABITAT_RULES.homeY, bottom - 3) });
+}
+
 /**
  * Render a fresh frame using current cached state.
  * Used by the live preview endpoint when no Pixoo device is connected.
@@ -587,6 +595,10 @@ function doStateCheckAndPush(): void {
 export function renderPreviewFrame(size?: 11 | 32 | 64, layout: 'standard' | 'micro' = 'standard'): Uint8Array {
   if (size === 11 || size === 32) return renderMatrixScene(size, matrixExpression.scene(Date.now()));
   const now = Date.now();
+  // With no explicit alternate layout, preview the configured device scene.
+  if (layout === 'standard' && devices[0]?.animation === 'tide')
+    return renderTideFrame(lastStateEvent, lastUsageEvent, lastSessions, now,
+      Math.floor(now / TIDE_LOOP.picSpeedMs), lastDot);
   const frame = renderFrame(
     lastStateEvent,
     lastUsageEvent,
@@ -595,8 +607,9 @@ export function renderPreviewFrame(size?: 11 | 32 | 64, layout: 'standard' | 'mi
     size,
     layout,
     currentSubagentActivity(now),
+    { dot: lastDot },
   );
-  return paintDotPixels(frame, 64, lastDot, now);
+  return frame;
 }
 
 /**

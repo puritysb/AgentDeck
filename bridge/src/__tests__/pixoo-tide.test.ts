@@ -5,7 +5,7 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
-  TIDE_LOOP, TIDE_POLICY, renderTideFrame, renderTideLoop, resolveTideMarks, tideDecision, tideSignature,
+  TIDE_LOOP, TIDE_POLICY, renderTideFrame, renderTideLoop, resolveTideMarks, tideDecision, tideSignature, tideComposition,
 } from '../pixoo/pixoo-tide.js';
 import { PIXOO_MAX_ANIMATION_FRAMES } from '../pixoo/pixoo-client.js';
 import {
@@ -14,6 +14,7 @@ import {
 } from '../pixoo/pixoo-bridge.js';
 import type { StateUpdateEvent, UsageEvent } from '../types.js';
 import type { SessionInfo } from '@agentdeck/shared/protocol';
+import { TERRARIUM_RULES, UI } from '@agentdeck/shared';
 
 const state = (s: string, extra: Record<string, unknown> = {}) =>
   ({ type: 'state_update', state: s, ...extra }) as unknown as StateUpdateEvent;
@@ -199,7 +200,7 @@ describe('tide frame digests (shared with the Swift daemon)', () => {
       sess('a', 'claude-code', 'awaiting_option'), sess('b', 'codex-cli', 'processing'), sess('c', 'opencode', 'idle'),
       sess('d', 'kiro-cli', 'idle'), sess('e', 'antigravity', 'idle'),
     ])).toEqual([
-      'ce012f11674a2f5a', '8c946089abbad979', '40fc2cafa7507dec', '751c59863b57e79b', 'df6317eb87be52f7', '712f340a76381e38',
+      '500d561f5760f63f', 'a1b2b42b81c9143e', '60503215ea2ead24', 'f974267dfbb0b01b', 'b5c28ebc8c7ed7c9', 'df192aee5af166a3',
     ]);
     expect(digests(null, null, [
       sess('a', 'hermes', 'processing'), sess('b', 'antigravity', 'awaiting_permission'), sess('c', 'kiro-cli', 'idle'),
@@ -238,5 +239,72 @@ describe('tide signature', () => {
     const a = tideSignature(null, null, sessions);
     const b = tideSignature(null, null, [session('a', 'claude-code', 'awaiting_option'), sessions[1]]);
     expect(b.scene).not.toBe(a.scene);
+  });
+});
+
+
+describe('Tide companion owns space above the usage HUD', () => {
+  const dot = { configured: true, authorized: true, hosting: true,
+    reportState: 'working' as const, reportedAt: NOW, expiresAt: NOW + 60_000 };
+  const peers = ['claude-code', 'codex-cli', 'kiro-cli', 'opencode'].map((a, i) => session(String(i), a, 'processing'));
+
+  it('reserves one independent Dot slot without claiming an extra session', () => {
+    const resolved = tideComposition(null, peers, dot);
+    expect(resolved.reserved).toBe(1);
+    expect(resolved.marks.map(m => m.id)).toEqual(['0', '1', '2']);
+    expect(resolved.overflow).toBe(1);
+    expect(resolved.layout.xs).toHaveLength(4);
+    expect(tideComposition(null, [], dot).overflow).toBe(0);
+    expect(tideComposition(null, peers, null).overflow).toBe(0);
+  });
+
+  it('preserves every bottom HUD byte with 1, 2 and 3 providers, and closes the loop', () => {
+    const usages = [usage(40, 10),
+      { ...usage(40, 10), codexRateLimits: { primary: { usedPercent: 30 } } },
+      { ...usage(40, 10), codexRateLimits: { primary: { usedPercent: 30 } }, zaiRateLimits: { primary: { usedPercent: 50 } } }];
+    for (const [i, u] of usages.entries()) {
+      const bottom = (64 - (i + 1) * TERRARIUM_RULES.pixooUsageRowHeight) * 64 * 3;
+      for (let t = 0; t < TIDE_LOOP.frames; t++) {
+        const plain = renderTideFrame(null, u as UsageEvent, peers, NOW, t);
+        const withDot = renderTideFrame(null, u as UsageEvent, peers, NOW, t, dot);
+        expect(withDot.slice(bottom)).toEqual(plain.slice(bottom));
+        expect(withDot).not.toEqual(plain);
+      }
+    }
+    expect(renderTideFrame(null, null, peers, NOW, TIDE_LOOP.frames, dot))
+      .toEqual(renderTideFrame(null, null, peers, NOW, 0, dot));
+  });
+
+  it('draws a readable DOT caption and an attention punctuation cue', () => {
+    const working = renderTideFrame(null, null, [], NOW, 0, dot);
+    const needsYou = renderTideFrame(null, null, [], NOW, 0, { ...dot, reportState: 'needs_attention' });
+    expect(working).not.toEqual(needsYou);
+    // Caption is not silently dropped by the original numeric-only HUD font.
+    let letters = 0;
+    const color = [1, 3, 5].map(i => parseInt(UI.cyan.slice(i, i + 2), 16));
+    for (let y = 42; y < 47; y++) for (let x = 26; x < 37; x++) {
+      const p = (y * 64 + x) * 3;
+      if (working[p] === color[0] && working[p + 1] === color[1] && working[p + 2] === color[2]) letters++;
+    }
+    expect(letters).toBeGreaterThan(15);
+  });
+
+  it('matches the Swift DotPreview frame digests', () => {
+    const now = 1_900_000_000_000;
+    const sessions = ['claude-code', 'codex-cli', 'kiro-cli', 'opencode']
+      .map((type, i) => session('abcd'[i], type, i === 0 ? 'processing' : 'idle'));
+    const frames = renderTideLoop(null, { type: 'usage_update', fiveHourPercent: 40, sevenDayPercent: 10 } as UsageEvent,
+      sessions, now, { ...dot, reportState: 'needs_attention', reportedAt: now, expiresAt: now + 60_000 });
+    expect(frames.map(f => createHash('sha256').update(f).digest('hex').slice(0, 16))).toEqual(['96df8232c200eeb1', '4d374c019f327afe', 'e13f16324ae1e6b5', '414321d4e4a25c37', '194658d131cbf545', '9eba7d1dbe3a54c4']);
+  });
+
+  it('treats a Dot report/expiry as a scene change, not a five-minute HUD update', () => {
+    const a = tideSignature(null, null, peers, dot, NOW);
+    const b = tideSignature(null, null, peers, { ...dot, reportState: 'needs_attention' }, NOW);
+    const c = tideSignature(null, null, peers, dot, NOW + 60_000);
+    expect(a.scene).not.toBe(b.scene);
+    expect(a.scene).not.toBe(c.scene);
+    expect(a.hud).toBe(b.hud);
+    expect(tideDecision(b, { sig: a, at: NOW }, NOW, 0, NOW + TIDE_POLICY.sceneFloorMs)).toBe('upload');
   });
 });

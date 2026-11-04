@@ -1,3 +1,4 @@
+import { PIXOO_LOOP_POLICY as P } from './pixoo-loop-policy.generated.js';
 import { paintOfficialFeatures } from './official-features.js';
 /**
  * Pixoo64 Creature Sprites + Environment — pixel art for 64×64 LED matrix.
@@ -1643,7 +1644,7 @@ export function drawText(
   let cursorX = rightX;
   // Render right-to-left
   for (let ci = text.length - 1; ci >= 0; ci--) {
-    const glyph = PIXEL_FONT[text[ci]];
+    const glyph = PIXEL_FONT[text[ci]] ?? P.tideGlyphRows[(P.tideGlyphCodes as readonly number[]).indexOf(text.charCodeAt(ci))];
     if (!glyph) { cursorX -= 2; continue; } // unknown char = 1px gap
     cursorX -= 3; // glyph width
     for (let row = 0; row < 5; row++) {
@@ -1673,12 +1674,12 @@ export function drawGaugeBar(
 }
 
 /** Static shell state at a fixed home. No invented activity or extra frame clock. */
-export function drawHermesShell(buf: Uint8Array, worldX: number, worldY: number, active: boolean, camera: Camera, scale: number): void {
+export function drawHermesShell(buf: Uint8Array, worldX: number, worldY: number, active: boolean, camera: Camera, scale: number, color: RGB = COLORS.white): void {
   const [x,y] = worldToScreen(worldX,worldY,camera);
   const rows = active ? TERRARIUM_RULES.hermesShellPixels.open : TERRARIUM_RULES.hermesShellPixels.closed;
   const pixel = Math.max(1, Math.round(camera.zoom * scale));
   for (let j=0;j<rows.length;j++) for (let i=0;i<rows[j].length;i++) if(rows[j][i]==='#') {
     for(let dy=0;dy<pixel;dy++) for(let dx=0;dx<pixel;dx++)
-      setPixel(buf,Math.round(x)+(i-3)*pixel+dx,Math.round(y)+(j-rows.length+1)*pixel+dy,COLORS.white);
+      setPixel(buf,Math.round(x)+(i-3)*pixel+dx,Math.round(y)+(j-rows.length+1)*pixel+dy,color);
   }
 }

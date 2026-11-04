@@ -3,7 +3,7 @@ import { backgroundCount, BACKGROUND_PRESENTATION, UI } from '@agentdeck/shared'
 import { paintDotPixels, dotDeckPresentation, type DotDeckSnapshot } from '@agentdeck/shared';
 import { paintOfficialFeatures } from './official-features.js';
 import { usageRgb } from '@agentdeck/shared';
-import { DOT_HABITAT_RULES, TERRARIUM_RULES, ciCompanionSeed } from '@agentdeck/shared';
+import { DOT_APPEARANCE_RULES, DOT_HABITAT_RULES, TERRARIUM_RULES, ciCompanionSeed } from '@agentdeck/shared';
 /**
  * Pixoo64 Frame Renderer — camera-based animated terrarium.
  *
@@ -1703,14 +1703,16 @@ export function renderFrame(
   }
 
   const shellPeers=[...creatureInstances.values()].filter(c=>c.creatureType==='hermes');
+  const dotColor = options.dot?.configured ? dotDeckPresentation(options.dot, options.cueNowMs ?? timeOverrideMs ?? Date.now()).color : null;
+  const shellColor: RGB = dotColor ? [parseInt(dotColor.slice(1, 3), 16), parseInt(dotColor.slice(3, 5), 16), parseInt(dotColor.slice(5, 7), 16)] : COLORS.white;
   const pearlOut=options.dot?.configured && ['AWAITING ACTIVITY','WORKING','NEEDS YOU','COMPLETED','FAILED'].includes(dotDeckPresentation(options.dot,options.cueNowMs ?? timeOverrideMs ?? Date.now()).label);
   if(shellPeers.length || options.dot?.configured) drawHermesShell(outputBuf,TERRARIUM_RULES.hermesHome.canvasX,Math.min(TERRARIUM_RULES.hermesHome.canvasY,(W-hudProviderCount*TERRARIUM_RULES.pixooUsageRowHeight-3)/W),
-    !!pearlOut || shellPeers.some(c=>c.state!=='idle'),camera,1);
+    !!pearlOut || shellPeers.some(c=>c.state!=='idle'),camera,1,shellColor);
   // Dot shares the world projection and creature band; the HUD retains its own pixels.
   const dotY=Math.min(DOT_HABITAT_RULES.homeY,(W-hudProviderCount*TERRARIUM_RULES.pixooUsageRowHeight-3)/W);
   const [dotX,dotHomeY]=worldToScreen(DOT_HABITAT_RULES.homeX,dotY,camera);
   paintDotPixels(outputBuf,size,options.dot,options.cueNowMs ?? timeOverrideMs ?? Date.now(),
-    {x:dotX,y:dotHomeY,size:Math.max(7,Math.round(10*camera.zoom)),shell:false});
+    {x:dotX,y:dotHomeY,size:Math.min(DOT_APPEARANCE_RULES.glyphSize,Math.max(7,Math.round(10*camera.zoom))),shell:false});
   // Usage HUD (bottom-right, screen-space)
   drawUsageHUD(outputBuf, usageEvent, animFrame);
 

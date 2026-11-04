@@ -41,6 +41,27 @@ final class PixooTideTests: XCTestCase {
         renderer.renderTideLoop(dashboardState: built.state, marks: built.marks, nowMs: nowMs)
     }
 
+    #if AGENTDECK_DOT_PREVIEW
+    func testDotReservesAStageSlotAndKeepsUsagePixels() {
+        let peers = [payload("a", "claude-code", "processing"), payload("b", "codex-cli", "idle"),
+                     payload("c", "kiro-cli", "idle"), payload("d", "opencode", "idle")]
+        var built = scene(peers, fiveHour: 40, sevenDay: 10)
+        let plain = frames(built)
+        built.state.dot = DotSurfaceSnapshot(configured: true, hosting: true, authorized: true,
+            reportState: "needs_attention", reportedAt: Int(nowMs), expiresAt: Int(nowMs) + 60_000)
+        let withDot = frames(built)
+        // Pinned in the Node Tide suite too: companion, caption, overflow and HUD.
+        XCTAssertEqual(withDot.map(digest), ["96df8232c200eeb1", "4d374c019f327afe", "e13f16324ae1e6b5", "414321d4e4a25c37", "194658d131cbf545", "9eba7d1dbe3a54c4"])
+        let bottom = (64 - TerrariumRules.pixooUsageRowHeight) * 64 * 3
+        for (a, b) in zip(plain, withDot) {
+            XCTAssertNotEqual(a, b)
+            XCTAssertEqual(a.suffix(from: bottom), b.suffix(from: bottom))
+        }
+        XCTAssertEqual(withDot[0], renderer.renderTideFrame(dashboardState: built.state,
+            marks: built.marks, nowMs: nowMs, tick: PixooTide.frames))
+    }
+    #endif
+
     private func digest(_ frame: Data) -> String {
         SHA256.hash(data: frame).map { String(format: "%02x", $0) }.joined().prefix(16).description
     }
@@ -65,7 +86,7 @@ final class PixooTideTests: XCTestCase {
                 payload("a", "claude-code", "awaiting_option"), payload("b", "codex-cli", "processing"), payload("c", "opencode", "idle"),
                 payload("d", "kiro-cli", "idle"), payload("e", "antigravity", "idle"),
             ], fiveHour: 80, sevenDay: 55), [
-                "ce012f11674a2f5a", "8c946089abbad979", "40fc2cafa7507dec", "751c59863b57e79b", "df6317eb87be52f7", "712f340a76381e38",
+                "500d561f5760f63f", "a1b2b42b81c9143e", "60503215ea2ead24", "f974267dfbb0b01b", "b5c28ebc8c7ed7c9", "df192aee5af166a3",
             ]),
             ("trio", scene([
                 payload("a", "hermes", "processing"), payload("b", "antigravity", "awaiting_permission"), payload("c", "kiro-cli", "idle"),

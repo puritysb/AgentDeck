@@ -655,12 +655,19 @@ final class PixooRenderer {
             shellPresent = shellPresent || dashboardState.dot?.configured == true
             shellActive = shellActive || dashboardState.dot?.inhabitsHabitat(at:Int(nowMs)) == true
             #endif
-            if shellPresent { drawHermesShell(&output,worldX:Double(TerrariumRules.hermesHomeCanvasX),worldY:min(Double(TerrariumRules.hermesHomeCanvasY),Double(Self.width-hudCount*TerrariumRules.pixooUsageRowHeight-3)/Double(Self.width)),active:shellActive,camera:camera,sizeScale:1) }
+            var shellColor = Self.colors.white
+            #if AGENTDECK_DOT_PREVIEW
+            if let dot = dashboardState.dot, dot.configured {
+                let rgb = DotPixelOverlay.colors[dot.phase(at: Int(nowMs))]
+                shellColor = (rgb[0], rgb[1], rgb[2])
+            }
+            #endif
+            if shellPresent { drawHermesShell(&output,worldX:Double(TerrariumRules.hermesHomeCanvasX),worldY:min(Double(TerrariumRules.hermesHomeCanvasY),Double(Self.width-hudCount*TerrariumRules.pixooUsageRowHeight-3)/Double(Self.width)),active:shellActive,camera:camera,sizeScale:1,color:shellColor) }
             #if AGENTDECK_DOT_PREVIEW
             let dotY=min(DotHabitatRules.homeY,Double(Self.width-hudCount*TerrariumRules.pixooUsageRowHeight-3)/Double(Self.width))
             let (dotX,dotHomeY)=worldToScreen(DotHabitatRules.homeX,dotY,camera)
             output=[UInt8](DotPixelOverlay.paint(Data(output),width:64,dot:dashboardState.dot,now:Int(nowMs)+i*intervalMs,
-                anchorX:Int(dotX.rounded()),anchorY:Int(dotHomeY.rounded()),bodySize:max(7,Int((10*camera.zoom).rounded())),shell:false))
+                anchorX:Int(dotX.rounded()),anchorY:Int(dotHomeY.rounded()),bodySize:min(DotAppearanceRules.glyphSize,max(7,Int((10*camera.zoom).rounded()))),shell:false))
             #endif
             drawUsageHUD(&output, dashboardState: dashboardState, animFrame: animFrame)
             var ciAnchors = creatureOrder.compactMap { id -> CiCueAnchor? in
@@ -1620,7 +1627,7 @@ final class PixooRenderer {
 
     /// Canonical dot-matrix mark generated from design/brand/*.svg.
     /// Geometry is shared with the Node renderer; state only changes motion/color.
-    private func drawHermesShell(_ buf: inout [UInt8], worldX: Double, worldY: Double, active: Bool, camera: Camera, sizeScale: Double) {
+    private func drawHermesShell(_ buf: inout [UInt8], worldX: Double, worldY: Double, active: Bool, camera: Camera, sizeScale: Double, color: RGB? = nil) {
         let (scx,scy) = worldToScreen(worldX, worldY, camera)
         let rows = active ? TerrariumRules.hermesShellOpen : TerrariumRules.hermesShellClosed
         let pixel = max(1, Int(round(camera.zoom * sizeScale)))
@@ -1628,7 +1635,7 @@ final class PixooRenderer {
             for (i,char) in row.enumerated() where char == "#" {
                 for dy in 0..<pixel { for dx in 0..<pixel {
                     setPixel(&buf, Int(round(scx))+(i-3)*pixel+dx,
-                        Int(round(scy))+(j-rows.count+1)*pixel+dy, Self.colors.white)
+                        Int(round(scy))+(j-rows.count+1)*pixel+dy, color ?? Self.colors.white)
                 } }
             }
         }
@@ -2300,7 +2307,10 @@ final class PixooRenderer {
     func drawText(_ buf: inout [UInt8], text: String, rightX: Int, y: Int, color: RGB) {
         var cursorX = rightX
         for ch in text.reversed() {
-            guard let glyph = Self.pixelFont[ch] else {
+            let fallback = ch.unicodeScalars.first.flatMap { scalar in
+                PixooLoopPolicy.tideGlyphCodes.firstIndex(of: Int(scalar.value))
+            }.map { PixooLoopPolicy.tideGlyphRows[$0].map { UInt8($0) } }
+            guard let glyph = Self.pixelFont[ch] ?? fallback else {
                 cursorX -= 2
                 continue
             }
