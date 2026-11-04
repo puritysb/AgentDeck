@@ -1,0 +1,57 @@
+{
+  "capturedAt": "2026-11-04T01:25:50.744Z",
+  "commit": "5ab694b7ab3d5bf99b2954665fd65e3c480c2496",
+  "lockfileSha256": "9f8457225541efc5c4b75d062dc6c8886648d572b504f3c21b887b2bfdfeea00",
+  "policySha256": "584e697cce0eb005ea6f0037f5757f418c6cad912bcca8f486ed97c7cdfa7fe1",
+  "scopes": {
+    "all": {
+      "counts": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0
+      },
+      "findings": [],
+      "blocked": false
+    },
+    "production": {
+      "counts": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0
+      },
+      "findings": [],
+      "blocked": false
+    }
+  },
+  "kind": "dependency-removal",
+  "advisory": "GHSA-gcqx-w48m-w2h4",
+  "dependabotAlert": "https://github.com/puritysb/AgentDeck/security/dependabot/65",
+  "dependencyPath": [
+    "@agentdeck/plugin (devDependency)",
+    "@rollup/plugin-node-resolve@16.0.3",
+    "deepmerge@4.3.1 (removed)"
+  ],
+  "implementation": {
+    "operation": "Replace the sole static DEFAULTS clone with structuredClone in CJS and ESM; remove the now-unused exact-consumer dependency edge.",
+    "patch": "patches/@rollup__plugin-node-resolve@16.0.3.patch",
+    "patchSha256": "de15058617ad1af4d664a03e8ecb1f9c404d110832d4639a7619e12f8f675fff",
+    "removedMitigation": "patches/deepmerge@4.3.1.patch"
+  },
+  "verification": {
+    "frozenInstall": "passed",
+    "installedDeepmergePaths": [],
+    "resolverRegression": "5 tests passed, including both CJS/ESM Node exports, CommonJS bundling and built-in import",
+    "quick": "All required quick steps passed across initial run and environment-corrected rerun; 7,577 tests passed, 42 platform skips. macOS Keychain E2E remained opt-in; hosted Linux gate required.",
+    "githubAlertState": "pending default-branch dependency-graph readback",
+    "initialEnvironmentFailure": "Initial ignore-scripts install omitted SQLite native binding; default macOS Bash 3 could not run associative-array design lint. Executed allowed native install and reran only failed Vitest/design-lint steps with Homebrew Bash; both passed."
+  },
+  "limits": [
+    "No installed plugin or product release updated.",
+    "Zero npm advisory matches do not prove absence of all vulnerabilities."
+  ],
+  "sourceState": "Working-tree candidate based on commit above; audit binds exact lockfile SHA-256 and patch SHA-256."
+}

@@ -1,0 +1,37 @@
+--- a/dist/cjs/index.js
++++ b/dist/cjs/index.js
+@@ -4,7 +4,6 @@
+ 
+ var path = require('path');
+ var module$1 = require('module');
+-var deepMerge = require('deepmerge');
+ var isModule = require('is-module');
+ var fs = require('fs');
+ var util = require('util');
+@@ -1080,7 +1079,7 @@
+ };
+ const nodeImportPrefix = /^node:/;
+ 
+-const DEFAULTS = deepFreeze(deepMerge({}, defaults));
++const DEFAULTS = deepFreeze(structuredClone(defaults));
+ 
+ function nodeResolve(opts = {}) {
+   const { warnings } = handleDeprecatedOptions(opts);
+--- a/dist/es/index.js
++++ b/dist/es/index.js
+@@ -1,6 +1,5 @@
+ import path, { dirname, resolve, extname, normalize, sep } from 'path';
+ import { builtinModules } from 'module';
+-import deepMerge from 'deepmerge';
+ import isModule from 'is-module';
+ import fs, { realpathSync } from 'fs';
+ import { promisify } from 'util';
+@@ -1076,7 +1075,7 @@
+ };
+ const nodeImportPrefix = /^node:/;
+ 
+-const DEFAULTS = deepFreeze(deepMerge({}, defaults));
++const DEFAULTS = deepFreeze(structuredClone(defaults));
+ 
+ function nodeResolve(opts = {}) {
+   const { warnings } = handleDeprecatedOptions(opts);
