@@ -269,11 +269,11 @@ stuck execution and unavailable GitHub evidence fail the checker. Receipts and
 summaries are retained for 30 days. The watchdog cannot guarantee delivery by
 GitHub's scheduler; PR/push/manual runs supply additional detection points.
 
-Hosted Kotlin CodeQL run 41628618438 and freshness run 41628618531 succeeded.
+Initial promotion: Kotlin CodeQL run 41628618438 and freshness run 41628618531 succeeded.
 Their exact check contexts were added to master protection with the existing
 eleven checks preserved (13 total), strict up-to-date checks and administrator
-enforcement retained. Readback verified the applied list. Swift remains gated
-on completed hosted extraction before promotion.
+enforcement retained. Readback verified that intermediate list. Swift was
+left unrequired pending hosted validation; the completed follow-up is below.
 
 ## Per-alert response ledger (November 3 follow-up)
 
@@ -296,11 +296,127 @@ does not establish complete framework/SDK resolution or advisory coverage.
 that gap and deferred major migrations for November 17 review; existing Rust
 maintenance exceptions expire December 1. No Snyk integration is claimed.
 
-At this checkpoint, the candidate npm audit has zero production matches and one
+At the initial ledger snapshot, the candidate npm audit had zero production matches and one
 low development-only deepmerge version match with a tested local mitigation.
-Android's compatible OkHttp 4.12.1 security backport is being validated separately
-from the proposed 5.x migration. Native CodeQL Kotlin analysis passed; completed
-Swift hosted extraction and the first scheduled event remain to be verified.
+The compatible OkHttp 4.12.1 backport was then being validated separately from
+the 5.x proposal. Kotlin analysis had passed, while Swift extraction and the
+first scheduled event were unverified. The completed follow-up is below.
 The freshness watchdog's hosted check passed; manual and push runs do not prove
 a cron event occurred. Product release and physical device acceptance remain
 separate delivery work.
+
+### Resolved Android runtime follow-up
+
+The [dated Android receipt](../security/reports/2026-11-03-android-runtime.json)
+resolves both runtime classpaths offline, explicitly rejects unresolved graph
+edges and excludes project components. The 136 unique external Maven
+coordinates had no OSV matches. A known-vulnerable Guava version produced three
+advisories as a control, while the earlier OkHttp 4.12.0 still produced none at
+that checkpoint. Upstream release-note review independently identified the
+certificate backport; the database result does not remove that requirement.
+AAR-internal native code and OS/device versions remain outside this scope.
+CI automation of the dated collection remains assigned in #713.
+
+The [readable manual-closure list](../security/reports/2026-11-03-review-closures.md)
+contains the exact alert IDs and source reasons from the review ledger. It is
+a proposal awaiting approval, not a completed dismissal record. Reconcile
+GitHub state again after master analysis before acting on that list.
+
+Final source-head verification at `1083235e`: quick checks passed with 7,561
+tests and 42 skips. Local macOS Debug passed 1,516 cases with five skips; the
+optimized preview suite passed 1,536 cases with 12 skips, both with zero
+failures. macOS universal Release and both iOS configurations built. The
+preliminary universal build failure was a missing Intel Rust standard library;
+a checksum-verified temporary 1.90.0 toolchain supplied the missing target.
+The original sandbox/target failures remain distinct from the permitted passes.
+
+Both Swift target analyses in run 41634861851 completed successfully on head
+`1083235e`; the iOS analysis uploaded at 12:54 UTC. Kotlin and all five existing
+language jobs also passed. All eight exact analysis checks are now required,
+with the previous thirteen checks preserved (15 total). Readback verified the
+list and strict up-to-date policy. The default-branch inventory must still be
+read after merge; a PR result does not substitute for that inventory.
+
+### Master reconciliation after #712
+
+The [post-merge checkpoint](../security/reports/2026-11-03-master-response.json)
+records 77 of the 266 baseline fingerprints marked fixed, three individually
+dismissed and 186 still open on `05a9bef6`. Six of the original 185 manual
+proposals were automatically marked fixed after source changes, so they are
+removed from the current proposal list. Two reviewed intentional/custom-limiter
+paths and the new SSE fingerprint #302 are included; the current manual proposal
+contained 182 open IDs at that checkpoint. No bulk dismissal was performed.
+
+Five remaining OTLP dynamic-write findings receive a Map container follow-up.
+The earlier null-prototype object and reserved-name checks mitigate pollution,
+but Maps make arbitrary keys data throughout resource/span merging and lookup.
+Actual parser tests preserve malicious-name handling and span/resource
+precedence. Quick checks passed with 7,562 tests and 42 skips. Default-branch
+scanner closure of those five candidates remains to be read after merge.
+Native master analysis is tracked separately from the completed eight-category
+PR analysis; the checkpoint retains each job's actual state.
+
+### First full native inventory
+
+The first full master Android/iOS analyses on `05a9bef6` produced nine additional
+fingerprints, despite zero PR-diff results. The [native response ledger](../security/reports/2026-11-03-native-response.json)
+records each finding separately. #721 disables credential-bearing Android backup
+and device transfer, projects connection logs to host/port, pins two wake commands
+to `/system/bin/input`, and removes Apple judge-key persistence in UserDefaults.
+Shipped Apple apps use device-local Keychain storage with acknowledged migration
+and no plaintext fallback; unsandboxed developer profiles retain the private Node
+CLI JSON contract. See [the APME credential contract](apme.md#remote-judge-api-key-storage).
+
+Four native findings receive an individual policy review: the verified,
+user-confirmed APK updater and three certificate-pinning queries. Their ledger
+records existing signer/hash/version checks, standard TLS verification,
+self-hosted endpoints and plain-LAN confidentiality limits. They remain open;
+the manual proposal grew to 186 IDs including these four. No review decision is
+counted as a source fix. Actual native reanalysis and installed/OEM acceptance
+remain separate evidence.
+
+The completed macOS full analysis then added #312/#313, both evaluating a fixed, generated
+Pixoo bundle script. Production never accepts a peer-provided
+script; bounded JSON is passed as function arguments without source interpolation.
+The injected-source seam belongs to a standalone test fixture. These two reviewed
+findings remain open too, bringing the proposal at that checkpoint to **188 IDs**.
+All eight full master categories completed successfully in run 41642410793;
+completion and zero findings are different assertions.
+
+Actual scheduled events were subsequently observed: dependency scan
+[41625000788](https://github.com/puritysb/AgentDeck/actions/runs/41625000788) and
+five-language CodeQL
+[41626812174](https://github.com/puritysb/AgentDeck/actions/runs/41626812174)
+completed successfully on earlier head `a37e87ab`. These prove the existing cron
+triggers ran, not latest-source acceptance or native-category cron coverage.
+The hourly health workflow's first scheduled event remains unobserved; its
+push/PR checks and deterministic freshness-policy regressions are separate.
+
+The final APME harness review also separates hosted tests from development-file
+fallbacks. An inert preferences profile does not read a legacy key; hosted
+provider lookups ignore inherited paid API keys and require an explicit temporary
+profile directory. Regression fixtures exercise both refusal and the permitted
+temporary-profile path without reading a real credential. This narrows the
+isolation claim to the APME paths covered by the tests.
+
+### Superseded PR runs
+
+CI, Apple Tests and CodeQL share a workflow-specific PR-number concurrency
+policy: a newer commit cancels an older run for that PR. Required checks still
+apply to the latest commit. Master pushes, scheduled events and manual runs use
+unique run groups so a PR update cannot cancel those audits. Cancelled results
+are preserved as cancelled, never counted as a successful scan. This addresses
+the observed queue of obsolete native builds during remediation.
+
+The Node test setup now directs module home lookups to a temporary home and
+seeds its default auth directory with a synthetic token. Temporary explicit
+HOME fixtures remain supported for legacy migration scenarios. This prevents
+an empty test data directory from importing a real legacy credential state;
+the fixture also verifies authoritative retirement inheritance. This is a
+module/fixture boundary, not a disposable OS sandbox for every subprocess.
+
+The dated proposal files preserve their observed master commit. Before approving
+manual closures, compare the exact still-open set with the latest master results
+in [#713](https://github.com/puritysb/AgentDeck/issues/713). Automatically fixed
+fingerprints leave that approval set; historical fixed/dismissed/open counts keep
+their original analysis scope and capture time.

@@ -158,6 +158,19 @@ describe('data-dir resolution', () => {
       expect(mod.getOrCreateToken()).toBe(TOKEN_A);
       // …and carries it into the new dir, so later reads are self-contained.
       expect(readFileSync(join(dir, 'auth-token'), 'utf-8').trim()).toBe(TOKEN_A);
+
+      // A fresh custom profile must also inherit an authoritative retirement
+      // from this explicit fixture, while ordinary tests use an empty fake home.
+      const retired = { version: 1, revision: 3, eventId: '1'.repeat(32), token: TOKEN_A, accepted: [] };
+      writeFileSync(join(fakeHome, '.agentdeck', 'auth-credentials.json'), JSON.stringify(retired), { mode: 0o600 });
+      const freshProfile = join(dir, 'fresh');
+      mkdirSync(freshProfile);
+      process.env.AGENTDECK_DATA_DIR = freshProfile;
+      const corrected = await loadAuth();
+      expect(corrected.getPairingRetirement()).toEqual({ version: 1, revision: 3, eventId: retired.eventId });
+      expect(corrected.getOrCreateToken()).toBe(TOKEN_A);
+      corrected.rotateToken();
+      expect(corrected.getPairingRetirement().revision).toBe(4);
     } finally {
       fixturePaths.legacyHome = originalFixtureHome;
       rmSync(fakeHome, { recursive: true, force: true });

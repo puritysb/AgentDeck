@@ -1,0 +1,24 @@
+{
+  "capturedAt": "2026-11-03T16:45:23.179057+00:00",
+  "scope": "Additional finding from complete master analysis at eadab28c8bbfb9f7894babb1e4a72237b7911d77, run 41661877755; not part of the historical 266-alert baseline.",
+  "sourceResponsePullRequest": 721,
+  "dismissalsPerformed": false,
+  "findings": [
+    {
+      "id": 314,
+      "rule": "js/polynomial-redos",
+      "severity": "high",
+      "location": "shared/src/timeline.ts:421",
+      "response": "source-change-awaiting-reanalysis",
+      "evidence": "Overlapping whitespace and label matches in a cron header can retry quadratically on malformed tab runs. Parse the first closing bracket and first whitespace separator once, preserving identifier requirements, whitespace/underscore normalization and the existing 64-character label cap. Regression cases cover 100,000 tabs with no bracket, whitespace-only labels and valid long separators, plus Unicode whitespace and malformed identifiers. Tests run only against synthetic strings, not live agent sessions."
+    }
+  ],
+  "validation": {
+    "focusedTimelineTests": 90,
+    "fullVitestPassed": 7570,
+    "fullVitestSkipped": 42,
+    "changedRelatedTests": 189,
+    "quickGateOutcome": "All applicable gates pass. The full quick run passed product tests but its design-lint step selected system Bash 3; rerunning only that step with /opt/homebrew/bin first passed. Changed-area verification then passed sequentially under the same PATH.",
+    "limitations": "The initial restricted-sandbox attempts could not access Swift module cache or loopback test HTTP and are not counted as passes. No real daemon/device or live credential was used."
+  }
+}

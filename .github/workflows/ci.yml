@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [master]
 
+# Only newer commits on the same PR supersede a run. Master, scheduled and
+# explicitly dispatched runs retain independent execution and audit history.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
