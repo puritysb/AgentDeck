@@ -51,12 +51,12 @@ Unreleased; manifests, public tags and Store builds have not been advanced.
 Channel applicability and pending work are tracked in the
 [release collection](RELEASING.md#210-candidate-collection-2026-11-04).
 
-- **Reconnect after changing daemons.** Apple and Android clients retry the selected host after retry exhaustion, retain authentication backoff, and respect an explicit Disconnect. Older Play installations need the forthcoming signed client update.
+- **Reconnect after changing daemons.** Apple and Android clients retry the selected host after retry exhaustion, retain authentication backoff, and respect an explicit Disconnect. Older Play installations need the forthcoming signed client update. Existing devices with retired approvals can request pairing again instead of disappearing from the approval list.
 - **More reliable local ownership and devices.** Recover uncertain pairing-rotation readback without repeating the rotation; hand foreground Swift custody to the active daemon once. Bound macOS USB registry discovery and repair current BLE requirements before reporting readiness. Launch the installed Mac app independently of test copies.
 - **Security maintenance.** Harden runtime input and transport boundaries, credential handling and retained inbox resources; update reviewed dependencies and require native security scans and fresh CI evidence. Details under coordinated disclosure remain private.
 - **Pixoo64 candidate.** Preserve the bottom usage HUD, give Dot a separate readable Tide slot, route the ordinary scene through its habitat renderer, and make preview follow the configured panel scene. Apple Store builds continue to exclude Dot.
 
-Pending: [#723](https://github.com/puritysb/AgentDeck/pull/723) re-pair visibility after credential retirement is collected separately until merged. No release delivery is implied by this list.
+The merged [#723](https://github.com/puritysb/AgentDeck/pull/723) re-pair correction is included. The separate local Dot experiment remains under scope review, not a verified delivery. No release delivery is implied by this list.
 
 ## 2026-11-02 — npm 2.0.0, Apple 2.0.0, Android 2.0.0, ESP32 2.0.0, Stream Deck 2.0.0, Ulanzi 2.0.0
 
