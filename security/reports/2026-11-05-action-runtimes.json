@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "capturedAt": "2026-11-04T15:57:35.660Z",
-  "baseCommit": "e9a8d316b9d6adeb5cd780060a7b393a52eb1cd2",
+  "capturedAt": "2026-11-04T16:04:58.880Z",
+  "baseCommit": "3c1a1e73d6e8d67e36195ac66bf31854b53a5e5a",
   "tracking": "https://github.com/puritysb/AgentDeck/issues/713",
   "updatedActionTypes": 13,
   "changedReferences": 99,
@@ -140,6 +140,11 @@
       "passed": 7594,
       "skipped": 42,
       "extra": "Existing macOS Keychain E2E remains opt-in"
+    },
+    "integrationChanged": {
+      "result": "pass",
+      "durationMs": 16572,
+      "base": "3c1a1e73d6e8d67e36195ac66bf31854b53a5e5a"
     }
   },
   "decisions": [
@@ -147,7 +152,8 @@
     "setup-node removed always-auth is unused; npm publishing uses explicit OIDC workflow.",
     "setup-java Maven credential defaults changed upstream; no Maven publishing step uses them here.",
     "Artifact archive defaults and configured paths/names/retention remain; download digest mismatches fail upstream.",
-    "Checkout v7 blocks unsafe cross-event PR checkout; no pull_request_target/workflow_run workflow in this repository."
+    "Checkout v7 blocks unsafe cross-event PR checkout; no pull_request_target/workflow_run workflow in this repository.",
+    "Inherits #727 supported Intel host recovery; workflow semantics compare against that exact source baseline."
   ],
   "limitations": [
     "Metadata and static compatibility checks are not hosted execution.",
@@ -178,11 +184,11 @@
     },
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "dd8dc1fa89b8d6866c7cac1adda43cadc484197476a098c5fa7b4e0d25893fe3"
+      "sha256": "b6d26d1c0d203cddd7707f01627859eb26440e41cdf6546442f9608308d727bc"
     },
     {
       "path": ".github/workflows/codeql.yml",
-      "sha256": "45dd5c12675c67a72ba8fd0e4bc48d375482576b58a04171ad0bd85250fdb437"
+      "sha256": "724eac3ba2864653200531370a443238bc1a17738a25cfeffe493486d9562a01"
     },
     {
       "path": ".github/workflows/dependency-review.yml",
