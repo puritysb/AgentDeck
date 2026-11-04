@@ -50,6 +50,9 @@ overrides:
   'minimatch@10': 11.0.4
   'ejs>jake': 13.0.3
   'filelist>minimatch': 11.0.4
+  # The resolver patch uses Node's structuredClone for its static DEFAULTS copy.
+  # Remove only this reviewed consumer's now-unused dependency.
+  '@rollup/plugin-node-resolve@16.0.3>deepmerge': '-'
 
 patchedDependencies:
-  deepmerge@4.3.1: patches/deepmerge@4.3.1.patch
+  '@rollup/plugin-node-resolve@16.0.3': patches/@rollup__plugin-node-resolve@16.0.3.patch

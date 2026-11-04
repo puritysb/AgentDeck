@@ -77,7 +77,36 @@ in the receipt and the maintenance backlog. Do not suppress a whole package or
 trust `audit --fix` across incompatible major versions. New PR findings also pass
 through dependency review; exceptions here do not waive that separate check.
 
-## Current remediation candidate — November 3, 2026
+## deepmerge dependency removal — November 4, 2026
+
+The [removal receipt](../security/reports/2026-11-04-deepmerge-removal.json)
+records **zero matches across all npm severities**, in both all-dependency and
+production audits. `pnpm why -r deepmerge` has no result. This replaces the one
+low version match in the November 3 snapshot below.
+
+The only dependency path was the Stream Deck plugin's development-time
+`@rollup/plugin-node-resolve@16.0.3`. Its only `deepmerge` call cloned a static
+object of arrays and booleans for its frozen `DEFAULTS` export; user options use
+object spread separately. A hashed pnpm patch replaces that call with Node's
+`structuredClone` in both CJS and ESM entry points. The repository supports Node
+22/24/26. An exact-consumer override removes the unused dependency from the
+resolved graph, and the former deepmerge mitigation patch is removed.
+
+Regression coverage imports both installed resolver entry points, checks the
+frozen default values, and builds/runs synthetic Node-export/CommonJS bundles
+with a built-in module. Full workspace builds exercise the actual plugin bundle.
+This change preserves Rollup, its resolver options and the official Stream Deck
+SDK/CLI; no replacement merge library or broad dependency override is added.
+
+The installed dependencies, lockfile and audit are checked independently.
+Dependabot alert [65](https://github.com/puritysb/AgentDeck/security/dependabot/65)
+must become `fixed` after default-branch dependency-graph processing; a clean
+local audit or PR does not establish its server-side state. No manual dismissal
+is needed. These checks do not update an installed plugin or publish a product
+release. Firmware inventory, custom secret-pattern coverage and Rust maintenance
+items in [713](https://github.com/puritysb/AgentDeck/issues/713) remain separate.
+
+## Historical remediation candidate — November 3, 2026
 
 The follow-up dependency scan reports **production 0**, and **all dependencies
 0 critical / 0 high / 0 moderate / 1 low**. These are lockfile audit counts, not
