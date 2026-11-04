@@ -171,7 +171,8 @@ scripts are hashed as inputs, not applied by this resolution-only command.
 SDK/component manifests are indexed with hashes. ESP-IDF and Arduino-ESP32 version
 headers additionally retain the observed numeric macro declarations, bound to the
 same header hash. Parsing is limited to 64 KiB of UTF-8 text; commented examples
-are ignored, while missing, duplicate or expression-based declarations remain
+are ignored; only unambiguous decimal literals are accepted. Missing, duplicate,
+octal/hexadecimal or expression-based declarations remain
 unknown. No C preprocessor or package code is executed by this parser. Numeric
 macros do not identify prereleases or downstream patches, so full release and
 advisory mappings remain explicitly unknown. Other embedded manifests retain

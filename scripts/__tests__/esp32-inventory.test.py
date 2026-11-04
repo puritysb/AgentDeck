@@ -33,7 +33,7 @@ class InventoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'esp_idf_version.h'
             valid = '#define ESP_IDF_VERSION_MAJOR 5\n#define ESP_IDF_VERSION_MINOR 3\n#define ESP_IDF_VERSION_PATCH 1\n'
-            for content in [valid.replace('MAJOR 5', 'MAJOR (4 + 1)'), valid + '#define ESP_IDF_VERSION_MAJOR 6\n', valid.replace('#define ESP_IDF_VERSION_PATCH 1', ''), valid.replace('MAJOR 5', 'MAJOR 0x05')]:
+            for content in [valid.replace('MAJOR 5', 'MAJOR (4 + 1)'), valid + '#define ESP_IDF_VERSION_MAJOR 6\n', valid.replace('#define ESP_IDF_VERSION_PATCH 1', ''), valid.replace('MAJOR 5', 'MAJOR 0x05'), valid.replace('MAJOR 5', 'MAJOR 05')]:
                 path.write_text(content)
                 record = inventory.tree_evidence(path.parent)['embeddedManifests'][0]
                 self.assertNotIn('numericVersion', record)

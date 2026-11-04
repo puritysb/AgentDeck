@@ -76,7 +76,9 @@ def sdk_version_evidence(path, expected_hash):
     parts = []
     for field in ("MAJOR", "MINOR", "PATCH"):
         declarations = re.findall(r"^[ \t]*#[ \t]*define[ \t]+" + prefix + "_" + field + r"\b([^\n]*)", text, re.M)
-        if len(declarations) != 1 or not re.fullmatch(r"[ \t]*[0-9]{1,4}[ \t\r]*", declarations[0]):
+        # Accept unambiguous decimal literals only; C treats leading-zero
+        # literals as octal, which must not be silently relabelled as decimal.
+        if len(declarations) != 1 or not re.fullmatch(r"[ \t]*(?:0|[1-9][0-9]{0,3})[ \t\r]*", declarations[0]):
             return {"versionMapping": "unknown; missing, ambiguous or non-literal numeric declarations"}
         parts.append(str(int(declarations[0].strip())))
     return {
