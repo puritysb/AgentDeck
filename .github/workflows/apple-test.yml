@@ -48,7 +48,7 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install ffmpeg (App Preview probing)
         run: brew install ffmpeg
@@ -78,7 +78,7 @@ jobs:
             action: test
 
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: dtolnay/rust-toolchain@7dcc700092a1a8b9c17ba0e140b4e34e93000946 # 1.90.0
         with:
@@ -139,7 +139,7 @@ jobs:
 
       - name: Upload xcresult on failure
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: AgentDeckTests-${{ matrix.configuration }}-xcresult
           path: ${{ runner.temp }}/AgentDeckTests.xcresult
@@ -157,7 +157,7 @@ jobs:
             dot: preview
 
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Select Xcode
         run: |
@@ -213,7 +213,7 @@ jobs:
 
       - name: Upload companion layout results
         if: always() && matrix.configuration == 'Release'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: CompanionOnboarding-xcresult
           path: ${{ runner.temp }}/CompanionOnboarding.xcresult

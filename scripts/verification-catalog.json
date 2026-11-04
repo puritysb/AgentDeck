@@ -1031,6 +1031,62 @@
       ]
     },
     {
+      "id": "agentdeck-token-detection",
+      "name": "AgentDeck token detection",
+      "level": [
+        "static",
+        "contract"
+      ],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/security-scan.yml",
+      "job": "tokens",
+      "trigger": "Every PR, master push, daily schedule and manual",
+      "blocking": true,
+      "required": false,
+      "command": "node --test scripts/__tests__/token-patterns.test.mjs; python3 scripts/__tests__/token-hyperscan.test.py; node scripts/scan-agentdeck-tokens.mjs",
+      "evidence": [
+        "scripts/scan-agentdeck-tokens.mjs",
+        "scripts/__tests__/token-patterns.test.mjs",
+        "scripts/__tests__/token-hyperscan.test.py",
+        "security/agentdeck-token-patterns.json",
+        "security/token-fixture-exceptions.json"
+      ],
+      "proves": [
+        "Context-bound token shapes have synthetic positive and negative tests; current tracked text is scanned without emitting credential values.",
+        "Exact native-fixture digests and match counts fence reviewed synthetic tokens; unreadable or oversized text fails collection."
+      ],
+      "does_not_prove": [
+        "GitHub custom-pattern activation or server-side Hyperscan acceptance, historical or binary/ignored-file coverage, arbitrary secret encodings, or credential validity."
+      ]
+    },
+    {
+      "id": "esp32-dependency-inventory",
+      "name": "ESP32 dependency inventory",
+      "level": [
+        "static",
+        "integration"
+      ],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/security-scan.yml",
+      "job": "firmware",
+      "trigger": "Every PR, master push, daily schedule and manual",
+      "blocking": true,
+      "required": false,
+      "command": "python3 scripts/__tests__/esp32-inventory.test.py; python3 scripts/inventory-esp32-dependencies.py",
+      "evidence": [
+        "scripts/inventory-esp32-dependencies.py",
+        "scripts/__tests__/esp32-inventory.test.py",
+        "esp32/platformio.ini"
+      ],
+      "proves": [
+        "All configured environments resolve in a fresh isolated project and package store using pinned PlatformIO; missing transitives or required packages fail collection.",
+        "Selected versions, dependency edges, full package content hashes, build-time patch inputs and explicitly unmapped SDK manifests are retained."
+      ],
+      "does_not_prove": [
+        "Complete SDK/advisory coverage, deterministic version locking, applied build-time patches, firmware compilation, flashing, or installed-device acceptance."
+      ]
+    },
+    {
       "id": "android-runtime-audit",
       "name": "Android runtime dependency audit",
       "level": ["static", "integration"],

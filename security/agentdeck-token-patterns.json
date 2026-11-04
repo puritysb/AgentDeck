@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "patterns": [
+    {
+      "name": "AgentDeck pairing token assignment",
+      "id": "pairing-assignment",
+      "pattern": "[0-9A-Fa-f]{32}",
+      "start_delimiter": "(?:\\A|[^A-Za-z0-9_])(?:pairingToken|authToken|auth_token|pairing_token|AGENTDECK_TOKEN)[\"']?[ \\t\\r\\n]{0,64}[:=][ \\t\\r\\n]{0,64}[\"']?",
+      "end_delimiter": "(?:\\z|[^A-Za-z0-9_-])"
+    },
+    {
+      "name": "AgentDeck-shaped bearer credential",
+      "id": "bearer-credential",
+      "pattern": "[0-9A-Fa-f]{32}",
+      "start_delimiter": "(?:\\A|[^A-Za-z0-9_])[Bb][Ee][Aa][Rr][Ee][Rr][ \\t]{1,16}",
+      "end_delimiter": "(?:\\z|[^A-Za-z0-9_-])"
+    },
+    {
+      "name": "AgentDeck-shaped WebSocket pairing URL",
+      "id": "websocket-query",
+      "pattern": "[0-9A-Fa-f]{32}",
+      "start_delimiter": "[Ww][Ss][Ss]?://[^ \\t\\r\\n\"'<>]{1,512}[?&]token=",
+      "end_delimiter": "(?:\\z|[^A-Za-z0-9_-])"
+    }
+  ],
+  "limits": [
+    "Detects contextual 32-hex credentials, not arbitrary bare tokens, encoded secrets or token validity.",
+    "Bearer and WebSocket matches can belong to another product; every match requires review.",
+    "The repository scanner checks current tracked regular text files only, not history, ignored/untracked files or binary contents.",
+    "Local tests do not establish GitHub Hyperscan dry-run, historical scanning or push-protection acceptance."
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "capturedAt": "2026-11-04T14:35:29.287839+00:00",
+  "repository": "puritysb/AgentDeck",
+  "customPatternReadback": {
+    "httpStatus": 404,
+    "message": "Feature not available in this repository."
+  },
+  "providerSecretScanning": "enabled",
+  "providerPushProtection": "enabled",
+  "customPatternsCreated": false,
+  "customPatternsActivated": false,
+  "limits": [
+    "A 404 is not evidence that a custom pattern or custom push protection is active.",
+    "Native local engine tests are separate from GitHub server dry-run acceptance."
+  ]
+}

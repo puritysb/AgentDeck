@@ -1,0 +1,238 @@
+{
+  "schema": 1,
+  "capturedAt": "2026-11-04T16:04:58.880Z",
+  "baseCommit": "3c1a1e73d6e8d67e36195ac66bf31854b53a5e5a",
+  "tracking": "https://github.com/puritysb/AgentDeck/issues/713",
+  "updatedActionTypes": 13,
+  "changedReferences": 99,
+  "changedWorkflowFiles": 17,
+  "reviewedWorkflowReferences": 111,
+  "actions": [
+    {
+      "action": "actions/cache",
+      "tag": "v6.1.0",
+      "commit": "55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+      "metadataSha256": "c04edf35104c16c8944076df01561748bac9cd10941417e467a236e508e52dda",
+      "metadataSource": "https://github.com/actions/cache/blob/55cc8345863c7cc4c66a329aec7e433d2d1c52a9/action.yml",
+      "release": "https://github.com/actions/cache/releases/tag/v6.1.0"
+    },
+    {
+      "action": "actions/checkout",
+      "tag": "v7.0.1",
+      "commit": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+      "metadataSha256": "d59219cb79590abdb877deaa14e3b65a00c05318bf5a6f3b989b9162b5d08c35",
+      "metadataSource": "https://github.com/actions/checkout/blob/3d3c42e5aac5ba805825da76410c181273ba90b1/action.yml",
+      "release": "https://github.com/actions/checkout/releases/tag/v7.0.1"
+    },
+    {
+      "action": "actions/configure-pages",
+      "tag": "v6.0.0",
+      "commit": "45bfe0192ca1faeb007ade9deae92b16b8254a0d",
+      "metadataSha256": "55f1486ae3901c69be182cea1c1e3313954c78be626751a85b19ddaf14ae8da6",
+      "metadataSource": "https://github.com/actions/configure-pages/blob/45bfe0192ca1faeb007ade9deae92b16b8254a0d/action.yml",
+      "release": "https://github.com/actions/configure-pages/releases/tag/v6.0.0"
+    },
+    {
+      "action": "actions/deploy-pages",
+      "tag": "v5.0.1",
+      "commit": "368f82528645a54fb793d4d04e342629a3f51346",
+      "metadataSha256": "64c44539fba53559a157b5de16c01d3ab91dbc999c1b98b5c0b2fc3528d5d059",
+      "metadataSource": "https://github.com/actions/deploy-pages/blob/368f82528645a54fb793d4d04e342629a3f51346/action.yml",
+      "release": "https://github.com/actions/deploy-pages/releases/tag/v5.0.1"
+    },
+    {
+      "action": "actions/download-artifact",
+      "tag": "v8.0.2",
+      "commit": "9000827ccba6bdab643e8b6fd33ac0654aef8333",
+      "metadataSha256": "e98559b7a31ba31be4709f20d22102dc2737fa630f69a339eb89981151e505fe",
+      "metadataSource": "https://github.com/actions/download-artifact/blob/9000827ccba6bdab643e8b6fd33ac0654aef8333/action.yml",
+      "release": "https://github.com/actions/download-artifact/releases/tag/v8.0.2"
+    },
+    {
+      "action": "actions/setup-java",
+      "tag": "v6.1.0",
+      "commit": "b843ebf9b913146b38da2eaa7aeddf76074ae1ad",
+      "metadataSha256": "503fe82e787d5ff15e17934e2efab346fa2facfad7261a8ea6ed9b05cb14f9e8",
+      "metadataSource": "https://github.com/actions/setup-java/blob/b843ebf9b913146b38da2eaa7aeddf76074ae1ad/action.yml",
+      "release": "https://github.com/actions/setup-java/releases/tag/v6.1.0"
+    },
+    {
+      "action": "actions/setup-node",
+      "tag": "v7.1.0",
+      "commit": "949feb2413d6458794dcd2491c4babbbce0c15c1",
+      "metadataSha256": "84cd55863dbadfb83ed786c0bb4336553c2f4ceb52e102fccec01848f1977387",
+      "metadataSource": "https://github.com/actions/setup-node/blob/949feb2413d6458794dcd2491c4babbbce0c15c1/action.yml",
+      "release": "https://github.com/actions/setup-node/releases/tag/v7.1.0"
+    },
+    {
+      "action": "actions/setup-python",
+      "tag": "v7.1.0",
+      "commit": "6d4fd22b20465ccc0f7354476588e8df7c9ca0e0",
+      "metadataSha256": "0829b3f54d769f8b25cefd4d856c735bc8e097d6597835b838ebb4da497c838d",
+      "metadataSource": "https://github.com/actions/setup-python/blob/6d4fd22b20465ccc0f7354476588e8df7c9ca0e0/action.yml",
+      "release": "https://github.com/actions/setup-python/releases/tag/v7.1.0"
+    },
+    {
+      "action": "actions/upload-artifact",
+      "tag": "v7.0.2",
+      "commit": "cf430e030ddbb5b0abf93d22962f4752f3646cd9",
+      "metadataSha256": "c5979822866a72362e609844b6ebe77d4b7e759af68cc1c2c425dcf51481fab4",
+      "metadataSource": "https://github.com/actions/upload-artifact/blob/cf430e030ddbb5b0abf93d22962f4752f3646cd9/action.yml",
+      "release": "https://github.com/actions/upload-artifact/releases/tag/v7.0.2"
+    },
+    {
+      "action": "actions/upload-pages-artifact",
+      "tag": "v5.0.0",
+      "commit": "fc324d3547104276b827a68afc52ff2a11cc49c9",
+      "metadataSha256": "f84e759011e0c497e696f5bce4ebb5fbe9bbdc5aea309b73795283fa139c1558",
+      "metadataSource": "https://github.com/actions/upload-pages-artifact/blob/fc324d3547104276b827a68afc52ff2a11cc49c9/action.yml",
+      "release": "https://github.com/actions/upload-pages-artifact/releases/tag/v5.0.0"
+    },
+    {
+      "action": "gradle/actions/setup-gradle",
+      "tag": "v5.0.2",
+      "commit": "0723195856401067f7a2779048b490ace7a47d7c",
+      "metadataSha256": "9f962f9604df64f176316d7eadb169348cd1b7041a754f417945f524bdd20840",
+      "metadataSource": "https://github.com/gradle/actions/blob/0723195856401067f7a2779048b490ace7a47d7c/setup-gradle/action.yml",
+      "release": "https://github.com/gradle/actions/releases/tag/v5.0.2"
+    },
+    {
+      "action": "pnpm/action-setup",
+      "tag": "v6.1.1",
+      "commit": "73e46992e05b19abd31f2f3c20e0e7370d762115",
+      "metadataSha256": "9e252c0620f3de7d239b01455c8b50b3424e347d7547d991abf71694686bf82c",
+      "metadataSource": "https://github.com/pnpm/action-setup/blob/73e46992e05b19abd31f2f3c20e0e7370d762115/action.yml",
+      "release": "https://github.com/pnpm/action-setup/releases/tag/v6.1.1"
+    },
+    {
+      "action": "softprops/action-gh-release",
+      "tag": "v3.0.3",
+      "commit": "efb35369e0ad2afab669f228072c1b0d510eae64",
+      "metadataSha256": "01a00e808b3760bedfc104e8b97354f835c5ff927748af9093aa80da8213a29d",
+      "metadataSource": "https://github.com/softprops/action-gh-release/blob/efb35369e0ad2afab669f228072c1b0d510eae64/action.yml",
+      "release": "https://github.com/softprops/action-gh-release/releases/tag/v3.0.3"
+    }
+  ],
+  "compositeReview": {
+    "pages": {
+      "child": "actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f",
+      "runtime": "node24",
+      "metadataSha256": "c5979822866a72362e609844b6ebe77d4b7e759af68cc1c2c425dcf51481fab4"
+    },
+    "rust": "Shell-only composite; compiler 1.90.0 retained"
+  },
+  "checks": {
+    "workflowSemanticsExceptPins": "identical YAML objects to base",
+    "suppliedInputs": "supported by selected metadata",
+    "fullCommitPins": "all references",
+    "actionlint": "No workflow/action/expression errors; unfiltered shellcheck and custom-runner findings exactly match base",
+    "quick": {
+      "result": "pass",
+      "durationMs": 86338,
+      "scope": "Local branch before Intel-host integration; no product source changed"
+    },
+    "changed": {
+      "result": "pass",
+      "durationMs": 23302,
+      "scope": "Local branch before Intel-host integration; no product source changed"
+    },
+    "tests": {
+      "passed": 7594,
+      "skipped": 42,
+      "extra": "Existing macOS Keychain E2E remains opt-in"
+    },
+    "integrationChanged": {
+      "result": "pass",
+      "durationMs": 16572,
+      "base": "3c1a1e73d6e8d67e36195ac66bf31854b53a5e5a"
+    }
+  },
+  "decisions": [
+    "Gradle v5.0.2 remains on the MIT line; v6 proprietary caching not introduced.",
+    "setup-node removed always-auth is unused; npm publishing uses explicit OIDC workflow.",
+    "setup-java Maven credential defaults changed upstream; no Maven publishing step uses them here.",
+    "Artifact archive defaults and configured paths/names/retention remain; download digest mismatches fail upstream.",
+    "Checkout v7 blocks unsafe cross-event PR checkout; no pull_request_target/workflow_run workflow in this repository.",
+    "Inherits #727 supported Intel host recovery; workflow semantics compare against that exact source baseline."
+  ],
+  "limitations": [
+    "Metadata and static compatibility checks are not hosted execution.",
+    "Release/signing/Store/Pages publication workflows are not dispatched by this review.",
+    "Actions setup runtime is distinct from Node product versions and installed runtimes.",
+    "This does not remediate firmware SDK advisory mappings or renderer maintenance exceptions."
+  ],
+  "workflowInputs": [
+    {
+      "path": ".github/workflows/android-release.yml",
+      "sha256": "54ea2afa233a1ffa6efed54f27f5e624b4a9dc30247a7cfc2d36c699069e5e88"
+    },
+    {
+      "path": ".github/workflows/android-test.yml",
+      "sha256": "f3d26d52a432a8e6d108c0591701137519400d0559caa9b3599abc240c144c4f"
+    },
+    {
+      "path": ".github/workflows/apple-release.yml",
+      "sha256": "3a391db8f7dd6b48a5c2ffb949f918ad98e43f973c6ab771531a0e577ad633d8"
+    },
+    {
+      "path": ".github/workflows/apple-test.yml",
+      "sha256": "24f48bc76a2f15ea0f0159d409d112bf365ea901cf1120a23b64ea4cc5b3163d"
+    },
+    {
+      "path": ".github/workflows/asc-certificates.yml",
+      "sha256": "9137770d093c09874675ba62a893ac510e40a2c207eae92589e5301556692468"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "sha256": "b6d26d1c0d203cddd7707f01627859eb26440e41cdf6546442f9608308d727bc"
+    },
+    {
+      "path": ".github/workflows/codeql.yml",
+      "sha256": "724eac3ba2864653200531370a443238bc1a17738a25cfeffe493486d9562a01"
+    },
+    {
+      "path": ".github/workflows/dependency-review.yml",
+      "sha256": "d5c7f2beb71746fc1d1495c062c093c8db5296982e09d50204a7b982c33ebc17"
+    },
+    {
+      "path": ".github/workflows/design-system.yml",
+      "sha256": "ebf14f8ca06e8064a6ebc760dcb34f1e4e1cc0ff4193a199658cd509d9fd814a"
+    },
+    {
+      "path": ".github/workflows/esp32-release.yml",
+      "sha256": "7fbec66fc21bc1bd2c135cac974437e3f16cd985f850fa0890db651f6d617d39"
+    },
+    {
+      "path": ".github/workflows/esp32-sim.yml",
+      "sha256": "6bf7083518a0638eab035b272107d730e412c3bcf27f201ca06ee7df1bf67353"
+    },
+    {
+      "path": ".github/workflows/local-deploy.yml",
+      "sha256": "6bfe5ac7bbe2932f5775f77c5ea99f09534ca231850c1efc0dfd5cefb8daf2b4"
+    },
+    {
+      "path": ".github/workflows/npm-release.yml",
+      "sha256": "558fc368825a61a32e1ba31a46e588dddbd1c747aa502cd0df97ea766b7abe41"
+    },
+    {
+      "path": ".github/workflows/security-health.yml",
+      "sha256": "67751236bb865757570e5f60490270c3b0a3cfc1b134b72e129f17ca0809c62e"
+    },
+    {
+      "path": ".github/workflows/security-scan.yml",
+      "sha256": "a4f3745913d43be8195ad60c3c73252b11a265b8fcf28c4b9d9647b7edb16522"
+    },
+    {
+      "path": ".github/workflows/streamdeck-release.yml",
+      "sha256": "c33fb7459c6fdc7f04a60a3727152108fa501f5a779fc883d33e582c74bdbbfe"
+    },
+    {
+      "path": ".github/workflows/test-report.yml",
+      "sha256": "25b37ad93db37bd077b01b0d72ded634e8c3c822cfcb68c58f31c17fa27bc317"
+    },
+    {
+      "path": ".github/workflows/ulanzi-release.yml",
+      "sha256": "72ae9acc89e8adb02ffc160895dc56ca8089d6919736fdb5c9ebc2b907b999e2"
+    }
+  ]
+}

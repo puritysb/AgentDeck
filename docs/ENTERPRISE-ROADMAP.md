@@ -6,7 +6,15 @@ running their own daemon, on one corporate network — and sometimes on one mach
 Everything below was read out of the current tree (2026-08-15, `master` @ `7f6d2538`).
 Line references are anchors, not quotes; re-grep before editing.
 
-> **Status (2026-08-17).** The shared-*subnet* half has shipped — items 6, 7, 9,
+> **Current source status (2026-11-05).** The shared-machine ownership checks,
+> endpoint selection, default-off UDP, profile-scoped device settings, ADB mapping
+> protection and MAC-qualified ESP32 names are implemented on master. Item 5 and
+> items 13–15 below distinguish source completion from public channel delivery
+> and physical acceptance, tracked in [#673](https://github.com/puritysb/AgentDeck/issues/673)
+> and [#674](https://github.com/puritysb/AgentDeck/issues/674). The dated analysis
+> and its TCP ownership limits remain below.
+
+> **Historical status (2026-08-17).** The shared-*subnet* half has shipped — items 6, 7, 9,
 > 10, 12 and 16 in §7, plus `daemon start --local/--loopback`, `daemon install
 > --enterprise`, posture inheritance across `daemon restart`, and the Swift
 > daemon's Settings-driven posture (item 12). See
@@ -558,7 +566,7 @@ nothing.
 | 2 | UID check on `/shutdown`, `/stand-down`, `/pair/*`, and the Swift reclaim decision (§1.3) | M | 2d | **done on the calling side** (08-17) — every path where our code acts on another daemon, including the daemon's own port-window sweep, which used to shut down every colleague's macOS app. Receiving side is not UID-checkable over TCP (§1.2) |
 | 3 | Daemon port-scan fallback must not attach to another UID's daemon (§1.4) | S | 1d | **done** (08-17) — `findDaemonPortAsync` skips foreign ports, keeps sweeping, and names what it refused |
 | 4 | Unique mDNS instance name per host+user, both daemons (§2.1) | M | 2d | **done** (08-17) — `shared/src/mdns-identity.ts` SSOT + generated Swift mirror; `host`/`user` TXT keys added, `v` stays `3` |
-| 5 | Clients prefer their paired endpoint over first-seen (§2.2) | M | 2d | **partial** — Node ranks by identity; Apple/Android saved-endpoint preference and ambiguity refusal are implemented. ESP32 selection correction is in #685, and the integration branch implements explicit refusal recovery. Physical firmware acceptance/delivery remain open in #674. |
+| 5 | Clients prefer their paired endpoint over first-seen (§2.2) | M | 2d | **source complete** — Node ranks by identity; Apple/Android saved-endpoint preference and ambiguity refusal, ESP32 selection and explicit refusal recovery are merged in #680/#722/#723. Available installed-client acceptance is recorded in #674; public delivery and the remaining client matrix are separate. |
 
 **P1 — the enterprise off switch.**
 
@@ -576,9 +584,9 @@ nothing.
 
 | # | Item | Diff | Est. | Status |
 |---|---|---|---|---|
-| 13 | ESP32 mDNS hostname suffixed with MAC (§2.4) — costs an OTA cut | S | 0.5d | open |
-| 14 | Device settings honour `AGENTDECK_DATA_DIR` (§1.6) | S | 0.5d | open |
-| 15 | Warn when `adb reverse` collides with another user (§1.6) | S | 0.5d | open |
+| 13 | ESP32 mDNS hostname suffixed with MAC (§2.4) — costs an OTA cut | S | 0.5d | **source complete** — full factory-MAC names and endpoint-selection correction merged in #680. Available firmware installation/reconnect evidence is in #674; later public firmware delivery remains pending. |
+| 14 | Device settings honour `AGENTDECK_DATA_DIR` (§1.6) | S | 0.5d | **source complete** — Timebox/iDotMatrix use the active profile path; Pixoo already did. Profile-change/strict-read regressions are merged in #680. Local delivery is recorded in #674; public delivery remains separate. |
+| 15 | Warn when `adb reverse` collides with another user (§1.6) | S | 0.5d | **source complete** — endpoint collision/unknown refusal, `--no-rebind` creation and non-destructive shutdown merged in #680. ADB cannot identify the OS user; see the exact policy below. |
 | 16 | `npx @agentdeck/setup --enterprise --yes` one-liner (§6.2) | S | 1d | **done** — `--enterprise` implies `--yes` and runs `daemon install --enterprise` |
 
 **Robin's asks.**
@@ -664,7 +672,7 @@ A recent discovery result is never replayed after the preferred endpoint changes
 Re-provision explicitly when a selected host's address changes. Boards whose older
 storage never saved an endpoint still need an explicit provision to establish one.
 
-The integration branch now exposes received close payloads through a build-local
+Merged source now exposes received close payloads through a build-local
 WebSockets adapter and distinguishes HTTP 401 / WS 4001 from ordinary network loss.
 A confirmed refusal stops repeated dials and displays a USB re-pair instruction;
 only trusted provisioning clears it. The dependency itself remains unchanged, and
