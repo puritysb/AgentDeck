@@ -24,3 +24,12 @@ request. Recording a new knock does not renew an approval: an explicit operator
 approval is still required. No additional production token rotation, blanket
 approval, mobile data clearing or interface change was used to diagnose this.
 Camera/optical verification remains deferred independently.
+
+After integration with master `60cf0132`, the first coverage run timed out at
+the existing retirement-socket fixture's 6,000 ms readiness wait, before any
+socket-retirement assertions. The original assertion hid the child's exit
+state and stderr, so this observation alone does not establish a bind failure
+or slow startup. Readiness assertions now include those diagnostics without
+changing deadlines or product behavior. The six-case focused rerun passed with
+the same deadline. The failed full run was stopped and preserved separately;
+only a subsequent clean, complete run can supply the deployment receipt.
