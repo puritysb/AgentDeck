@@ -1031,6 +1031,26 @@
       ]
     },
     {
+      "id": "android-runtime-audit",
+      "name": "Android runtime dependency audit",
+      "level": ["static", "integration"],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/security-scan.yml",
+      "job": "android",
+      "trigger": "Every PR, master push, daily schedule and manual",
+      "blocking": true,
+      "required": false,
+      "command": "node --test scripts/__tests__/android-runtime-collector.test.mjs; node scripts/audit-android-runtime.mjs",
+      "evidence": ["scripts/audit-android-runtime.mjs", "scripts/android-runtime-inventory.gradle", "scripts/__tests__/android-runtime-audit.test.ts", "scripts/__tests__/android-runtime-collector.test.mjs"],
+      "proves": [
+        "Both Android runtime variants resolve their transitive Maven components and artifacts; unresolved or unmapped components/artifacts fail collection.",
+        "Exact selected versions are queried against OSV with positional result validation, complete bounded pagination and a queried-only known-vulnerable control; findings and service/schema errors fail the job."
+      ],
+      "does_not_prove": [
+        "Complete advisory coverage, exploitability, AAR-internal native or Android/SDK OS vulnerabilities, installed-device versions, or APK delivery; release-note and physical-client checks remain separate."
+      ]
+    },
+    {
       "id": "rust-dependency-audit",
       "name": "Rust dependency audit",
       "level": [
@@ -1499,6 +1519,7 @@
         "scripts/__tests__/product-tour-fixture.test.ts",
         "scripts/__tests__/aquarium-showcase-story.test.ts",
         "scripts/__tests__/security-audit.test.ts",
+        "scripts/__tests__/android-runtime-audit.test.ts",
         "scripts/__tests__/security-pipeline-health.test.ts",
         "scripts/__tests__/dependency-security.test.ts"
       ]
