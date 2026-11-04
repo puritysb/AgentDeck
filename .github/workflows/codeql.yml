@@ -71,7 +71,9 @@ jobs:
 
   swift:
     name: CodeQL (swift-${{ matrix.target }})
-    runs-on: macos-26
+    # Intel is supported by CodeQL and avoids the arm64 hosted-capacity queue.
+    # The extracted app target stays arm64 with the same pinned Xcode below.
+    runs-on: macos-26-intel
     # A cold macOS trace completed analysis at the old 45m deadline, then
     # timed out during cleanup. Keep the complete analysis and cleanup budget.
     timeout-minutes: 60

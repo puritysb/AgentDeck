@@ -239,6 +239,9 @@ review decision and is counted separately from a verified source fix.
 Native CodeQL must pin a supported toolchain: **macOS 26 / Xcode 26.6**. Selecting
 the newest installed Xcode can select unsupported Xcode 27 / Swift 6.4. See the
 [GitHub compatibility notice](https://github.blog/changelog/2026-10-19-codeql-changes-for-macos-27-xcode-27-and-swift-6-4/).
+The Swift extraction and native-parity jobs use the supported `macos-26-intel`
+host after arm64 hosted-runner acquisition failures. Swift extraction still
+builds ARM64 macOS/iOS apps; this changes the host, not the target or query set.
 Neither Kotlin's successful PR run nor a still-running Swift build establishes
 successful full default-branch coverage.
 

@@ -90,7 +90,8 @@ jobs:
   # fails when a darwin-gated test file is missing from either.
   macos-native-parity:
     name: macOS native parity (Swift toolchain)
-    runs-on: macos-26
+    # Keep native execution on macOS while avoiding arm64 runner starvation.
+    runs-on: macos-26-intel
     timeout-minutes: 25
 
     steps:
