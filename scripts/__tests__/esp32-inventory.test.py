@@ -13,6 +13,58 @@ SPEC.loader.exec_module(inventory)
 
 
 class InventoryTests(unittest.TestCase):
+    def test_sdk_headers_report_numeric_evidence_without_claiming_a_release_or_advisory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name, (component, prefix) in inventory.SDK_HEADERS.items():
+                (root / name).write_text(f'/* #define {prefix}_MAJOR 99 */\n' + '\n'.join(
+                    f'#define {prefix}_{field} {value} // numeric declaration'
+                    for field, value in [('MAJOR', 5), ('MINOR', 3), ('PATCH', 1)]))
+            headers = inventory.tree_evidence(root)['embeddedManifests']
+            self.assertEqual(len(headers), 2)
+            for header in headers:
+                self.assertEqual(header['numericVersion'], '5.3.1')
+                self.assertEqual(header['component'], inventory.SDK_HEADERS[header['path']][0])
+                self.assertIn('unknown', header['releaseIdentity'])
+                self.assertIn('unknown', header['advisoryMapping'])
+                self.assertEqual(header['sha256'], inventory.digest(root / header['path']))
+
+    def test_sdk_header_expressions_duplicates_and_missing_fields_stay_unknown(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'esp_idf_version.h'
+            valid = '#define ESP_IDF_VERSION_MAJOR 5\n#define ESP_IDF_VERSION_MINOR 3\n#define ESP_IDF_VERSION_PATCH 1\n'
+            for content in [valid.replace('MAJOR 5', 'MAJOR (4 + 1)'), valid + '#define ESP_IDF_VERSION_MAJOR 6\n', valid.replace('#define ESP_IDF_VERSION_PATCH 1', ''), valid.replace('MAJOR 5', 'MAJOR 0x05')]:
+                path.write_text(content)
+                record = inventory.tree_evidence(path.parent)['embeddedManifests'][0]
+                self.assertNotIn('numericVersion', record)
+                self.assertIn('unknown', record['versionMapping'])
+
+    def test_sdk_header_invalid_encoding_and_size_stay_unknown(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'esp_idf_version.h'
+            for content in [b'\xff', b'x' * (64 * 1024 + 1)]:
+                path.write_bytes(content)
+                record = inventory.tree_evidence(path.parent)['embeddedManifests'][0]
+                self.assertNotIn('numericVersion', record)
+                self.assertIn('unknown', record['versionMapping'])
+
+    def test_sdk_header_change_cannot_be_bound_to_an_earlier_hash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'esp_idf_version.h'
+            path.write_text('#define ESP_IDF_VERSION_MAJOR 5\n')
+            before = inventory.digest(path)
+            path.write_text('#define ESP_IDF_VERSION_MAJOR 6\n')
+            with self.assertRaisesRegex(ValueError, 'changed during collection'):
+                inventory.sdk_version_evidence(path, before)
+
+    def test_sdk_header_symlinks_are_not_parsed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'esp_idf_version.h'
+            path.symlink_to('/unreadable-sdk-not-opened')
+            result = inventory.tree_evidence(path.parent)
+            self.assertEqual(result['files'], 1)
+            self.assertEqual(result['embeddedManifests'], [])
+
     def test_inherited_environment_list_includes_test_and_shipping_targets(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

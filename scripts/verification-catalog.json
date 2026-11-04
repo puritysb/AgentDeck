@@ -664,7 +664,7 @@
       "job": "macos-native-parity",
       "trigger": "Every PR and push to master",
       "blocking": true,
-      "command": "vitest run <the files below>",
+      "command": "vitest run <the files below> --maxWorkers=1",
       "files": [
         "bridge/src/__tests__/daemon-recovery.test.ts",
         "shared/src/__tests__/daemon-parity.test.ts",
@@ -1080,7 +1080,7 @@
       ],
       "proves": [
         "All configured environments resolve in a fresh isolated project and package store using pinned PlatformIO; missing transitives or required packages fail collection.",
-        "Selected versions, dependency edges, full package content hashes, build-time patch inputs and explicitly unmapped SDK manifests are retained."
+        "Selected versions, dependency edges, full package content hashes, build-time patch inputs and SDK manifests are retained; ESP-IDF/Arduino numeric header declarations are hash-bound observations, with full release and advisory mappings explicitly unknown."
       ],
       "does_not_prove": [
         "Complete SDK/advisory coverage, deterministic version locking, applied build-time patches, firmware compilation, flashing, or installed-device acceptance."
