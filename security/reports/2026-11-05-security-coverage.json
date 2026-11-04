@@ -1,0 +1,2188 @@
+{
+  "schema": 1,
+  "capturedAt": "2026-11-04T15:04:34.878098+00:00",
+  "sourceCommit": "a16fa2cd0600b5da988713e13f454a4573008888",
+  "host": {
+    "system": "Darwin",
+    "machine": "arm64",
+    "resolverPython": "3.12"
+  },
+  "tokenScan": {
+    "capturedAt": "2026-11-04T15:00:10.687Z",
+    "status": "pass",
+    "commit": "a16fa2cd0600b5da988713e13f454a4573008888",
+    "dirty": false,
+    "scanned": 4046,
+    "policySha256": "d0daf2cd6569d83a6c2e1389dc35b8afcda1737b013340af026d110a54bec7f5",
+    "fixturePolicySha256": "457d04b25d71e66533cd028bd102fd408d40dc48ac137bf5a00802f7d8b14621",
+    "coverageLimits": [
+      "Detects contextual 32-hex credentials, not arbitrary bare tokens, encoded secrets or token validity.",
+      "Bearer and WebSocket matches can belong to another product; every match requires review.",
+      "The repository scanner checks current tracked regular text files only, not history, ignored/untracked files or binary contents.",
+      "Local tests do not establish GitHub Hyperscan dry-run, historical scanning or push-protection acceptance."
+    ]
+  },
+  "tokenReview": {
+    "unreviewedMatches": 0,
+    "exactSyntheticFixtures": 2,
+    "nodeTestsPassed": 7,
+    "nativeHyperscanTestsPassed": 2,
+    "hyperscanBinding": "0.9.1",
+    "githubCustomPatternSupport": "404 Feature not available; no activation claimed"
+  },
+  "firmwareInventory": {
+    "status": "complete",
+    "configuredEnvironments": [
+      "ips35",
+      "box_86",
+      "boot_test_qspi",
+      "axs_test",
+      "qspi_test",
+      "display_test",
+      "amoled",
+      "led8x32",
+      "trmnl_75",
+      "nm_epd_420",
+      "lilygo_epd47",
+      "t_embed",
+      "t_display_pro",
+      "ttgo",
+      "esp32_c6_147",
+      "ips10"
+    ],
+    "resolvedEnvironments": 16,
+    "platformioVersion": "6.1.19",
+    "originalResolutionCommit": "0152f72155485e6a31e6d22cafe5b370f0af3a70",
+    "originalResolutionDirty": true,
+    "collectorInputsMatchSourceCommit": true,
+    "sourceInputs": {
+      "esp32/platformio.ini": "053948af5b05be792a983ab0cb76f3b7d1704c80c3619be45eb82aad088e93cb",
+      "scripts/inventory-esp32-dependencies.py": "9943c4507a69dc4311641b88531780aeb8a0da6d9bea85b83c46a8c3eee21714",
+      "esp32/scripts/epd47_driver.py": "f10ef8aebdcd7f795148a732c5405407a075c763a09db5a9c4342303c30bef42",
+      "esp32/scripts/git_rev.py": "7d5ce716352df3b5cb675a136c08c71a052cc0313309e156141169c586e8fa63",
+      "esp32/scripts/ips10_sdk_headers.py": "f131e461c97aec01945f657ef70cf9467bf362b21301dcdf48215c2226eaba71",
+      "esp32/scripts/probe_serial_identity.py": "5512c8bbbc3c6575538d5e82e9c212ac9cbf12b8a29882152de4a9c79d1d152b",
+      "esp32/scripts/serial_relay.py": "b589ade01714985e8a23f1ea79ed6ab148f82c371f940575d503f35df99708b5",
+      "esp32/scripts/usb_bulk_probe.py": "77e0eb29db7170746c925dac47ea6435c95452497d0373a6de306cf48e44ea6b",
+      "esp32/scripts/usb_hotplug_probe.py": "4848283b18884eea9f95c7f76e940ecb3cb3975deef4a5c01a9ba23732035bc9",
+      "esp32/scripts/websocket_close_events.py": "0b09273a9a5ab3779b71f26a5908354a30f6647626c064b29c2826be77f87ca7",
+      "esp32/boards/T5-ePaper-S3.json": "f1b57419f8ddcb91b8f68fd1520ca8e10d8f6dfe9f70b3f53492ac0f0e0c4d53"
+    },
+    "rawReceiptSha256": "feffa8766b1ba088f77a9c6e98b857e7a1871a876c5ad14d7bd4bfbda361f64d",
+    "regressionTestsPassed": 10,
+    "coverageLimits": [
+      "Package resolution only: no compilation, upload, device or installed-firmware acceptance.",
+      "Installed package content is hashed; project build-time patch inputs are recorded but not applied.",
+      "Embedded SDK/component manifests without a mapped version remain unknown; no complete SDK SBOM is claimed.",
+      "No advisory matching or zero-CVE claim. PlatformIO versions are not automatically OSV/CPE identities.",
+      "A dated selected-version receipt is not a dependency lock; ranges can resolve differently on a later run.",
+      "Content hashes exclude VCS, Python caches and installer metadata; symlinks hash their target text without following it."
+    ],
+    "targets": [
+      {
+        "environment": "ips35",
+        "platformRequest": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+        "board": "esp32-s3-devkitc-1",
+        "framework": [
+          "arduino"
+        ],
+        "isolatedPlatformStore": "c3a5da2eb132a244",
+        "platform": "espressif32@55.3.311#e5dceb2bbcc5390096048d659244f505f252ea2ab2503337dfa1c074ada1b32b",
+        "tools": [
+          {
+            "role": "platform dependency",
+            "component": "contrib-piohome@3.4.4#2ce1d1c197b75e3d8dc1027a03c4a4b37be86b1b3f4ac4d4f0a92cfc5e461ac2",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32@3.3.11#f203e6fb783b2cbe56223597445befca8d86ad39e65d83bd4bafe96bb1c0726b",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32-libs@5.5.5+sha.b774170ff46#936fd61600a81e9ec960e29f00d95b89da8fe222ba9e7f8b27d872d3a8c4db25",
+            "localAliasVerified": false
+          },
+          {
+            "role": "tool",
+            "component": "tool-esp-rom-elfs@2024.10.11#2da884381fe0c1d6322ea5e9a2b126fbbd0d7eceb8fe934c59e18c075b06d0fc",
+            "localAliasVerified": false
+          },
+          {
+            "role": "uploader",
+            "component": "tool-esptoolpy@5.3.0#c4e440d3a93ea502fbea744e2d1ea89576d81e87ce29f31dbf8df7ec7d1bca90",
+            "localAliasVerified": true
+          },
+          {
+            "role": "debugger",
+            "component": "tool-xtensa-esp-elf-gdb@17.1.0+20260402#62d7683901894dcc1f076f9886e1a79570d5ba9f7df8ad0f5d51ae3f4d48fbdb",
+            "localAliasVerified": false
+          },
+          {
+            "role": "toolchain",
+            "component": "toolchain-xtensa-esp-elf@14.2.0+20260121#6e443ec78681b6b9503743c4f66049adcef70a7cb4781e9448c1c76ecf00cf11",
+            "localAliasVerified": false
+          }
+        ],
+        "libraries": [
+          "ArduinoJson@7.4.3#e95070e60a152c788f365cbdbf99cf693b2e92eca84803500eff74b05ead66f0",
+          "GFX Library for Arduino@1.6.5#2e2791004158a00092f2d11d6ea8c8637f6e848c8f1b27eb2055364716990793",
+          "WebSockets@2.7.3#86ca299d57ff90afd91382221be98d1565938e0456672a58a7376801b1d62e78",
+          "WiFiManager@2.0.17#e0d25da488f1a21454e96e5218c803f5958775f9ebe91e7525c675de1e46531c",
+          "lvgl@9.6.0#f920b258e6c6ef13d577ef96a12bb93b8b806e507d11bd17545aede25ba90601"
+        ],
+        "libraryEdges": [
+          {
+            "from": null,
+            "to": "lvgl@9.6.0",
+            "request": "lvgl/lvgl@^9.2.0"
+          },
+          {
+            "from": null,
+            "to": "GFX Library for Arduino@1.6.5",
+            "request": "moononournation/GFX Library for Arduino@1.6.5"
+          },
+          {
+            "from": null,
+            "to": "WebSockets@2.7.3",
+            "request": "links2004/WebSockets@^2.6.1"
+          },
+          {
+            "from": null,
+            "to": "ArduinoJson@7.4.3",
+            "request": "bblanchon/ArduinoJson@^7.3.0"
+          },
+          {
+            "from": null,
+            "to": "WiFiManager@2.0.17",
+            "request": "tzapu/WiFiManager@^2.0.17"
+          }
+        ],
+        "frameworkReferences": []
+      },
+      {
+        "environment": "box_86",
+        "platformRequest": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+        "board": "esp32-s3-devkitc-1",
+        "framework": [
+          "arduino"
+        ],
+        "isolatedPlatformStore": "c3a5da2eb132a244",
+        "platform": "espressif32@55.3.311#e5dceb2bbcc5390096048d659244f505f252ea2ab2503337dfa1c074ada1b32b",
+        "tools": [
+          {
+            "role": "platform dependency",
+            "component": "contrib-piohome@3.4.4#2ce1d1c197b75e3d8dc1027a03c4a4b37be86b1b3f4ac4d4f0a92cfc5e461ac2",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32@3.3.11#f203e6fb783b2cbe56223597445befca8d86ad39e65d83bd4bafe96bb1c0726b",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32-libs@5.5.5+sha.b774170ff46#936fd61600a81e9ec960e29f00d95b89da8fe222ba9e7f8b27d872d3a8c4db25",
+            "localAliasVerified": false
+          },
+          {
+            "role": "tool",
+            "component": "tool-esp-rom-elfs@2024.10.11#2da884381fe0c1d6322ea5e9a2b126fbbd0d7eceb8fe934c59e18c075b06d0fc",
+            "localAliasVerified": false
+          },
+          {
+            "role": "uploader",
+            "component": "tool-esptoolpy@5.3.0#f233106a988266305b7430d6afa7b97ea86c96443e43222b5c45289c8c23d4de",
+            "localAliasVerified": false
+          },
+          {
+            "role": "debugger",
+            "component": "tool-xtensa-esp-elf-gdb@17.1.0+20260402#62d7683901894dcc1f076f9886e1a79570d5ba9f7df8ad0f5d51ae3f4d48fbdb",
+            "localAliasVerified": false
+          },
+          {
+            "role": "toolchain",
+            "component": "toolchain-xtensa-esp-elf@14.2.0+20260121#6e443ec78681b6b9503743c4f66049adcef70a7cb4781e9448c1c76ecf00cf11",
+            "localAliasVerified": false
+          }
+        ],
+        "libraries": [
+          "ArduinoJson@7.4.3#e95070e60a152c788f365cbdbf99cf693b2e92eca84803500eff74b05ead66f0",
+          "LovyanGFX@1.2.36#8b8bb8f96082dfe96aa5c0d9a3c4657008f8dca9acbcf74216bc80c85e2b9636",
+          "WebSockets@2.7.3#86ca299d57ff90afd91382221be98d1565938e0456672a58a7376801b1d62e78",
+          "WiFiManager@2.0.17#e0d25da488f1a21454e96e5218c803f5958775f9ebe91e7525c675de1e46531c",
+          "lvgl@9.6.0#f920b258e6c6ef13d577ef96a12bb93b8b806e507d11bd17545aede25ba90601"
+        ],
+        "libraryEdges": [
+          {
+            "from": null,
+            "to": "lvgl@9.6.0",
+            "request": "lvgl/lvgl@^9.2.0"
+          },
+          {
+            "from": null,
+            "to": "LovyanGFX@1.2.36",
+            "request": "lovyan03/LovyanGFX@^1.2.0"
+          },
+          {
+            "from": null,
+            "to": "WebSockets@2.7.3",
+            "request": "links2004/WebSockets@^2.6.1"
+          },
+          {
+            "from": null,
+            "to": "ArduinoJson@7.4.3",
+            "request": "bblanchon/ArduinoJson@^7.3.0"
+          },
+          {
+            "from": null,
+            "to": "WiFiManager@2.0.17",
+            "request": "tzapu/WiFiManager@^2.0.17"
+          }
+        ],
+        "frameworkReferences": []
+      },
+      {
+        "environment": "boot_test_qspi",
+        "platformRequest": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+        "board": "esp32-s3-devkitc-1",
+        "framework": [
+          "arduino"
+        ],
+        "isolatedPlatformStore": "c3a5da2eb132a244",
+        "platform": "espressif32@55.3.311#e5dceb2bbcc5390096048d659244f505f252ea2ab2503337dfa1c074ada1b32b",
+        "tools": [
+          {
+            "role": "platform dependency",
+            "component": "contrib-piohome@3.4.4#2ce1d1c197b75e3d8dc1027a03c4a4b37be86b1b3f4ac4d4f0a92cfc5e461ac2",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32@3.3.11#f203e6fb783b2cbe56223597445befca8d86ad39e65d83bd4bafe96bb1c0726b",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32-libs@5.5.5+sha.b774170ff46#936fd61600a81e9ec960e29f00d95b89da8fe222ba9e7f8b27d872d3a8c4db25",
+            "localAliasVerified": false
+          },
+          {
+            "role": "tool",
+            "component": "tool-esp-rom-elfs@2024.10.11#2da884381fe0c1d6322ea5e9a2b126fbbd0d7eceb8fe934c59e18c075b06d0fc",
+            "localAliasVerified": false
+          },
+          {
+            "role": "uploader",
+            "component": "tool-esptoolpy@5.3.0#f233106a988266305b7430d6afa7b97ea86c96443e43222b5c45289c8c23d4de",
+            "localAliasVerified": false
+          },
+          {
+            "role": "debugger",
+            "component": "tool-xtensa-esp-elf-gdb@17.1.0+20260402#62d7683901894dcc1f076f9886e1a79570d5ba9f7df8ad0f5d51ae3f4d48fbdb",
+            "localAliasVerified": false
+          },
+          {
+            "role": "toolchain",
+            "component": "toolchain-xtensa-esp-elf@14.2.0+20260121#6e443ec78681b6b9503743c4f66049adcef70a7cb4781e9448c1c76ecf00cf11",
+            "localAliasVerified": false
+          }
+        ],
+        "libraries": [],
+        "libraryEdges": [],
+        "frameworkReferences": []
+      },
+      {
+        "environment": "axs_test",
+        "platformRequest": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+        "board": "esp32-s3-devkitc-1",
+        "framework": [
+          "arduino"
+        ],
+        "isolatedPlatformStore": "c3a5da2eb132a244",
+        "platform": "espressif32@55.3.311#e5dceb2bbcc5390096048d659244f505f252ea2ab2503337dfa1c074ada1b32b",
+        "tools": [
+          {
+            "role": "platform dependency",
+            "component": "contrib-piohome@3.4.4#2ce1d1c197b75e3d8dc1027a03c4a4b37be86b1b3f4ac4d4f0a92cfc5e461ac2",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32@3.3.11#f203e6fb783b2cbe56223597445befca8d86ad39e65d83bd4bafe96bb1c0726b",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32-libs@5.5.5+sha.b774170ff46#936fd61600a81e9ec960e29f00d95b89da8fe222ba9e7f8b27d872d3a8c4db25",
+            "localAliasVerified": false
+          },
+          {
+            "role": "tool",
+            "component": "tool-esp-rom-elfs@2024.10.11#2da884381fe0c1d6322ea5e9a2b126fbbd0d7eceb8fe934c59e18c075b06d0fc",
+            "localAliasVerified": false
+          },
+          {
+            "role": "uploader",
+            "component": "tool-esptoolpy@5.3.0#f233106a988266305b7430d6afa7b97ea86c96443e43222b5c45289c8c23d4de",
+            "localAliasVerified": false
+          },
+          {
+            "role": "debugger",
+            "component": "tool-xtensa-esp-elf-gdb@17.1.0+20260402#62d7683901894dcc1f076f9886e1a79570d5ba9f7df8ad0f5d51ae3f4d48fbdb",
+            "localAliasVerified": false
+          },
+          {
+            "role": "toolchain",
+            "component": "toolchain-xtensa-esp-elf@14.2.0+20260121#6e443ec78681b6b9503743c4f66049adcef70a7cb4781e9448c1c76ecf00cf11",
+            "localAliasVerified": false
+          }
+        ],
+        "libraries": [
+          "GFX Library for Arduino@1.6.5#2e2791004158a00092f2d11d6ea8c8637f6e848c8f1b27eb2055364716990793"
+        ],
+        "libraryEdges": [
+          {
+            "from": null,
+            "to": "GFX Library for Arduino@1.6.5",
+            "request": "moononournation/GFX Library for Arduino@1.6.5"
+          }
+        ],
+        "frameworkReferences": []
+      },
+      {
+        "environment": "qspi_test",
+        "platformRequest": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+        "board": "esp32-s3-devkitc-1",
+        "framework": [
+          "arduino"
+        ],
+        "isolatedPlatformStore": "c3a5da2eb132a244",
+        "platform": "espressif32@55.3.311#e5dceb2bbcc5390096048d659244f505f252ea2ab2503337dfa1c074ada1b32b",
+        "tools": [
+          {
+            "role": "platform dependency",
+            "component": "contrib-piohome@3.4.4#2ce1d1c197b75e3d8dc1027a03c4a4b37be86b1b3f4ac4d4f0a92cfc5e461ac2",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32@3.3.11#f203e6fb783b2cbe56223597445befca8d86ad39e65d83bd4bafe96bb1c0726b",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32-libs@5.5.5+sha.b774170ff46#936fd61600a81e9ec960e29f00d95b89da8fe222ba9e7f8b27d872d3a8c4db25",
+            "localAliasVerified": false
+          },
+          {
+            "role": "tool",
+            "component": "tool-esp-rom-elfs@2024.10.11#2da884381fe0c1d6322ea5e9a2b126fbbd0d7eceb8fe934c59e18c075b06d0fc",
+            "localAliasVerified": false
+          },
+          {
+            "role": "uploader",
+            "component": "tool-esptoolpy@5.3.0#f233106a988266305b7430d6afa7b97ea86c96443e43222b5c45289c8c23d4de",
+            "localAliasVerified": false
+          },
+          {
+            "role": "debugger",
+            "component": "tool-xtensa-esp-elf-gdb@17.1.0+20260402#62d7683901894dcc1f076f9886e1a79570d5ba9f7df8ad0f5d51ae3f4d48fbdb",
+            "localAliasVerified": false
+          },
+          {
+            "role": "toolchain",
+            "component": "toolchain-xtensa-esp-elf@14.2.0+20260121#6e443ec78681b6b9503743c4f66049adcef70a7cb4781e9448c1c76ecf00cf11",
+            "localAliasVerified": false
+          }
+        ],
+        "libraries": [
+          "GFX Library for Arduino@1.6.5#2e2791004158a00092f2d11d6ea8c8637f6e848c8f1b27eb2055364716990793"
+        ],
+        "libraryEdges": [
+          {
+            "from": null,
+            "to": "GFX Library for Arduino@1.6.5",
+            "request": "moononournation/GFX Library for Arduino@1.6.5"
+          }
+        ],
+        "frameworkReferences": []
+      },
+      {
+        "environment": "display_test",
+        "platformRequest": "espressif32@^6.9.0",
+        "board": "esp32-s3-devkitc-1",
+        "framework": [
+          "arduino"
+        ],
+        "isolatedPlatformStore": "c81c474abdb864aa",
+        "platform": "espressif32@6.13.0#d9388eef3bdd06da6920ab75400697bb9f1b5bae769ba6380118d053685cef57",
+        "tools": [
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32@3.20017.241212+sha.dcc1105b#9253a583fbb1216390b82d1b3b00da0e34bda4a1cb744ba9f5aabb43706fd57e",
+            "localAliasVerified": false
+          },
+          {
+            "role": "uploader",
+            "component": "tool-esptoolpy@2.41100.260830#8847b0d4ef4e68e547f449c36a783a0084dce40cbd38fe03863b1fe8a931ab65",
+            "localAliasVerified": false
+          },
+          {
+            "role": "toolchain",
+            "component": "toolchain-riscv32-esp@8.4.0+2021r2-patch5#291b1c1fe100a1a983ff6fe4f05ff96269aa075b8bb4f33718fb8219020d6cfc",
+            "localAliasVerified": false
+          },
+          {
+            "role": "toolchain",
+            "component": "toolchain-xtensa-esp32s3@8.4.0+2021r2-patch5#a06406bd637402644d28848bae6952fc10f66a1b2aa12f9c74f54f5eb63f8344",
+            "localAliasVerified": false
+          }
+        ],
+        "libraries": [
+          "LovyanGFX@1.2.36#8b8bb8f96082dfe96aa5c0d9a3c4657008f8dca9acbcf74216bc80c85e2b9636"
+        ],
+        "libraryEdges": [
+          {
+            "from": null,
+            "to": "LovyanGFX@1.2.36",
+            "request": "lovyan03/LovyanGFX@^1.2.0"
+          }
+        ],
+        "frameworkReferences": []
+      },
+      {
+        "environment": "amoled",
+        "platformRequest": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+        "board": "esp32-s3-devkitc-1",
+        "framework": [
+          "arduino"
+        ],
+        "isolatedPlatformStore": "c3a5da2eb132a244",
+        "platform": "espressif32@55.3.311#e5dceb2bbcc5390096048d659244f505f252ea2ab2503337dfa1c074ada1b32b",
+        "tools": [
+          {
+            "role": "platform dependency",
+            "component": "contrib-piohome@3.4.4#2ce1d1c197b75e3d8dc1027a03c4a4b37be86b1b3f4ac4d4f0a92cfc5e461ac2",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32@3.3.11#f203e6fb783b2cbe56223597445befca8d86ad39e65d83bd4bafe96bb1c0726b",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32-libs@5.5.5+sha.b774170ff46#936fd61600a81e9ec960e29f00d95b89da8fe222ba9e7f8b27d872d3a8c4db25",
+            "localAliasVerified": false
+          },
+          {
+            "role": "tool",
+            "component": "tool-esp-rom-elfs@2024.10.11#2da884381fe0c1d6322ea5e9a2b126fbbd0d7eceb8fe934c59e18c075b06d0fc",
+            "localAliasVerified": false
+          },
+          {
+            "role": "uploader",
+            "component": "tool-esptoolpy@5.3.0#f233106a988266305b7430d6afa7b97ea86c96443e43222b5c45289c8c23d4de",
+            "localAliasVerified": false
+          },
+          {
+            "role": "debugger",
+            "component": "tool-xtensa-esp-elf-gdb@17.1.0+20260402#62d7683901894dcc1f076f9886e1a79570d5ba9f7df8ad0f5d51ae3f4d48fbdb",
+            "localAliasVerified": false
+          },
+          {
+            "role": "toolchain",
+            "component": "toolchain-xtensa-esp-elf@14.2.0+20260121#6e443ec78681b6b9503743c4f66049adcef70a7cb4781e9448c1c76ecf00cf11",
+            "localAliasVerified": false
+          }
+        ],
+        "libraries": [
+          "ArduinoJson@7.4.3#e95070e60a152c788f365cbdbf99cf693b2e92eca84803500eff74b05ead66f0",
+          "GFX Library for Arduino@1.6.5#2e2791004158a00092f2d11d6ea8c8637f6e848c8f1b27eb2055364716990793",
+          "WebSockets@2.7.3#86ca299d57ff90afd91382221be98d1565938e0456672a58a7376801b1d62e78",
+          "WiFiManager@2.0.17#e0d25da488f1a21454e96e5218c803f5958775f9ebe91e7525c675de1e46531c",
+          "lvgl@9.6.0#f920b258e6c6ef13d577ef96a12bb93b8b806e507d11bd17545aede25ba90601"
+        ],
+        "libraryEdges": [
+          {
+            "from": null,
+            "to": "lvgl@9.6.0",
+            "request": "lvgl/lvgl@^9.2.0"
+          },
+          {
+            "from": null,
+            "to": "GFX Library for Arduino@1.6.5",
+            "request": "moononournation/GFX Library for Arduino@1.6.5"
+          },
+          {
+            "from": null,
+            "to": "WebSockets@2.7.3",
+            "request": "links2004/WebSockets@^2.6.1"
+          },
+          {
+            "from": null,
+            "to": "ArduinoJson@7.4.3",
+            "request": "bblanchon/ArduinoJson@^7.3.0"
+          },
+          {
+            "from": null,
+            "to": "WiFiManager@2.0.17",
+            "request": "tzapu/WiFiManager@^2.0.17"
+          }
+        ],
+        "frameworkReferences": []
+      },
+      {
+        "environment": "led8x32",
+        "platformRequest": "platformio/espressif32@7.1.3",
+        "board": "esp32dev",
+        "framework": [
+          "arduino"
+        ],
+        "isolatedPlatformStore": "f5362291c5e53518",
+        "platform": "espressif32@7.1.3#92314e50b2955515d952ddfc6cce9f7284bb20d52f491232ba2ee96a76110a11",
+        "tools": [
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32@4.20017.260907+sha.dcc1105b#0e38960752c7242c5effaa913e5c1d822c359e6a2fc6a4a5b659e7f5cebbaba3",
+            "localAliasVerified": false
+          },
+          {
+            "role": "uploader",
+            "component": "tool-esptoolpy@2.41100.260830#8847b0d4ef4e68e547f449c36a783a0084dce40cbd38fe03863b1fe8a931ab65",
+            "localAliasVerified": false
+          },
+          {
+            "role": "toolchain",
+            "component": "toolchain-xtensa-esp32@8.4.0+2021r2-patch5#3d5a9cdfe499bfb3bac26edc243ecbf44127f8d3c7721cd763bdef24c8b9d8ca",
+            "localAliasVerified": false
+          }
+        ],
+        "libraries": [
+          "ArduinoJson@7.4.3#e95070e60a152c788f365cbdbf99cf693b2e92eca84803500eff74b05ead66f0",
+          "FastLED@3.7.0#8728d79f7e76f986a4ef05a5bb563d0a0dbcc2aa18306a386ad543239f4ab405",
+          "WebSockets@2.7.3#86ca299d57ff90afd91382221be98d1565938e0456672a58a7376801b1d62e78",
+          "WiFiManager@2.0.17#e0d25da488f1a21454e96e5218c803f5958775f9ebe91e7525c675de1e46531c"
+        ],
+        "libraryEdges": [
+          {
+            "from": null,
+            "to": "FastLED@3.7.0",
+            "request": "fastled/FastLED@3.7.0"
+          },
+          {
+            "from": null,
+            "to": "WebSockets@2.7.3",
+            "request": "links2004/WebSockets@^2.6.1"
+          },
+          {
+            "from": null,
+            "to": "ArduinoJson@7.4.3",
+            "request": "bblanchon/ArduinoJson@^7.3.0"
+          },
+          {
+            "from": null,
+            "to": "WiFiManager@2.0.17",
+            "request": "tzapu/WiFiManager@^2.0.17"
+          }
+        ],
+        "frameworkReferences": []
+      },
+      {
+        "environment": "trmnl_75",
+        "platformRequest": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+        "board": "seeed_xiao_esp32s3",
+        "framework": [
+          "arduino"
+        ],
+        "isolatedPlatformStore": "c3a5da2eb132a244",
+        "platform": "espressif32@55.3.311#e5dceb2bbcc5390096048d659244f505f252ea2ab2503337dfa1c074ada1b32b",
+        "tools": [
+          {
+            "role": "platform dependency",
+            "component": "contrib-piohome@3.4.4#2ce1d1c197b75e3d8dc1027a03c4a4b37be86b1b3f4ac4d4f0a92cfc5e461ac2",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32@3.3.11#f203e6fb783b2cbe56223597445befca8d86ad39e65d83bd4bafe96bb1c0726b",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32-libs@5.5.5+sha.b774170ff46#936fd61600a81e9ec960e29f00d95b89da8fe222ba9e7f8b27d872d3a8c4db25",
+            "localAliasVerified": false
+          },
+          {
+            "role": "tool",
+            "component": "tool-esp-rom-elfs@2024.10.11#2da884381fe0c1d6322ea5e9a2b126fbbd0d7eceb8fe934c59e18c075b06d0fc",
+            "localAliasVerified": false
+          },
+          {
+            "role": "uploader",
+            "component": "tool-esptoolpy@5.3.0#f233106a988266305b7430d6afa7b97ea86c96443e43222b5c45289c8c23d4de",
+            "localAliasVerified": false
+          },
+          {
+            "role": "debugger",
+            "component": "tool-xtensa-esp-elf-gdb@17.1.0+20260402#62d7683901894dcc1f076f9886e1a79570d5ba9f7df8ad0f5d51ae3f4d48fbdb",
+            "localAliasVerified": false
+          },
+          {
+            "role": "toolchain",
+            "component": "toolchain-xtensa-esp-elf@14.2.0+20260121#6e443ec78681b6b9503743c4f66049adcef70a7cb4781e9448c1c76ecf00cf11",
+            "localAliasVerified": false
+          }
+        ],
+        "libraries": [
+          "Adafruit BusIO@1.17.4#d84e10f6871a1b1bfaf39079b15213efcd7a11e7ff1963b6a15fe94671440a69",
+          "Adafruit GFX Library@1.13.0#4126f57805bca54320c6c41291f2b36d1dd9551555bb816fb208eab9221aa37e",
+          "ArduinoJson@7.4.3#e95070e60a152c788f365cbdbf99cf693b2e92eca84803500eff74b05ead66f0",
+          "GxEPD2@1.6.9#8e1ebb8b504a92641dc36645e3852f196e5975e06fab6316c4fec6d474f27dd6",
+          "U8g2_for_Adafruit_GFX@1.8.0#9a879eb452027fb654575218f6b918ac41255eabfe3b75808e984b3992e7900d",
+          "WebSockets@2.7.3#86ca299d57ff90afd91382221be98d1565938e0456672a58a7376801b1d62e78",
+          "WiFiManager@2.0.17#e0d25da488f1a21454e96e5218c803f5958775f9ebe91e7525c675de1e46531c"
+        ],
+        "libraryEdges": [
+          {
+            "from": null,
+            "to": "GxEPD2@1.6.9",
+            "request": "zinggjm/GxEPD2@^1.6.4"
+          },
+          {
+            "from": "GxEPD2@1.6.9",
+            "to": "Adafruit GFX Library@1.13.0",
+            "request": "PackageSpec <owner=None id=None name=Adafruit GFX Library requirements=None uri=None>"
+          },
+          {
+            "from": "Adafruit GFX Library@1.13.0",
+            "to": "Adafruit BusIO@1.17.4",
+            "request": "PackageSpec <owner=None id=None name=Adafruit BusIO requirements=None uri=None>"
+          },
+          {
+            "from": null,
+            "to": "Adafruit GFX Library@1.13.0",
+            "request": "adafruit/Adafruit GFX Library@^1.11.9"
+          },
+          {
+            "from": null,
+            "to": "Adafruit BusIO@1.17.4",
+            "request": "adafruit/Adafruit BusIO@^1.16.1"
+          },
+          {
+            "from": null,
+            "to": "U8g2_for_Adafruit_GFX@1.8.0",
+            "request": "olikraus/U8g2_for_Adafruit_GFX@^1.8.0"
+          },
+          {
+            "from": "U8g2_for_Adafruit_GFX@1.8.0",
+            "to": "Adafruit GFX Library@1.13.0",
+            "request": "PackageSpec <owner=None id=None name=Adafruit GFX Library requirements=None uri=None>"
+          },
+          {
+            "from": null,
+            "to": "WebSockets@2.7.3",
+            "request": "links2004/WebSockets@^2.6.1"
+          },
+          {
+            "from": null,
+            "to": "ArduinoJson@7.4.3",
+            "request": "bblanchon/ArduinoJson@^7.3.0"
+          },
+          {
+            "from": null,
+            "to": "WiFiManager@2.0.17",
+            "request": "tzapu/WiFiManager@^2.0.17"
+          }
+        ],
+        "frameworkReferences": []
+      },
+      {
+        "environment": "nm_epd_420",
+        "platformRequest": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+        "board": "lilygo-t-display-s3",
+        "framework": [
+          "arduino"
+        ],
+        "isolatedPlatformStore": "c3a5da2eb132a244",
+        "platform": "espressif32@55.3.311#e5dceb2bbcc5390096048d659244f505f252ea2ab2503337dfa1c074ada1b32b",
+        "tools": [
+          {
+            "role": "platform dependency",
+            "component": "contrib-piohome@3.4.4#2ce1d1c197b75e3d8dc1027a03c4a4b37be86b1b3f4ac4d4f0a92cfc5e461ac2",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32@3.3.11#f203e6fb783b2cbe56223597445befca8d86ad39e65d83bd4bafe96bb1c0726b",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32-libs@5.5.5+sha.b774170ff46#936fd61600a81e9ec960e29f00d95b89da8fe222ba9e7f8b27d872d3a8c4db25",
+            "localAliasVerified": false
+          },
+          {
+            "role": "tool",
+            "component": "tool-esp-rom-elfs@2024.10.11#2da884381fe0c1d6322ea5e9a2b126fbbd0d7eceb8fe934c59e18c075b06d0fc",
+            "localAliasVerified": false
+          },
+          {
+            "role": "uploader",
+            "component": "tool-esptoolpy@5.3.0#f233106a988266305b7430d6afa7b97ea86c96443e43222b5c45289c8c23d4de",
+            "localAliasVerified": false
+          },
+          {
+            "role": "debugger",
+            "component": "tool-xtensa-esp-elf-gdb@17.1.0+20260402#62d7683901894dcc1f076f9886e1a79570d5ba9f7df8ad0f5d51ae3f4d48fbdb",
+            "localAliasVerified": false
+          },
+          {
+            "role": "toolchain",
+            "component": "toolchain-xtensa-esp-elf@14.2.0+20260121#6e443ec78681b6b9503743c4f66049adcef70a7cb4781e9448c1c76ecf00cf11",
+            "localAliasVerified": false
+          }
+        ],
+        "libraries": [
+          "Adafruit BusIO@1.17.4#d84e10f6871a1b1bfaf39079b15213efcd7a11e7ff1963b6a15fe94671440a69",
+          "Adafruit GFX Library@1.13.0#4126f57805bca54320c6c41291f2b36d1dd9551555bb816fb208eab9221aa37e",
+          "ArduinoJson@7.4.3#e95070e60a152c788f365cbdbf99cf693b2e92eca84803500eff74b05ead66f0",
+          "GxEPD2@1.6.9#8e1ebb8b504a92641dc36645e3852f196e5975e06fab6316c4fec6d474f27dd6",
+          "U8g2_for_Adafruit_GFX@1.8.0#9a879eb452027fb654575218f6b918ac41255eabfe3b75808e984b3992e7900d",
+          "WebSockets@2.7.3#86ca299d57ff90afd91382221be98d1565938e0456672a58a7376801b1d62e78",
+          "WiFiManager@2.0.17#e0d25da488f1a21454e96e5218c803f5958775f9ebe91e7525c675de1e46531c"
+        ],
+        "libraryEdges": [
+          {
+            "from": null,
+            "to": "GxEPD2@1.6.9",
+            "request": "zinggjm/GxEPD2@^1.6.8"
+          },
+          {
+            "from": "GxEPD2@1.6.9",
+            "to": "Adafruit GFX Library@1.13.0",
+            "request": "PackageSpec <owner=None id=None name=Adafruit GFX Library requirements=None uri=None>"
+          },
+          {
+            "from": "Adafruit GFX Library@1.13.0",
+            "to": "Adafruit BusIO@1.17.4",
+            "request": "PackageSpec <owner=None id=None name=Adafruit BusIO requirements=None uri=None>"
+          },
+          {
+            "from": null,
+            "to": "Adafruit GFX Library@1.13.0",
+            "request": "adafruit/Adafruit GFX Library@^1.11.9"
+          },
+          {
+            "from": null,
+            "to": "Adafruit BusIO@1.17.4",
+            "request": "adafruit/Adafruit BusIO@^1.16.1"
+          },
+          {
+            "from": null,
+            "to": "U8g2_for_Adafruit_GFX@1.8.0",
+            "request": "olikraus/U8g2_for_Adafruit_GFX@^1.8.0"
+          },
+          {
+            "from": "U8g2_for_Adafruit_GFX@1.8.0",
+            "to": "Adafruit GFX Library@1.13.0",
+            "request": "PackageSpec <owner=None id=None name=Adafruit GFX Library requirements=None uri=None>"
+          },
+          {
+            "from": null,
+            "to": "WebSockets@2.7.3",
+            "request": "links2004/WebSockets@^2.6.1"
+          },
+          {
+            "from": null,
+            "to": "ArduinoJson@7.4.3",
+            "request": "bblanchon/ArduinoJson@^7.3.0"
+          },
+          {
+            "from": null,
+            "to": "WiFiManager@2.0.17",
+            "request": "tzapu/WiFiManager@^2.0.17"
+          }
+        ],
+        "frameworkReferences": []
+      },
+      {
+        "environment": "lilygo_epd47",
+        "platformRequest": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+        "board": "T5-ePaper-S3",
+        "framework": [
+          "arduino"
+        ],
+        "isolatedPlatformStore": "c3a5da2eb132a244",
+        "platform": "espressif32@55.3.311#e5dceb2bbcc5390096048d659244f505f252ea2ab2503337dfa1c074ada1b32b",
+        "tools": [
+          {
+            "role": "platform dependency",
+            "component": "contrib-piohome@3.4.4#2ce1d1c197b75e3d8dc1027a03c4a4b37be86b1b3f4ac4d4f0a92cfc5e461ac2",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32@3.3.11#f203e6fb783b2cbe56223597445befca8d86ad39e65d83bd4bafe96bb1c0726b",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32-libs@5.5.5+sha.b774170ff46#936fd61600a81e9ec960e29f00d95b89da8fe222ba9e7f8b27d872d3a8c4db25",
+            "localAliasVerified": false
+          },
+          {
+            "role": "tool",
+            "component": "tool-esp-rom-elfs@2024.10.11#2da884381fe0c1d6322ea5e9a2b126fbbd0d7eceb8fe934c59e18c075b06d0fc",
+            "localAliasVerified": false
+          },
+          {
+            "role": "uploader",
+            "component": "tool-esptoolpy@5.3.0#f233106a988266305b7430d6afa7b97ea86c96443e43222b5c45289c8c23d4de",
+            "localAliasVerified": false
+          },
+          {
+            "role": "debugger",
+            "component": "tool-xtensa-esp-elf-gdb@17.1.0+20260402#62d7683901894dcc1f076f9886e1a79570d5ba9f7df8ad0f5d51ae3f4d48fbdb",
+            "localAliasVerified": false
+          },
+          {
+            "role": "toolchain",
+            "component": "toolchain-xtensa-esp-elf@14.2.0+20260121#6e443ec78681b6b9503743c4f66049adcef70a7cb4781e9448c1c76ecf00cf11",
+            "localAliasVerified": false
+          }
+        ],
+        "libraries": [
+          "Adafruit BusIO@1.17.4#d84e10f6871a1b1bfaf39079b15213efcd7a11e7ff1963b6a15fe94671440a69",
+          "Adafruit GFX Library@1.13.0#4126f57805bca54320c6c41291f2b36d1dd9551555bb816fb208eab9221aa37e",
+          "ArduinoJson@7.4.3#e95070e60a152c788f365cbdbf99cf693b2e92eca84803500eff74b05ead66f0",
+          "Button2@2.3.2#2c1fc9809ca17497e68e0ff0f01aca20b452abbef2756ab44629d0bee07cc7f2",
+          "LilyGo-EPD47@1.1.0+sha.391b0e2#c2a9eabee881f80114848a0e2f1ab6eb30bef68612239780c4cf255594b83357",
+          "SensorLib@0.3.1#2270dc5a0528426cf07ada8e09d3b7358eb559b78118a6f8e513e0a37521708b",
+          "U8g2_for_Adafruit_GFX@1.8.0#9a879eb452027fb654575218f6b918ac41255eabfe3b75808e984b3992e7900d",
+          "WebSockets@2.7.3#86ca299d57ff90afd91382221be98d1565938e0456672a58a7376801b1d62e78",
+          "WiFiManager@2.0.17#e0d25da488f1a21454e96e5218c803f5958775f9ebe91e7525c675de1e46531c"
+        ],
+        "libraryEdges": [
+          {
+            "from": null,
+            "to": "LilyGo-EPD47@1.1.0+sha.391b0e2",
+            "request": "https://github.com/Xinyuan-LilyGO/LilyGo-EPD47.git#391b0e25d7a39897e3a00af34053250df031d699"
+          },
+          {
+            "from": "LilyGo-EPD47@1.1.0+sha.391b0e2",
+            "to": "Button2@2.3.2",
+            "request": "PackageSpec <owner=lennarthennigs id=None name=Button2 requirements=2.3.2 uri=None>"
+          },
+          {
+            "from": "LilyGo-EPD47@1.1.0+sha.391b0e2",
+            "to": "SensorLib@0.3.1",
+            "request": "PackageSpec <owner=lewisxhe id=None name=SensorLib requirements=0.3.1 uri=None>"
+          },
+          {
+            "from": "LilyGo-EPD47@1.1.0+sha.391b0e2",
+            "to": "ArduinoJson@7.4.3",
+            "request": "PackageSpec <owner=None id=None name=ArduinoJson requirements=7.4.3 uri=None>"
+          },
+          {
+            "from": null,
+            "to": "Adafruit GFX Library@1.13.0",
+            "request": "adafruit/Adafruit GFX Library@^1.11.9"
+          },
+          {
+            "from": "Adafruit GFX Library@1.13.0",
+            "to": "Adafruit BusIO@1.17.4",
+            "request": "PackageSpec <owner=None id=None name=Adafruit BusIO requirements=None uri=None>"
+          },
+          {
+            "from": null,
+            "to": "Adafruit BusIO@1.17.4",
+            "request": "adafruit/Adafruit BusIO@^1.16.1"
+          },
+          {
+            "from": null,
+            "to": "U8g2_for_Adafruit_GFX@1.8.0",
+            "request": "olikraus/U8g2_for_Adafruit_GFX@^1.8.0"
+          },
+          {
+            "from": "U8g2_for_Adafruit_GFX@1.8.0",
+            "to": "Adafruit GFX Library@1.13.0",
+            "request": "PackageSpec <owner=None id=None name=Adafruit GFX Library requirements=None uri=None>"
+          },
+          {
+            "from": null,
+            "to": "WebSockets@2.7.3",
+            "request": "links2004/WebSockets@^2.6.1"
+          },
+          {
+            "from": null,
+            "to": "ArduinoJson@7.4.3",
+            "request": "bblanchon/ArduinoJson@^7.3.0"
+          },
+          {
+            "from": null,
+            "to": "WiFiManager@2.0.17",
+            "request": "tzapu/WiFiManager@^2.0.17"
+          }
+        ],
+        "frameworkReferences": []
+      },
+      {
+        "environment": "t_embed",
+        "platformRequest": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+        "board": "esp32-s3-devkitc-1",
+        "framework": [
+          "arduino"
+        ],
+        "isolatedPlatformStore": "c3a5da2eb132a244",
+        "platform": "espressif32@55.3.311#e5dceb2bbcc5390096048d659244f505f252ea2ab2503337dfa1c074ada1b32b",
+        "tools": [
+          {
+            "role": "platform dependency",
+            "component": "contrib-piohome@3.4.4#2ce1d1c197b75e3d8dc1027a03c4a4b37be86b1b3f4ac4d4f0a92cfc5e461ac2",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32@3.3.11#f203e6fb783b2cbe56223597445befca8d86ad39e65d83bd4bafe96bb1c0726b",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32-libs@5.5.5+sha.b774170ff46#936fd61600a81e9ec960e29f00d95b89da8fe222ba9e7f8b27d872d3a8c4db25",
+            "localAliasVerified": false
+          },
+          {
+            "role": "tool",
+            "component": "tool-esp-rom-elfs@2024.10.11#2da884381fe0c1d6322ea5e9a2b126fbbd0d7eceb8fe934c59e18c075b06d0fc",
+            "localAliasVerified": false
+          },
+          {
+            "role": "uploader",
+            "component": "tool-esptoolpy@5.3.0#f233106a988266305b7430d6afa7b97ea86c96443e43222b5c45289c8c23d4de",
+            "localAliasVerified": false
+          },
+          {
+            "role": "debugger",
+            "component": "tool-xtensa-esp-elf-gdb@17.1.0+20260402#62d7683901894dcc1f076f9886e1a79570d5ba9f7df8ad0f5d51ae3f4d48fbdb",
+            "localAliasVerified": false
+          },
+          {
+            "role": "toolchain",
+            "component": "toolchain-xtensa-esp-elf@14.2.0+20260121#6e443ec78681b6b9503743c4f66049adcef70a7cb4781e9448c1c76ecf00cf11",
+            "localAliasVerified": false
+          }
+        ],
+        "libraries": [
+          "Adafruit BusIO@1.17.4#d84e10f6871a1b1bfaf39079b15213efcd7a11e7ff1963b6a15fe94671440a69",
+          "Adafruit NeoPixel@1.15.5#411060236eae7042267daace191e8dfc74a38a55faec96f409b42f668d25e0fa",
+          "Adafruit PN532@1.3.4#49900aa4e4011b5f26259b8908b40edf241aca35bcb4675102e42dbb3ffdf93f",
+          "ArduinoJson@7.4.3#e95070e60a152c788f365cbdbf99cf693b2e92eca84803500eff74b05ead66f0",
+          "IRremoteESP8266@2.9.0#87ec6796e043713135c11ed0ebbc180f14223f0031a99874c15bce1962ea00c8",
+          "LovyanGFX@1.2.36#8b8bb8f96082dfe96aa5c0d9a3c4657008f8dca9acbcf74216bc80c85e2b9636",
+          "WebSockets@2.7.3#86ca299d57ff90afd91382221be98d1565938e0456672a58a7376801b1d62e78",
+          "WiFiManager@2.0.17#e0d25da488f1a21454e96e5218c803f5958775f9ebe91e7525c675de1e46531c",
+          "lvgl@9.6.0#f920b258e6c6ef13d577ef96a12bb93b8b806e507d11bd17545aede25ba90601"
+        ],
+        "libraryEdges": [
+          {
+            "from": null,
+            "to": "lvgl@9.6.0",
+            "request": "lvgl/lvgl@^9.2.0"
+          },
+          {
+            "from": null,
+            "to": "LovyanGFX@1.2.36",
+            "request": "lovyan03/LovyanGFX@^1.2.0"
+          },
+          {
+            "from": null,
+            "to": "Adafruit NeoPixel@1.15.5",
+            "request": "adafruit/Adafruit NeoPixel@^1.12.3"
+          },
+          {
+            "from": null,
+            "to": "Adafruit PN532@1.3.4",
+            "request": "adafruit/Adafruit PN532@^1.3.4"
+          },
+          {
+            "from": "Adafruit PN532@1.3.4",
+            "to": "Adafruit BusIO@1.17.4",
+            "request": "PackageSpec <owner=None id=None name=Adafruit BusIO requirements=None uri=None>"
+          },
+          {
+            "from": null,
+            "to": "IRremoteESP8266@2.9.0",
+            "request": "crankyoldgit/IRremoteESP8266@^2.8.6"
+          },
+          {
+            "from": null,
+            "to": "WebSockets@2.7.3",
+            "request": "links2004/WebSockets@^2.6.1"
+          },
+          {
+            "from": null,
+            "to": "ArduinoJson@7.4.3",
+            "request": "bblanchon/ArduinoJson@^7.3.0"
+          },
+          {
+            "from": null,
+            "to": "WiFiManager@2.0.17",
+            "request": "tzapu/WiFiManager@^2.0.17"
+          }
+        ],
+        "frameworkReferences": []
+      },
+      {
+        "environment": "t_display_pro",
+        "platformRequest": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+        "board": "esp32-s3-devkitc-1",
+        "framework": [
+          "arduino"
+        ],
+        "isolatedPlatformStore": "c3a5da2eb132a244",
+        "platform": "espressif32@55.3.311#e5dceb2bbcc5390096048d659244f505f252ea2ab2503337dfa1c074ada1b32b",
+        "tools": [
+          {
+            "role": "platform dependency",
+            "component": "contrib-piohome@3.4.4#2ce1d1c197b75e3d8dc1027a03c4a4b37be86b1b3f4ac4d4f0a92cfc5e461ac2",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32@3.3.11#f203e6fb783b2cbe56223597445befca8d86ad39e65d83bd4bafe96bb1c0726b",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32-libs@5.5.5+sha.b774170ff46#936fd61600a81e9ec960e29f00d95b89da8fe222ba9e7f8b27d872d3a8c4db25",
+            "localAliasVerified": false
+          },
+          {
+            "role": "tool",
+            "component": "tool-esp-rom-elfs@2024.10.11#2da884381fe0c1d6322ea5e9a2b126fbbd0d7eceb8fe934c59e18c075b06d0fc",
+            "localAliasVerified": false
+          },
+          {
+            "role": "uploader",
+            "component": "tool-esptoolpy@5.3.0#f233106a988266305b7430d6afa7b97ea86c96443e43222b5c45289c8c23d4de",
+            "localAliasVerified": false
+          },
+          {
+            "role": "debugger",
+            "component": "tool-xtensa-esp-elf-gdb@17.1.0+20260402#62d7683901894dcc1f076f9886e1a79570d5ba9f7df8ad0f5d51ae3f4d48fbdb",
+            "localAliasVerified": false
+          },
+          {
+            "role": "toolchain",
+            "component": "toolchain-xtensa-esp-elf@14.2.0+20260121#6e443ec78681b6b9503743c4f66049adcef70a7cb4781e9448c1c76ecf00cf11",
+            "localAliasVerified": false
+          }
+        ],
+        "libraries": [
+          "ArduinoJson@7.4.3#e95070e60a152c788f365cbdbf99cf693b2e92eca84803500eff74b05ead66f0",
+          "LovyanGFX@1.2.36#8b8bb8f96082dfe96aa5c0d9a3c4657008f8dca9acbcf74216bc80c85e2b9636",
+          "SensorLib@0.2.6#4e6f7da622243c363d745857119732b3675861d982fa1ba6661220985ee63350",
+          "WebSockets@2.7.3#86ca299d57ff90afd91382221be98d1565938e0456672a58a7376801b1d62e78",
+          "WiFiManager@2.0.17#e0d25da488f1a21454e96e5218c803f5958775f9ebe91e7525c675de1e46531c",
+          "lvgl@9.6.0#f920b258e6c6ef13d577ef96a12bb93b8b806e507d11bd17545aede25ba90601"
+        ],
+        "libraryEdges": [
+          {
+            "from": null,
+            "to": "lvgl@9.6.0",
+            "request": "lvgl/lvgl@^9.2.0"
+          },
+          {
+            "from": null,
+            "to": "LovyanGFX@1.2.36",
+            "request": "lovyan03/LovyanGFX@^1.2.0"
+          },
+          {
+            "from": null,
+            "to": "SensorLib@0.2.6",
+            "request": "lewisxhe/SensorLib@^0.2.4"
+          },
+          {
+            "from": null,
+            "to": "WebSockets@2.7.3",
+            "request": "links2004/WebSockets@^2.6.1"
+          },
+          {
+            "from": null,
+            "to": "ArduinoJson@7.4.3",
+            "request": "bblanchon/ArduinoJson@^7.3.0"
+          },
+          {
+            "from": null,
+            "to": "WiFiManager@2.0.17",
+            "request": "tzapu/WiFiManager@^2.0.17"
+          }
+        ],
+        "frameworkReferences": []
+      },
+      {
+        "environment": "ttgo",
+        "platformRequest": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+        "board": "esp32dev",
+        "framework": [
+          "arduino"
+        ],
+        "isolatedPlatformStore": "c3a5da2eb132a244",
+        "platform": "espressif32@55.3.311#e5dceb2bbcc5390096048d659244f505f252ea2ab2503337dfa1c074ada1b32b",
+        "tools": [
+          {
+            "role": "platform dependency",
+            "component": "contrib-piohome@3.4.4#2ce1d1c197b75e3d8dc1027a03c4a4b37be86b1b3f4ac4d4f0a92cfc5e461ac2",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32@3.3.11#f203e6fb783b2cbe56223597445befca8d86ad39e65d83bd4bafe96bb1c0726b",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32-libs@5.5.5+sha.b774170ff46#936fd61600a81e9ec960e29f00d95b89da8fe222ba9e7f8b27d872d3a8c4db25",
+            "localAliasVerified": false
+          },
+          {
+            "role": "tool",
+            "component": "tool-esp-rom-elfs@2024.10.11#2da884381fe0c1d6322ea5e9a2b126fbbd0d7eceb8fe934c59e18c075b06d0fc",
+            "localAliasVerified": false
+          },
+          {
+            "role": "uploader",
+            "component": "tool-esptoolpy@5.3.0#f233106a988266305b7430d6afa7b97ea86c96443e43222b5c45289c8c23d4de",
+            "localAliasVerified": false
+          },
+          {
+            "role": "debugger",
+            "component": "tool-xtensa-esp-elf-gdb@17.1.0+20260402#62d7683901894dcc1f076f9886e1a79570d5ba9f7df8ad0f5d51ae3f4d48fbdb",
+            "localAliasVerified": false
+          },
+          {
+            "role": "toolchain",
+            "component": "toolchain-xtensa-esp-elf@14.2.0+20260121#6e443ec78681b6b9503743c4f66049adcef70a7cb4781e9448c1c76ecf00cf11",
+            "localAliasVerified": false
+          }
+        ],
+        "libraries": [
+          "ArduinoJson@7.4.3#e95070e60a152c788f365cbdbf99cf693b2e92eca84803500eff74b05ead66f0",
+          "LovyanGFX@1.2.21#93cbc0c576458d2840eb161747accd6499e578c2bb0de189b23632cb33b00365",
+          "WebSockets@2.7.3#86ca299d57ff90afd91382221be98d1565938e0456672a58a7376801b1d62e78",
+          "WiFiManager@2.0.17#e0d25da488f1a21454e96e5218c803f5958775f9ebe91e7525c675de1e46531c",
+          "lvgl@9.5.0#743590075177feb78b9eda1b864d6235bc8122649979fa5864eafaaf95b7362c"
+        ],
+        "libraryEdges": [
+          {
+            "from": null,
+            "to": "lvgl@9.5.0",
+            "request": "lvgl/lvgl@9.5.0"
+          },
+          {
+            "from": null,
+            "to": "LovyanGFX@1.2.21",
+            "request": "lovyan03/LovyanGFX@1.2.21"
+          },
+          {
+            "from": null,
+            "to": "WebSockets@2.7.3",
+            "request": "links2004/WebSockets@2.7.3"
+          },
+          {
+            "from": null,
+            "to": "ArduinoJson@7.4.3",
+            "request": "bblanchon/ArduinoJson@7.4.3"
+          },
+          {
+            "from": null,
+            "to": "WiFiManager@2.0.17",
+            "request": "tzapu/WiFiManager@2.0.17"
+          }
+        ],
+        "frameworkReferences": []
+      },
+      {
+        "environment": "esp32_c6_147",
+        "platformRequest": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+        "board": "esp32-c6-devkitc-1",
+        "framework": [
+          "arduino"
+        ],
+        "isolatedPlatformStore": "c3a5da2eb132a244",
+        "platform": "espressif32@55.3.311#e5dceb2bbcc5390096048d659244f505f252ea2ab2503337dfa1c074ada1b32b",
+        "tools": [
+          {
+            "role": "platform dependency",
+            "component": "contrib-piohome@3.4.4#2ce1d1c197b75e3d8dc1027a03c4a4b37be86b1b3f4ac4d4f0a92cfc5e461ac2",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32@3.3.11#f203e6fb783b2cbe56223597445befca8d86ad39e65d83bd4bafe96bb1c0726b",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32-libs@5.5.5+sha.b774170ff46#936fd61600a81e9ec960e29f00d95b89da8fe222ba9e7f8b27d872d3a8c4db25",
+            "localAliasVerified": false
+          },
+          {
+            "role": "tool",
+            "component": "tool-esp-rom-elfs@2024.10.11#2da884381fe0c1d6322ea5e9a2b126fbbd0d7eceb8fe934c59e18c075b06d0fc",
+            "localAliasVerified": false
+          },
+          {
+            "role": "uploader",
+            "component": "tool-esptoolpy@5.3.0#f233106a988266305b7430d6afa7b97ea86c96443e43222b5c45289c8c23d4de",
+            "localAliasVerified": false
+          },
+          {
+            "role": "debugger",
+            "component": "tool-riscv32-esp-elf-gdb@17.1.0+20260402#b872a194735f533208e8a86c19826e5cd0c856f4f9a7153e6ff45afb05dd7ac9",
+            "localAliasVerified": false
+          },
+          {
+            "role": "toolchain",
+            "component": "toolchain-riscv32-esp@14.2.0+20260121#a25ce4a1b3805330372fff2cdd7f387a39e9c6f69e1d601a65d74eb67ce6e83d",
+            "localAliasVerified": false
+          }
+        ],
+        "libraries": [
+          "ArduinoJson@7.4.3#e95070e60a152c788f365cbdbf99cf693b2e92eca84803500eff74b05ead66f0",
+          "LovyanGFX@1.2.36#8b8bb8f96082dfe96aa5c0d9a3c4657008f8dca9acbcf74216bc80c85e2b9636",
+          "WebSockets@2.7.3#86ca299d57ff90afd91382221be98d1565938e0456672a58a7376801b1d62e78",
+          "WiFiManager@2.0.17#e0d25da488f1a21454e96e5218c803f5958775f9ebe91e7525c675de1e46531c",
+          "lvgl@9.6.0#f920b258e6c6ef13d577ef96a12bb93b8b806e507d11bd17545aede25ba90601"
+        ],
+        "libraryEdges": [
+          {
+            "from": null,
+            "to": "lvgl@9.6.0",
+            "request": "lvgl/lvgl@^9.2.0"
+          },
+          {
+            "from": null,
+            "to": "LovyanGFX@1.2.36",
+            "request": "lovyan03/LovyanGFX@^1.2.0"
+          },
+          {
+            "from": null,
+            "to": "WebSockets@2.7.3",
+            "request": "links2004/WebSockets@^2.6.1"
+          },
+          {
+            "from": null,
+            "to": "ArduinoJson@7.4.3",
+            "request": "bblanchon/ArduinoJson@^7.3.0"
+          },
+          {
+            "from": null,
+            "to": "WiFiManager@2.0.17",
+            "request": "tzapu/WiFiManager@^2.0.17"
+          }
+        ],
+        "frameworkReferences": []
+      },
+      {
+        "environment": "ips10",
+        "platformRequest": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip",
+        "board": "esp32-p4",
+        "framework": [
+          "arduino"
+        ],
+        "isolatedPlatformStore": "c3a5da2eb132a244",
+        "platform": "espressif32@55.3.311#e5dceb2bbcc5390096048d659244f505f252ea2ab2503337dfa1c074ada1b32b",
+        "tools": [
+          {
+            "role": "platform dependency",
+            "component": "contrib-piohome@3.4.4#2ce1d1c197b75e3d8dc1027a03c4a4b37be86b1b3f4ac4d4f0a92cfc5e461ac2",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32@3.3.11#f203e6fb783b2cbe56223597445befca8d86ad39e65d83bd4bafe96bb1c0726b",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-arduinoespressif32-libs@5.5.5+sha.b774170ff46#936fd61600a81e9ec960e29f00d95b89da8fe222ba9e7f8b27d872d3a8c4db25",
+            "localAliasVerified": false
+          },
+          {
+            "role": "framework",
+            "component": "framework-espidf@3.50505.0#468c12d114a991adc6628f6a1d4580ed92c07c27695ff77406506738a75044ed",
+            "localAliasVerified": false
+          },
+          {
+            "role": "tool",
+            "component": "tool-cmake@4.0.3#53685e280f97cf0f8cd8cade65643b3b16b850897284f84e3e40d079b5679de9",
+            "localAliasVerified": false
+          },
+          {
+            "role": "tool",
+            "component": "tool-esp-rom-elfs@2024.10.11#2da884381fe0c1d6322ea5e9a2b126fbbd0d7eceb8fe934c59e18c075b06d0fc",
+            "localAliasVerified": false
+          },
+          {
+            "role": "uploader",
+            "component": "tool-esptoolpy@5.3.0#f233106a988266305b7430d6afa7b97ea86c96443e43222b5c45289c8c23d4de",
+            "localAliasVerified": false
+          },
+          {
+            "role": "tool",
+            "component": "tool-ninja@1.13.1#c6c242f7e75a7204d64e07b7c1e85db7aaa03524f66a1963ffed2311118e7b9c",
+            "localAliasVerified": false
+          },
+          {
+            "role": "debugger",
+            "component": "tool-riscv32-esp-elf-gdb@17.1.0+20260402#b872a194735f533208e8a86c19826e5cd0c856f4f9a7153e6ff45afb05dd7ac9",
+            "localAliasVerified": false
+          },
+          {
+            "role": "tool",
+            "component": "tool-scons@4.40801.0#d734045f32a6278d9f51c629ddc10b0a66fc7c9b196a558e85507e8717baf758",
+            "localAliasVerified": false
+          },
+          {
+            "role": "toolchain",
+            "component": "toolchain-riscv32-esp@14.2.0+20260121#a25ce4a1b3805330372fff2cdd7f387a39e9c6f69e1d601a65d74eb67ce6e83d",
+            "localAliasVerified": false
+          }
+        ],
+        "libraries": [
+          "ArduinoJson@7.4.3#e95070e60a152c788f365cbdbf99cf693b2e92eca84803500eff74b05ead66f0",
+          "WebSockets@2.7.3#86ca299d57ff90afd91382221be98d1565938e0456672a58a7376801b1d62e78",
+          "WiFiManager@2.0.17#e0d25da488f1a21454e96e5218c803f5958775f9ebe91e7525c675de1e46531c",
+          "esp-micro-speech-features@1.2.0+sha.351c4c6#108af3275e9dbc77d5db12255cd6bc88155af0587c5335c0519d6501c94f2adf",
+          "lvgl@9.6.0#f920b258e6c6ef13d577ef96a12bb93b8b806e507d11bd17545aede25ba90601"
+        ],
+        "libraryEdges": [
+          {
+            "from": null,
+            "to": "esp-micro-speech-features@1.2.0+sha.351c4c6",
+            "request": "https://github.com/esphome-libs/esp-micro-speech-features.git#351c4c69530f5a802da5433581c4863afadf0a00"
+          },
+          {
+            "from": null,
+            "to": "lvgl@9.6.0",
+            "request": "lvgl/lvgl@^9.2.0"
+          },
+          {
+            "from": null,
+            "to": "WebSockets@2.7.3",
+            "request": "links2004/WebSockets@^2.6.1"
+          },
+          {
+            "from": null,
+            "to": "ArduinoJson@7.4.3",
+            "request": "bblanchon/ArduinoJson@^7.3.0"
+          },
+          {
+            "from": null,
+            "to": "WiFiManager@2.0.17",
+            "request": "tzapu/WiFiManager@^2.0.17"
+          }
+        ],
+        "frameworkReferences": []
+      }
+    ],
+    "components": {
+      "Adafruit BusIO@1.17.4#d84e10f6871a1b1bfaf39079b15213efcd7a11e7ff1963b6a15fe94671440a69": {
+        "name": "Adafruit BusIO",
+        "version": "1.17.4",
+        "treeSha256": "d84e10f6871a1b1bfaf39079b15213efcd7a11e7ff1963b6a15fe94671440a69",
+        "files": 30,
+        "bytes": 91051,
+        "source": {
+          "owner": "adafruit",
+          "id": 6214,
+          "name": "Adafruit BusIO",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 1,
+          "unmapped": 1
+        }
+      },
+      "Adafruit GFX Library@1.13.0#4126f57805bca54320c6c41291f2b36d1dd9551555bb816fb208eab9221aa37e": {
+        "name": "Adafruit GFX Library",
+        "version": "1.13.0",
+        "treeSha256": "4126f57805bca54320c6c41291f2b36d1dd9551555bb816fb208eab9221aa37e",
+        "files": 80,
+        "bytes": 1733195,
+        "source": {
+          "owner": "adafruit",
+          "id": 13,
+          "name": "Adafruit GFX Library",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 1,
+          "unmapped": 1
+        }
+      },
+      "Adafruit NeoPixel@1.15.5#411060236eae7042267daace191e8dfc74a38a55faec96f409b42f668d25e0fa": {
+        "name": "Adafruit NeoPixel",
+        "version": "1.15.5",
+        "treeSha256": "411060236eae7042267daace191e8dfc74a38a55faec96f409b42f668d25e0fa",
+        "files": 44,
+        "bytes": 277501,
+        "source": {
+          "owner": "adafruit",
+          "id": 28,
+          "name": "Adafruit NeoPixel",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 1,
+          "unmapped": 1
+        }
+      },
+      "Adafruit PN532@1.3.4#49900aa4e4011b5f26259b8908b40edf241aca35bcb4675102e42dbb3ffdf93f": {
+        "name": "Adafruit PN532",
+        "version": "1.3.4",
+        "treeSha256": "49900aa4e4011b5f26259b8908b40edf241aca35bcb4675102e42dbb3ffdf93f",
+        "files": 31,
+        "bytes": 171375,
+        "source": {
+          "owner": "adafruit",
+          "id": 29,
+          "name": "Adafruit PN532",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 1,
+          "unmapped": 1
+        }
+      },
+      "ArduinoJson@7.4.3#e95070e60a152c788f365cbdbf99cf693b2e92eca84803500eff74b05ead66f0": {
+        "name": "ArduinoJson",
+        "version": "7.4.3",
+        "treeSha256": "e95070e60a152c788f365cbdbf99cf693b2e92eca84803500eff74b05ead66f0",
+        "files": 156,
+        "bytes": 376221,
+        "source": {
+          "owner": "bblanchon",
+          "id": 64,
+          "name": "ArduinoJson",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 2,
+          "unmapped": 2
+        }
+      },
+      "Button2@2.3.2#2c1fc9809ca17497e68e0ff0f01aca20b452abbef2756ab44629d0bee07cc7f2": {
+        "name": "Button2",
+        "version": "2.3.2",
+        "treeSha256": "2c1fc9809ca17497e68e0ff0f01aca20b452abbef2756ab44629d0bee07cc7f2",
+        "files": 25,
+        "bytes": 67626,
+        "source": {
+          "owner": "lennarthennigs",
+          "id": 6059,
+          "name": "Button2",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 2,
+          "unmapped": 2
+        }
+      },
+      "FastLED@3.7.0#8728d79f7e76f986a4ef05a5bb563d0a0dbcc2aa18306a386ad543239f4ab405": {
+        "name": "FastLED",
+        "version": "3.7.0",
+        "treeSha256": "8728d79f7e76f986a4ef05a5bb563d0a0dbcc2aa18306a386ad543239f4ab405",
+        "files": 184,
+        "bytes": 1298332,
+        "source": {
+          "owner": "fastled",
+          "id": 126,
+          "name": "FastLED",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 2,
+          "unmapped": 2
+        }
+      },
+      "GFX Library for Arduino@1.6.5#2e2791004158a00092f2d11d6ea8c8637f6e848c8f1b27eb2055364716990793": {
+        "name": "GFX Library for Arduino",
+        "version": "1.6.5",
+        "treeSha256": "2e2791004158a00092f2d11d6ea8c8637f6e848c8f1b27eb2055364716990793",
+        "files": 307,
+        "bytes": 25655409,
+        "source": {
+          "owner": "moononournation",
+          "id": 11607,
+          "name": "GFX Library for Arduino",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 1,
+          "unmapped": 1
+        }
+      },
+      "GxEPD2@1.6.9#8e1ebb8b504a92641dc36645e3852f196e5975e06fab6316c4fec6d474f27dd6": {
+        "name": "GxEPD2",
+        "version": "1.6.9",
+        "treeSha256": "8e1ebb8b504a92641dc36645e3852f196e5975e06fab6316c4fec6d474f27dd6",
+        "files": 376,
+        "bytes": 50289961,
+        "source": {
+          "owner": "zinggjm",
+          "id": 5869,
+          "name": "GxEPD2",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 1,
+          "unmapped": 1
+        }
+      },
+      "IRremoteESP8266@2.9.0#87ec6796e043713135c11ed0ebbc180f14223f0031a99874c15bce1962ea00c8": {
+        "name": "IRremoteESP8266",
+        "version": "2.9.0",
+        "treeSha256": "87ec6796e043713135c11ed0ebbc180f14223f0031a99874c15bce1962ea00c8",
+        "files": 348,
+        "bytes": 5418824,
+        "source": {
+          "owner": "crankyoldgit",
+          "id": 1089,
+          "name": "IRremoteESP8266",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 2,
+          "unmapped": 2
+        }
+      },
+      "LilyGo-EPD47@1.1.0+sha.391b0e2#c2a9eabee881f80114848a0e2f1ab6eb30bef68612239780c4cf255594b83357": {
+        "name": "LilyGo-EPD47",
+        "version": "1.1.0+sha.391b0e2",
+        "treeSha256": "c2a9eabee881f80114848a0e2f1ab6eb30bef68612239780c4cf255594b83357",
+        "files": 166,
+        "bytes": 41417873,
+        "source": {
+          "owner": null,
+          "id": null,
+          "name": "LilyGo-EPD47",
+          "requirements": null,
+          "uri": "git+https://github.com/Xinyuan-LilyGO/LilyGo-EPD47.git#391b0e25d7a39897e3a00af34053250df031d699"
+        },
+        "embeddedManifestMappings": {
+          "indexed": 2,
+          "unmapped": 2
+        }
+      },
+      "LovyanGFX@1.2.21#93cbc0c576458d2840eb161747accd6499e578c2bb0de189b23632cb33b00365": {
+        "name": "LovyanGFX",
+        "version": "1.2.21",
+        "treeSha256": "93cbc0c576458d2840eb161747accd6499e578c2bb0de189b23632cb33b00365",
+        "files": 491,
+        "bytes": 138638085,
+        "source": {
+          "owner": "lovyan03",
+          "id": 7359,
+          "name": "LovyanGFX",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 2,
+          "unmapped": 2
+        }
+      },
+      "LovyanGFX@1.2.36#8b8bb8f96082dfe96aa5c0d9a3c4657008f8dca9acbcf74216bc80c85e2b9636": {
+        "name": "LovyanGFX",
+        "version": "1.2.36",
+        "treeSha256": "8b8bb8f96082dfe96aa5c0d9a3c4657008f8dca9acbcf74216bc80c85e2b9636",
+        "files": 515,
+        "bytes": 135578473,
+        "source": {
+          "owner": "lovyan03",
+          "id": 7359,
+          "name": "LovyanGFX",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 2,
+          "unmapped": 2
+        }
+      },
+      "SensorLib@0.2.6#4e6f7da622243c363d745857119732b3675861d982fa1ba6661220985ee63350": {
+        "name": "SensorLib",
+        "version": "0.2.6",
+        "treeSha256": "4e6f7da622243c363d745857119732b3675861d982fa1ba6661220985ee63350",
+        "files": 181,
+        "bytes": 10460463,
+        "source": {
+          "owner": "lewisxhe",
+          "id": 15035,
+          "name": "SensorLib",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 2,
+          "unmapped": 2
+        }
+      },
+      "SensorLib@0.3.1#2270dc5a0528426cf07ada8e09d3b7358eb559b78118a6f8e513e0a37521708b": {
+        "name": "SensorLib",
+        "version": "0.3.1",
+        "treeSha256": "2270dc5a0528426cf07ada8e09d3b7358eb559b78118a6f8e513e0a37521708b",
+        "files": 274,
+        "bytes": 25534070,
+        "source": {
+          "owner": "lewisxhe",
+          "id": 15035,
+          "name": "SensorLib",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 2,
+          "unmapped": 2
+        }
+      },
+      "U8g2_for_Adafruit_GFX@1.8.0#9a879eb452027fb654575218f6b918ac41255eabfe3b75808e984b3992e7900d": {
+        "name": "U8g2_for_Adafruit_GFX",
+        "version": "1.8.0",
+        "treeSha256": "9a879eb452027fb654575218f6b918ac41255eabfe3b75808e984b3992e7900d",
+        "files": 14,
+        "bytes": 30189389,
+        "source": {
+          "owner": "olikraus",
+          "id": 3413,
+          "name": "U8g2_for_Adafruit_GFX",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 1,
+          "unmapped": 1
+        }
+      },
+      "WebSockets@2.7.3#86ca299d57ff90afd91382221be98d1565938e0456672a58a7376801b1d62e78": {
+        "name": "WebSockets",
+        "version": "2.7.3",
+        "treeSha256": "86ca299d57ff90afd91382221be98d1565938e0456672a58a7376801b1d62e78",
+        "files": 84,
+        "bytes": 576099,
+        "source": {
+          "owner": "links2004",
+          "id": 549,
+          "name": "WebSockets",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 2,
+          "unmapped": 2
+        }
+      },
+      "WiFiManager@2.0.17#e0d25da488f1a21454e96e5218c803f5958775f9ebe91e7525c675de1e46531c": {
+        "name": "WiFiManager",
+        "version": "2.0.17",
+        "treeSha256": "e0d25da488f1a21454e96e5218c803f5958775f9ebe91e7525c675de1e46531c",
+        "files": 37,
+        "bytes": 299704,
+        "source": {
+          "owner": "tzapu",
+          "id": 567,
+          "name": "WiFiManager",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 2,
+          "unmapped": 2
+        }
+      },
+      "contrib-piohome@3.4.4#2ce1d1c197b75e3d8dc1027a03c4a4b37be86b1b3f4ac4d4f0a92cfc5e461ac2": {
+        "name": "contrib-piohome",
+        "version": "3.4.4",
+        "treeSha256": "2ce1d1c197b75e3d8dc1027a03c4a4b37be86b1b3f4ac4d4f0a92cfc5e461ac2",
+        "files": 12,
+        "bytes": 3358485,
+        "source": {
+          "owner": "pioarduino",
+          "id": null,
+          "name": "contrib-piohome",
+          "requirements": null,
+          "uri": "https://github.com/pioarduino/registry/releases/download/0.0.1/contrib-piohome-3.4.4.tar.gz"
+        },
+        "embeddedManifestMappings": {
+          "indexed": 1,
+          "unmapped": 1
+        }
+      },
+      "esp-micro-speech-features@1.2.0+sha.351c4c6#108af3275e9dbc77d5db12255cd6bc88155af0587c5335c0519d6501c94f2adf": {
+        "name": "esp-micro-speech-features",
+        "version": "1.2.0+sha.351c4c6",
+        "treeSha256": "108af3275e9dbc77d5db12255cd6bc88155af0587c5335c0519d6501c94f2adf",
+        "files": 43,
+        "bytes": 114610,
+        "source": {
+          "owner": null,
+          "id": null,
+          "name": "esp-micro-speech-features",
+          "requirements": null,
+          "uri": "git+https://github.com/esphome-libs/esp-micro-speech-features.git#351c4c69530f5a802da5433581c4863afadf0a00"
+        },
+        "embeddedManifestMappings": {
+          "indexed": 2,
+          "unmapped": 2
+        }
+      },
+      "espressif32@55.3.311#e5dceb2bbcc5390096048d659244f505f252ea2ab2503337dfa1c074ada1b32b": {
+        "name": "espressif32",
+        "version": "55.3.311",
+        "treeSha256": "e5dceb2bbcc5390096048d659244f505f252ea2ab2503337dfa1c074ada1b32b",
+        "files": 633,
+        "bytes": 25937659,
+        "source": {
+          "owner": null,
+          "id": null,
+          "name": "platform-espressif32",
+          "requirements": null,
+          "uri": "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.311/platform-espressif32.zip"
+        },
+        "embeddedManifestMappings": {
+          "indexed": 4,
+          "unmapped": 4
+        }
+      },
+      "espressif32@6.13.0#d9388eef3bdd06da6920ab75400697bb9f1b5bae769ba6380118d053685cef57": {
+        "name": "espressif32",
+        "version": "6.13.0",
+        "treeSha256": "d9388eef3bdd06da6920ab75400697bb9f1b5bae769ba6380118d053685cef57",
+        "files": 967,
+        "bytes": 5129870,
+        "source": {
+          "owner": "platformio",
+          "id": 8026,
+          "name": "espressif32",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 11,
+          "unmapped": 11
+        }
+      },
+      "espressif32@7.1.3#92314e50b2955515d952ddfc6cce9f7284bb20d52f491232ba2ee96a76110a11": {
+        "name": "espressif32",
+        "version": "7.1.3",
+        "treeSha256": "92314e50b2955515d952ddfc6cce9f7284bb20d52f491232ba2ee96a76110a11",
+        "files": 474,
+        "bytes": 675117,
+        "source": {
+          "owner": "platformio",
+          "id": 8026,
+          "name": "espressif32",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 2,
+          "unmapped": 2
+        }
+      },
+      "framework-arduinoespressif32-libs@5.5.5+sha.b774170ff46#936fd61600a81e9ec960e29f00d95b89da8fe222ba9e7f8b27d872d3a8c4db25": {
+        "name": "framework-arduinoespressif32-libs",
+        "version": "5.5.5+sha.b774170ff46",
+        "treeSha256": "936fd61600a81e9ec960e29f00d95b89da8fe222ba9e7f8b27d872d3a8c4db25",
+        "files": 47985,
+        "bytes": 2045716143,
+        "source": {
+          "owner": "espressif",
+          "id": null,
+          "name": "framework-arduinoespressif32-libs",
+          "requirements": null,
+          "uri": "https://github.com/espressif/arduino-esp32/releases/download/3.3.11/esp32-core-3.3.11-libs.tar.xz"
+        },
+        "embeddedManifestMappings": {
+          "indexed": 10,
+          "unmapped": 10
+        }
+      },
+      "framework-arduinoespressif32@3.20017.241212+sha.dcc1105b#9253a583fbb1216390b82d1b3b00da0e34bda4a1cb744ba9f5aabb43706fd57e": {
+        "name": "framework-arduinoespressif32",
+        "version": "3.20017.241212+sha.dcc1105b",
+        "treeSha256": "9253a583fbb1216390b82d1b3b00da0e34bda4a1cb744ba9f5aabb43706fd57e",
+        "files": 10058,
+        "bytes": 771573273,
+        "source": {
+          "owner": "platformio",
+          "id": 8070,
+          "name": "framework-arduinoespressif32",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 38,
+          "unmapped": 38
+        }
+      },
+      "framework-arduinoespressif32@3.3.11#f203e6fb783b2cbe56223597445befca8d86ad39e65d83bd4bafe96bb1c0726b": {
+        "name": "framework-arduinoespressif32",
+        "version": "3.3.11",
+        "treeSha256": "f203e6fb783b2cbe56223597445befca8d86ad39e65d83bd4bafe96bb1c0726b",
+        "files": 2052,
+        "bytes": 71923344,
+        "source": {
+          "owner": "espressif",
+          "id": null,
+          "name": "framework-arduinoespressif32",
+          "requirements": null,
+          "uri": "https://github.com/espressif/arduino-esp32/releases/download/3.3.11/esp32-core-3.3.11.tar.xz"
+        },
+        "embeddedManifestMappings": {
+          "indexed": 46,
+          "unmapped": 46
+        }
+      },
+      "framework-arduinoespressif32@4.20017.260907+sha.dcc1105b#0e38960752c7242c5effaa913e5c1d822c359e6a2fc6a4a5b659e7f5cebbaba3": {
+        "name": "framework-arduinoespressif32",
+        "version": "4.20017.260907+sha.dcc1105b",
+        "treeSha256": "0e38960752c7242c5effaa913e5c1d822c359e6a2fc6a4a5b659e7f5cebbaba3",
+        "files": 10058,
+        "bytes": 771573030,
+        "source": {
+          "owner": "platformio",
+          "id": 8070,
+          "name": "framework-arduinoespressif32",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 38,
+          "unmapped": 38
+        }
+      },
+      "framework-espidf@3.50505.0#468c12d114a991adc6628f6a1d4580ed92c07c27695ff77406506738a75044ed": {
+        "name": "framework-espidf",
+        "version": "3.50505.0",
+        "treeSha256": "468c12d114a991adc6628f6a1d4580ed92c07c27695ff77406506738a75044ed",
+        "files": 26181,
+        "bytes": 435287991,
+        "source": {
+          "owner": "pioarduino",
+          "id": null,
+          "name": "framework-espidf",
+          "requirements": null,
+          "uri": "https://github.com/pioarduino/esp-idf/releases/download/v5.5.5/esp-idf-v5.5.5.tar.xz"
+        },
+        "embeddedManifestMappings": {
+          "indexed": 251,
+          "unmapped": 251
+        }
+      },
+      "lvgl@9.5.0#743590075177feb78b9eda1b864d6235bc8122649979fa5864eafaaf95b7362c": {
+        "name": "lvgl",
+        "version": "9.5.0",
+        "treeSha256": "743590075177feb78b9eda1b864d6235bc8122649979fa5864eafaaf95b7362c",
+        "files": 1951,
+        "bytes": 89406757,
+        "source": {
+          "owner": "lvgl",
+          "id": 6598,
+          "name": "lvgl",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 3,
+          "unmapped": 3
+        }
+      },
+      "lvgl@9.6.0#f920b258e6c6ef13d577ef96a12bb93b8b806e507d11bd17545aede25ba90601": {
+        "name": "lvgl",
+        "version": "9.6.0",
+        "treeSha256": "f920b258e6c6ef13d577ef96a12bb93b8b806e507d11bd17545aede25ba90601",
+        "files": 2738,
+        "bytes": 95903614,
+        "source": {
+          "owner": "lvgl",
+          "id": 6598,
+          "name": "lvgl",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 3,
+          "unmapped": 3
+        }
+      },
+      "tool-cmake@4.0.3#53685e280f97cf0f8cd8cade65643b3b16b850897284f84e3e40d079b5679de9": {
+        "name": "tool-cmake",
+        "version": "4.0.3",
+        "treeSha256": "53685e280f97cf0f8cd8cade65643b3b16b850897284f84e3e40d079b5679de9",
+        "files": 8230,
+        "bytes": 230913100,
+        "source": {
+          "owner": "pioarduino",
+          "id": null,
+          "name": "tool-cmake",
+          "requirements": null,
+          "uri": "https://github.com/pioarduino/registry/releases/download/0.0.1/cmake-4.0.3.zip"
+        },
+        "embeddedManifestMappings": {
+          "indexed": 1,
+          "unmapped": 1
+        }
+      },
+      "tool-esp-rom-elfs@2024.10.11#2da884381fe0c1d6322ea5e9a2b126fbbd0d7eceb8fe934c59e18c075b06d0fc": {
+        "name": "tool-esp-rom-elfs",
+        "version": "2024.10.11",
+        "treeSha256": "2da884381fe0c1d6322ea5e9a2b126fbbd0d7eceb8fe934c59e18c075b06d0fc",
+        "files": 13,
+        "bytes": 6918965,
+        "source": {
+          "owner": "pioarduino",
+          "id": null,
+          "name": "tool-esp-rom-elfs",
+          "requirements": null,
+          "uri": "https://github.com/pioarduino/registry/releases/download/0.0.1/esp-rom-elfs-20241011.zip"
+        },
+        "embeddedManifestMappings": {
+          "indexed": 1,
+          "unmapped": 1
+        }
+      },
+      "tool-esptoolpy@2.41100.260830#8847b0d4ef4e68e547f449c36a783a0084dce40cbd38fe03863b1fe8a931ab65": {
+        "name": "tool-esptoolpy",
+        "version": "2.41100.260830",
+        "treeSha256": "8847b0d4ef4e68e547f449c36a783a0084dce40cbd38fe03863b1fe8a931ab65",
+        "files": 473,
+        "bytes": 26583319,
+        "source": {
+          "owner": "platformio",
+          "id": 8161,
+          "name": "tool-esptoolpy",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 1,
+          "unmapped": 1
+        }
+      },
+      "tool-esptoolpy@5.3.0#c4e440d3a93ea502fbea744e2d1ea89576d81e87ce29f31dbf8df7ec7d1bca90": {
+        "name": "tool-esptoolpy",
+        "version": "5.3.0",
+        "treeSha256": "c4e440d3a93ea502fbea744e2d1ea89576d81e87ce29f31dbf8df7ec7d1bca90",
+        "files": 172,
+        "bytes": 2149217,
+        "source": {
+          "owner": null,
+          "id": null,
+          "name": "tool-esptoolpy",
+          "requirements": null,
+          "uri": "isolated installer-local source; exact origin/content verified by collector"
+        },
+        "embeddedManifestMappings": {
+          "indexed": 1,
+          "unmapped": 1
+        }
+      },
+      "tool-esptoolpy@5.3.0#f233106a988266305b7430d6afa7b97ea86c96443e43222b5c45289c8c23d4de": {
+        "name": "tool-esptoolpy",
+        "version": "5.3.0",
+        "treeSha256": "f233106a988266305b7430d6afa7b97ea86c96443e43222b5c45289c8c23d4de",
+        "files": 178,
+        "bytes": 2159477,
+        "source": {
+          "owner": null,
+          "id": null,
+          "name": "tool-esptoolpy",
+          "requirements": null,
+          "uri": "isolated installer-local source; exact origin/content verified by collector"
+        },
+        "embeddedManifestMappings": {
+          "indexed": 1,
+          "unmapped": 1
+        }
+      },
+      "tool-ninja@1.13.1#c6c242f7e75a7204d64e07b7c1e85db7aaa03524f66a1963ffed2311118e7b9c": {
+        "name": "tool-ninja",
+        "version": "1.13.1",
+        "treeSha256": "c6c242f7e75a7204d64e07b7c1e85db7aaa03524f66a1963ffed2311118e7b9c",
+        "files": 2,
+        "bytes": 828524,
+        "source": {
+          "owner": "pioarduino",
+          "id": null,
+          "name": "tool-ninja",
+          "requirements": null,
+          "uri": "https://github.com/pioarduino/registry/releases/download/0.0.1/ninja-1.13.1.zip"
+        },
+        "embeddedManifestMappings": {
+          "indexed": 1,
+          "unmapped": 1
+        }
+      },
+      "tool-riscv32-esp-elf-gdb@17.1.0+20260402#b872a194735f533208e8a86c19826e5cd0c856f4f9a7153e6ff45afb05dd7ac9": {
+        "name": "tool-riscv32-esp-elf-gdb",
+        "version": "17.1.0+20260402",
+        "treeSha256": "b872a194735f533208e8a86c19826e5cd0c856f4f9a7153e6ff45afb05dd7ac9",
+        "files": 112,
+        "bytes": 161055414,
+        "source": {
+          "owner": "pioarduino",
+          "id": null,
+          "name": "tool-riscv32-esp-elf-gdb",
+          "requirements": null,
+          "uri": "https://github.com/pioarduino/registry/releases/download/0.0.1/riscv32-esp-gdb-17.1_20260402.zip"
+        },
+        "embeddedManifestMappings": {
+          "indexed": 1,
+          "unmapped": 1
+        }
+      },
+      "tool-scons@4.40801.0#d734045f32a6278d9f51c629ddc10b0a66fc7c9b196a558e85507e8717baf758": {
+        "name": "tool-scons",
+        "version": "4.40801.0",
+        "treeSha256": "d734045f32a6278d9f51c629ddc10b0a66fc7c9b196a558e85507e8717baf758",
+        "files": 214,
+        "bytes": 2054558,
+        "source": {
+          "owner": "platformio",
+          "id": 8192,
+          "name": "tool-scons",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 1,
+          "unmapped": 1
+        }
+      },
+      "tool-xtensa-esp-elf-gdb@17.1.0+20260402#62d7683901894dcc1f076f9886e1a79570d5ba9f7df8ad0f5d51ae3f4d48fbdb": {
+        "name": "tool-xtensa-esp-elf-gdb",
+        "version": "17.1.0+20260402",
+        "treeSha256": "62d7683901894dcc1f076f9886e1a79570d5ba9f7df8ad0f5d51ae3f4d48fbdb",
+        "files": 118,
+        "bytes": 158399024,
+        "source": {
+          "owner": "pioarduino",
+          "id": null,
+          "name": "tool-xtensa-esp-elf-gdb",
+          "requirements": null,
+          "uri": "https://github.com/pioarduino/registry/releases/download/0.0.1/xtensa-esp-gdb-17.1_20260402.zip"
+        },
+        "embeddedManifestMappings": {
+          "indexed": 1,
+          "unmapped": 1
+        }
+      },
+      "toolchain-riscv32-esp@14.2.0+20260121#a25ce4a1b3805330372fff2cdd7f387a39e9c6f69e1d601a65d74eb67ce6e83d": {
+        "name": "toolchain-riscv32-esp",
+        "version": "14.2.0+20260121",
+        "treeSha256": "a25ce4a1b3805330372fff2cdd7f387a39e9c6f69e1d601a65d74eb67ce6e83d",
+        "files": 3630,
+        "bytes": 2483486052,
+        "source": {
+          "owner": "pioarduino",
+          "id": null,
+          "name": "toolchain-riscv32-esp",
+          "requirements": null,
+          "uri": "https://github.com/pioarduino/registry/releases/download/0.0.1/riscv32-esp-elf-14.2.0_20260121.zip"
+        },
+        "embeddedManifestMappings": {
+          "indexed": 1,
+          "unmapped": 1
+        }
+      },
+      "toolchain-riscv32-esp@8.4.0+2021r2-patch5#291b1c1fe100a1a983ff6fe4f05ff96269aa075b8bb4f33718fb8219020d6cfc": {
+        "name": "toolchain-riscv32-esp",
+        "version": "8.4.0+2021r2-patch5",
+        "treeSha256": "291b1c1fe100a1a983ff6fe4f05ff96269aa075b8bb4f33718fb8219020d6cfc",
+        "files": 2035,
+        "bytes": 956216006,
+        "source": {
+          "owner": "espressif",
+          "id": 15395,
+          "name": "toolchain-riscv32-esp",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 1,
+          "unmapped": 1
+        }
+      },
+      "toolchain-xtensa-esp-elf@14.2.0+20260121#6e443ec78681b6b9503743c4f66049adcef70a7cb4781e9448c1c76ecf00cf11": {
+        "name": "toolchain-xtensa-esp-elf",
+        "version": "14.2.0+20260121",
+        "treeSha256": "6e443ec78681b6b9503743c4f66049adcef70a7cb4781e9448c1c76ecf00cf11",
+        "files": 3862,
+        "bytes": 1283911989,
+        "source": {
+          "owner": "pioarduino",
+          "id": null,
+          "name": "toolchain-xtensa-esp-elf",
+          "requirements": null,
+          "uri": "https://github.com/pioarduino/registry/releases/download/0.0.1/xtensa-esp-elf-14.2.0_20260121.zip"
+        },
+        "embeddedManifestMappings": {
+          "indexed": 1,
+          "unmapped": 1
+        }
+      },
+      "toolchain-xtensa-esp32@8.4.0+2021r2-patch5#3d5a9cdfe499bfb3bac26edc243ecbf44127f8d3c7721cd763bdef24c8b9d8ca": {
+        "name": "toolchain-xtensa-esp32",
+        "version": "8.4.0+2021r2-patch5",
+        "treeSha256": "3d5a9cdfe499bfb3bac26edc243ecbf44127f8d3c7721cd763bdef24c8b9d8ca",
+        "files": 1865,
+        "bytes": 401749586,
+        "source": {
+          "owner": "espressif",
+          "id": 12549,
+          "name": "toolchain-xtensa-esp32",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 1,
+          "unmapped": 1
+        }
+      },
+      "toolchain-xtensa-esp32s3@8.4.0+2021r2-patch5#a06406bd637402644d28848bae6952fc10f66a1b2aa12f9c74f54f5eb63f8344": {
+        "name": "toolchain-xtensa-esp32s3",
+        "version": "8.4.0+2021r2-patch5",
+        "treeSha256": "a06406bd637402644d28848bae6952fc10f66a1b2aa12f9c74f54f5eb63f8344",
+        "files": 1737,
+        "bytes": 258529934,
+        "source": {
+          "owner": "espressif",
+          "id": 12550,
+          "name": "toolchain-xtensa-esp32s3",
+          "requirements": null,
+          "uri": null
+        },
+        "embeddedManifestMappings": {
+          "indexed": 1,
+          "unmapped": 1
+        }
+      }
+    }
+  }
+}
