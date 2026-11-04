@@ -137,6 +137,16 @@ No product version/build manifest has been advanced. The final per-channel
 version decision, exact-head verification and release artifacts remain release
 conditions; the collection name alone does not satisfy them.
 
+Clean integrated source `1cba9230` passed **26 automated full gates in
+31m34s**, including coverage, Android, all ordinary/preview/CloudKit Apple
+configurations, ESP32 host/simulator/TTGO and clean npm package acceptance.
+The [committed receipt](verification/receipts/2026-11-04-1cba923.json) binds
+that source. Native builds used a temporary ARM64 xcconfig; product configuration
+is unchanged. Local Keychain E2E and Windows-host checks are skipped, and four
+manual lab gates are unattested. A successful local run does not establish a
+signed universal archive, current-head hosted CI or physical-device acceptance.
+The following receipt/README reconciliation changes no executable input.
+
 | Remaining item | Disposition before delivery | Tracking |
 | --- | --- | --- |
 | Exact candidate checks and review | Run clean full verification after integration; resolve current-head CI and review before source merge. A local ARM64 native run does not replace universal signed archives or hosted Windows acceptance | #724; release workflows and this document's channel procedures |

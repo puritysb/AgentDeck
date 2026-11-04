@@ -353,24 +353,28 @@ for verified publication and Store review status.
 | Product | Install / update | Release tag |
 |---|---|---|
 | Mac · iPhone · iPad | [App Store](https://apps.apple.com/app/id6784822497?pt=128040795&ct=github-readme-202610&mt=8) | `apple-v*` |
-| Android tablets and e-ink | [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck) · [signed GitHub APK](https://github.com/puritysb/AgentDeck/releases?q=android-v&expanded=true) | `android-v1.10.2` |
-| CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | [`npm-v1.9.6`](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.6) public |
+| Android tablets and e-ink | [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck) · [signed GitHub APK](https://github.com/puritysb/AgentDeck/releases?q=android-v&expanded=true) | [`android-v2.0.0`](https://github.com/puritysb/AgentDeck/releases/tag/android-v2.0.0) |
+| CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | [`npm-v2.0.0`](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.0.0) public |
 | Stream Deck / Mini / XL / Plus / + XL | [Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) | `streamdeck-v*` |
 | Ulanzi D200H / D200X LCD keys | [Ulanzi Marketplace](https://ugc.ulanzistudio.com/contentView/1239890184745660416); D200X encoders are not supported | `ulanzi-v*` |
 | ESP32 panels and TRMNL 7.5" | [Browser flasher](https://puritysb.github.io/AgentDeck/flash/) · [firmware releases](https://github.com/puritysb/AgentDeck/releases?q=esp32-v&expanded=true) | `esp32-v*` |
 
-**2.0 delivery, updated 2026-11-03:** [npm 2.0.0](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.0.0)
+**2.0 delivery, updated 2026-11-04:** [npm 2.0.0](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.0.0)
 is public for all four packages and includes the integration-command hardening.
 The complete [ESP32 firmware set](https://github.com/puritysb/AgentDeck/releases/tag/esp32-v2.0.0)
 covers all twelve shipping boards.
-Google Play **2.0.0 / 30** is public at 100% rollout. The November 3 ASC
-readback confirms iPhone/iPad **2.0.0 READY_FOR_SALE**, while macOS **2.0.0**
-and its submission remain **WAITING_FOR_REVIEW**. Elgato/Ulanzi submission
+Google Play **2.0.0 / 30** is public at 100% rollout. The November 4 ASC
+readback reports both macOS and iPhone/iPad **2.0.0 READY_FOR_SALE**, with
+their existing review submissions COMPLETE. Elgato/Ulanzi submission
 receipts remain separate from Marketplace approval and public availability. The 1.9.7 / macOS 1.9.5 preparation numbers were
 superseded by this coordinated 2.0 release. After corrected installers are
 available, update the ones you use, refresh enabled integrations and review
 Codex hook trust when prompted. See the
-[delivery record](RELEASING.md#20-delivery-checkpoint-2026-11-02).
+[Apple delivery evidence](RELEASING.md#apple-delivery-evidence-2026-11-04) and
+[2.0 delivery record](RELEASING.md#20-delivery-checkpoint-2026-11-02).
+Later corrections are collected in the
+[unreleased 2.1 candidate](RELEASING.md#210-candidate-collection-2026-11-04);
+they are not included in the published 2.0 artifacts.
 
 **Delivery, 2026-10-29:** [npm 1.9.6 is public](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.6).
 A late update to a timeline row (summary, evaluation score, approval result) now
