@@ -30,6 +30,27 @@ workflow and a completed analysis are separate states; inspect the actual run.
 Snyk has not been run or connected. These checks provide a baseline without an
 additional external service account.
 
+## Action runtimes
+
+JavaScript Actions use reviewed full-commit pins whose upstream metadata declares
+`node24`. This runtime is separate from the product's Node 22/24/26 matrix.
+Composite Actions need their nested `uses` reviewed too: the Pages artifact
+wrapper previously called floating `upload-artifact@v4` internally. Its updated
+wrapper pins a Node 24 upload implementation. Rust toolchain installation is a
+shell composite, with its product compiler input retained at 1.90.0.
+
+The [November 5 runtime review](../security/reports/2026-11-05-action-runtimes.json)
+records the selected release/commit, metadata digest and scope. Existing supplied
+inputs and outputs remain supported; no trigger, permission, job, cache setting,
+release command or product version changes as part of the pin update. Gradle
+stays on the MIT-licensed 5.x line; the 6.x proprietary caching component is not
+introduced. Artifact uploads keep their existing archive defaults, names, paths
+and retention; download digest mismatches now fail in the upstream action.
+
+Local YAML/input checks are not hosted execution. PR checks exercise build and
+audit paths; release, Store, signing and Pages publication paths retain their own
+delivery acceptance. No release workflow is dispatched merely to verify a pin.
+
 ## Local execution
 
 ```bash
