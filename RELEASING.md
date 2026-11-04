@@ -117,7 +117,8 @@ All six immutable 2.0 tags remain the comparison baseline. Store-submission
 metadata fixes (#668–#671), Korean terminology documentation (#706), and security
 verification receipts are retained in history rather than presented as newly
 shipped user features. The separate `codex/dot-native-local-wip` experiment is
-preserved outside this candidate; it is not a merged or Store-ready feature.
+listed for 2.1 scope review, with its local work preserved; it is not included
+as a verified delivery or a Store-ready feature.
 ESP32, Stream Deck and Ulanzi receive no cosmetic version bump for changes that
 only affect their host daemon. Re-evaluate channel applicability from the final
 diff before cutting any artifacts. Full release/archive gates and portal build
