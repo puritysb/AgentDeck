@@ -2184,5 +2184,28 @@
         }
       }
     }
+  },
+  "tokenDescriptorFollowUp": {
+    "capturedAt": "2026-11-04T15:18:50.342544+00:00",
+    "sourceCommit": "dfd7594968d6dbe64f0211d0476208da7817c15d",
+    "sourceFixes": [
+      316,
+      317
+    ],
+    "disposition": "Source remediation, not dismissal; hosted reanalysis pending at this capture.",
+    "behaviour": "Single no-follow open, descriptor-based regular-file and stability checks, bounded reads; symlink replacement and in-read mutation regressions.",
+    "nodeTestsPassed": 9,
+    "cleanScan": {
+      "capturedAt": "2026-11-04T15:17:55.869Z",
+      "status": "pass",
+      "commit": "dfd7594968d6dbe64f0211d0476208da7817c15d",
+      "dirty": false,
+      "scanned": 4047,
+      "policySha256": "d0daf2cd6569d83a6c2e1389dc35b8afcda1737b013340af026d110a54bec7f5",
+      "fixturePolicySha256": "457d04b25d71e66533cd028bd102fd408d40dc48ac137bf5a00802f7d8b14621"
+    },
+    "unreviewedMatches": 0,
+    "reviewedSyntheticFixtures": 2,
+    "firmwareCollectorInputsStillMatchCommit": true
   }
 }
