@@ -19,9 +19,10 @@
  * is the existing `drawUsageHUD`, untouched.
  */
 
-import { TERRARIUM_RULES, foldCodexSessionsForDisplay, hasOpenClawSession } from '@agentdeck/shared';
+import { paintDotPixels, dotDeckPresentation, DOT_APPEARANCE_RULES, type DotDeckSnapshot, TERRARIUM_RULES, foldCodexSessionsForDisplay, hasOpenClawSession } from '@agentdeck/shared';
 import type { SessionInfo } from '@agentdeck/shared/protocol';
 import type { StateUpdateEvent, UsageEvent } from '../types.js';
+import { PIXOO_LOOP_POLICY as P } from './pixoo-loop-policy.generated.js';
 import { OFFICIAL_DOT_GLYPHS, OFFICIAL_DOT_GLYPH_SIZE, type OfficialDotGlyphName } from './official-dot-glyphs.generated.js';
 import {
   type RGB, setPixel, blendPixel, glowPixel, drawOfficialDotGlyph, drawText,
@@ -124,13 +125,16 @@ export function resolveTideMarks(
 }
 
 /** Mark edge length and centre columns by how many marks share the panel. */
-const LAYOUT: ReadonlyArray<{ size: number; xs: readonly number[] }> = [
-  { size: 24, xs: [] },
-  { size: 24, xs: [32] },
-  { size: 24, xs: [18, 46] },
-  { size: 18, xs: [12, 32, 52] },
-  { size: 14, xs: [9, 25, 41, 57] },
-];
+const LAYOUT: ReadonlyArray<{ size: number; xs: readonly number[] }> = P.tideLayout.map(([size, ...xs]) => ({ size, xs }));
+
+/** Dot owns a scene slot, never a session count or a HUD pixel. */
+export function tideComposition(state: StateUpdateEvent | null, sessions: SessionInfo[] | null, dot?: DotDeckSnapshot | null) {
+  const resolved = resolveTideMarks(state, sessions);
+  const reserved = dot?.configured ? 1 : 0;
+  const marks = resolved.marks.slice(0, MAX_MARKS - reserved);
+  return { marks, reserved, overflow: resolved.overflow + resolved.marks.length - marks.length,
+    layout: LAYOUT[marks.length + reserved] };
+}
 
 // ===== Scene pieces =====
 
@@ -267,13 +271,14 @@ export function renderTideFrame(
   sessions: SessionInfo[] | null,
   nowMs: number,
   tick: number,
+  dot?: DotDeckSnapshot | null,
 ): Uint8Array {
   const t = ((tick % TIDE_LOOP.frames) + TIDE_LOOP.frames) % TIDE_LOOP.frames;
   const buf = new Uint8Array(SIZE * SIZE * 3);
   const hudRows = getUsageProviderCount(usageEvent) * TERRARIUM_RULES.pixooUsageRowHeight;
   const sceneH = SIZE - hudRows;
   const floorTop = sceneH - FLOOR_ROWS;
-  const { marks, overflow } = resolveTideMarks(stateEvent, sessions);
+  const { marks, overflow, reserved, layout } = tideComposition(stateEvent, sessions, dot);
 
   drawWater(buf, t, floorTop);
   drawFloor(buf, floorTop);
@@ -282,14 +287,24 @@ export function renderTideFrame(
   const busy = marks.some(m => m.state === 'processing');
   drawBubbles(buf, t, floorTop, busy ? 6 : 2);
 
-  const layout = LAYOUT[marks.length];
   const cy = Math.round((WATER_TOP + floorTop) / 2);
   const anchors: CiCueAnchor[] = [];
   marks.forEach((mark, i) => {
-    const cx = layout.xs[i];
+    const cx = layout.xs[i + reserved];
     drawMark(buf, mark, i, cx, cy, layout.size, t);
     anchors.push({ sessionId: mark.id, x: cx, y: cy, bodySize: layout.size });
   });
+  if (reserved && dot) {
+    const cx = layout.xs[0];
+    const size = Math.min(layout.size, DOT_APPEARANCE_RULES.glyphSize);
+    paintDotPixels(buf, SIZE, dot, nowMs, { x: cx, y: cy, size, beacon: true });
+    const phase = dotDeckPresentation(dot, nowMs);
+    const color: RGB = [parseInt(phase.color.slice(1, 3), 16), parseInt(phase.color.slice(3, 5), 16), parseInt(phase.color.slice(5, 7), 16)];
+    drawText(buf, 'DOT', cx + P.tideCaptionRight, cy + Math.floor(size / 2) + P.tideCaptionGap, color);
+    const label = phase.label;
+    if (label === 'NEEDS YOU' || label === 'FAILED')
+      drawText(buf, label === 'NEEDS YOU' ? '?' : '!', cx + P.tideAttentionRight, cy - Math.ceil(size / 2) - P.tideAttentionGap, color);
+  }
   if (overflow > 0) drawText(buf, `+${overflow}`, SIZE - 2, 1, TEXT);
 
   // The CI companion is time-driven; the loop shows it frozen at `nowMs`.
@@ -304,9 +319,10 @@ export function renderTideLoop(
   usageEvent: UsageEvent | null,
   sessions: SessionInfo[] | null,
   nowMs: number,
+  dot?: DotDeckSnapshot | null,
 ): Uint8Array[] {
   return Array.from({ length: TIDE_LOOP.frames }, (_, t) =>
-    renderTideFrame(stateEvent, usageEvent, sessions, nowMs, t));
+    renderTideFrame(stateEvent, usageEvent, sessions, nowMs, t, dot));
 }
 
 // ===== Upload policy =====
@@ -334,13 +350,15 @@ export function tideSignature(
   stateEvent: StateUpdateEvent | null,
   usageEvent: UsageEvent | null,
   sessions: SessionInfo[] | null,
+  dot?: DotDeckSnapshot | null, now = Date.now(),
 ): TideSignature {
-  const { marks, overflow } = resolveTideMarks(stateEvent, sessions);
+  const { marks, overflow } = tideComposition(stateEvent, sessions, dot);
   const shown = new Set(marks.map(m => m.id));
   const ci = (sessions ?? [])
     .filter(s => s.alive && s.waitingOn && shown.has(s.id))
     .map(s => `${s.id}:${s.waitingOn?.phase}:${s.waitingOn?.agentWaiting === true}`);
   const scene = [
+    ...(dot?.configured ? [`Dot:${dotDeckPresentation(dot, now).label}:${dot.appearance?.id ?? ""}`] : []),
     ...marks.map(m => `${m.glyph}:${m.state}:${m.sick}`), `+${overflow}`, ...ci, ...(sessions ?? []).filter(s => s.alive && shown.has(s.id)).map(s => `${s.id}:bg:${s.backgroundTaskCount ?? "?"}`),
   ].join('|');
   const pct = (v: number | null | undefined) => (v == null ? '-' : String(Math.floor(v)));

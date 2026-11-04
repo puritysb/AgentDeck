@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type DotDeckSnapshot } from '@agentdeck/shared';
+import { type DotDeckSnapshot, paintDotPixels } from '@agentdeck/shared';
+import { renderFrame } from '../pixoo/pixoo-renderer.js';
 import {
   broadcastPixoo, getLastFrame, onFrameRendered, offFrameRendered, renderPreviewFrame,
 } from '../pixoo/pixoo-bridge.js';
@@ -31,6 +32,17 @@ describe('Pixoo preview carries the actual Dot report', () => {
     expect(getLastFrame(64, layout)).not.toEqual(active);
     report(null);
     expect(getLastFrame(64, layout)).toEqual(baseline);
+  });
+
+  it('uses the renderer-owned habitat projection exactly once', () => {
+    report(working);
+    const actual = renderPreviewFrame(64);
+    const expected = renderFrame(null, null, [], now, 64, 'standard', {}, { dot: working });
+    expect(actual).toEqual(expected);
+    // The old path used the default screen anchor after rendering a separate
+    // shell, instead of supplying the companion to the habitat renderer.
+    const detached = paintDotPixels(renderFrame(null, null, [], now), 64, working, now);
+    expect(actual).not.toEqual(detached);
   });
 
   it('streams the same Dot overlay and removes stale activity', () => {

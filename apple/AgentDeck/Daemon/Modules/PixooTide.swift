@@ -100,9 +100,9 @@ enum PixooTide {
     }
 
     /// Mark edge length and centre columns by how many marks share the panel.
-    static let layout: [(size: Int, xs: [Int])] = [
-        (24, []), (24, [32]), (24, [18, 46]), (18, [12, 32, 52]), (14, [9, 25, 41, 57]),
-    ]
+    static let layout = PixooLoopPolicy.tideLayout.map { row in
+        (size: row[0], xs: Array(row.dropFirst()))
+    }
 
     // MARK: - Upload policy
     //
@@ -348,19 +348,41 @@ extension PixooRenderer {
         drawTideFloor(&buf, floorTop: floorTop)
         drawTideSeaweed(&buf, t: t, floorTop: floorTop)
         drawTideFish(&buf, t: t, floorTop: floorTop)
-        let busy = resolved.marks.contains { $0.state == .processing }
+        #if AGENTDECK_DOT_PREVIEW
+        let dot = dashboardState.dot
+        let reserved = dot?.configured == true ? 1 : 0
+        #else
+        let reserved = 0
+        #endif
+        let marks = Array(resolved.marks.prefix(Tide.maxMarks - reserved))
+        let overflow = resolved.overflow + resolved.marks.count - marks.count
+        let layout = PixooTide.layout[marks.count + reserved]
+        let busy = marks.contains { $0.state == .processing }
         drawTideBubbles(&buf, t: t, floorTop: floorTop, count: busy ? 6 : 2)
-
-        let layout = PixooTide.layout[resolved.marks.count]
         let cy = Tide.jsRound(Double(Tide.waterTop + floorTop) / 2)
         var anchors: [CiCueAnchor] = []
-        for (i, mark) in resolved.marks.enumerated() {
-            let cx = layout.xs[i]
+        for (i, mark) in marks.enumerated() {
+            let cx = layout.xs[i + reserved]
             drawTideMark(&buf, mark: mark, index: i, cx: cx, cy: cy, size: layout.size, t: t)
             anchors.append(CiCueAnchor(sessionId: mark.id, x: Double(cx), y: Double(cy), bodySize: Double(layout.size)))
         }
-        if resolved.overflow > 0 {
-            drawText(&buf, text: "+\(resolved.overflow)", rightX: Tide.size - 2, y: 1, color: Self.tideText)
+        #if AGENTDECK_DOT_PREVIEW
+        if reserved == 1, let dot {
+            let cx = layout.xs[0], size = min(layout.size, DotAppearanceRules.glyphSize)
+            buf = [UInt8](DotPixelOverlay.paint(Data(buf), width: Tide.size, dot: dot, now: Int(nowMs),
+                anchorX: cx, anchorY: cy, bodySize: size, beacon: true))
+            let phase = dot.phase(at: Int(nowMs))
+            let rgb = DotPixelOverlay.colors[phase]
+            let color: RGB = (rgb[0], rgb[1], rgb[2])
+            drawText(&buf, text: "DOT", rightX: cx + PixooLoopPolicy.tideCaptionRight, y: cy + size / 2 + PixooLoopPolicy.tideCaptionGap, color: color)
+            if phase == 3 || phase == 5 {
+                drawText(&buf, text: phase == 3 ? "?" : "!", rightX: cx + PixooLoopPolicy.tideAttentionRight,
+                    y: cy - Int(ceil(Double(size) / 2)) - PixooLoopPolicy.tideAttentionGap, color: color)
+            }
+        }
+        #endif
+        if overflow > 0 {
+            drawText(&buf, text: "+\(overflow)", rightX: Tide.size - 2, y: 1, color: Self.tideText)
         }
 
         // The CI companion is time-driven; the loop shows it frozen at `nowMs`.
