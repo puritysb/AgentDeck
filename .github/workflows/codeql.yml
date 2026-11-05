@@ -75,8 +75,11 @@ jobs:
     # The extracted app target stays arm64 with the same pinned Xcode below.
     runs-on: macos-26-intel
     # A cold macOS trace completed analysis at the old 45m deadline, then
-    # timed out during cleanup. Keep the complete analysis and cleanup budget.
-    timeout-minutes: 60
+    # timed out during cleanup. On 2026-11-05 two consecutive PR #731 attempts
+    # on the same macos-26-intel image spent 49m and 51m in extraction (25m on
+    # the previous master push) and were cancelled at 60m mid-analysis; GitHub
+    # then refused a third retry. 90m keeps the slow-runner case completing.
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
