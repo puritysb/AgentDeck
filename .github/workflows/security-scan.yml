@@ -46,6 +46,15 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Separate platform stores retain all selected SDK bytes until hashing is
+      # complete. This Python/PlatformIO-only job needs neither preinstalled SDK;
+      # touch these fixed image paths only on a disposable GitHub-hosted runner.
+      - name: Reserve disk for isolated SDK stores
+        if: runner.environment == 'github-hosted'
+        run: |
+          df -h "$RUNNER_TEMP"
+          sudo rm -rf -- /usr/local/lib/android /usr/share/dotnet
+          df -h "$RUNNER_TEMP"
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
