@@ -29,9 +29,11 @@ export default defineConfig({
         'plugin/src/**/*.ts',
         'hooks/src/**/*.ts',
         'services/dot-relay/src/**/*.ts',
-        // Only the unit-tested Ulanzi module — pulling the whole package in would
+        // Only the unit-tested Ulanzi modules — pulling the whole package in would
         // count its many untested renderer files against the global thresholds.
         'plugin-ulanzi/src/reconnect-supervisor.ts',
+        'plugin-ulanzi/src/studio-endpoint.ts',
+        'plugin-ulanzi/src/raster-recovery.ts',
       ],
       exclude: [
         '**/__tests__/**',

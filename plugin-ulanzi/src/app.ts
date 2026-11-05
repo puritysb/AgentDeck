@@ -32,12 +32,14 @@ import {
 import { UlanziApiCtor, type UlanziApi, type UlanziMessage } from './ulanzi.js';
 import { DaemonClient } from './daemon-client.js';
 import { ReconnectSupervisor } from './reconnect-supervisor.js';
+import { readStudioEndpoint, studioConnector } from './studio-endpoint.js';
 import { StateStore } from './state-store.js';
 import { settingsPickerAfterResponse } from './setting-picker-state.js';
 import { deckViewSignature } from './deck-signature.js';
 import { KeyRegistry } from './key-registry.js';
 import { StickySessionOrder } from './session-order.js';
-import { svgToBase64Png, GIF_ICON_SIZE, initRaster } from './raster.js';
+import { svgToBase64Png, GIF_ICON_SIZE, initRaster, rasterReady, rasterFailureCount } from './raster.js';
+import { RasterRecovery } from './raster-recovery.js';
 import { framesToGifBase64 } from './gif.js';
 import { launchCompanionApp } from './launch.js';
 import { dinfo, dlog, derr, flog } from './log.js';
@@ -296,8 +298,28 @@ async function drainAnimQueue(): Promise<void> {
   }
 }
 
+// A blank fallback tile is recorded as painted by the per-key signature, so a
+// raster failure would otherwise leave that key blank until some unrelated
+// change. Retry with backoff instead (#730).
+const rasterRecovery = new RasterRecovery({
+  failureCount: rasterFailureCount,
+  ready: rasterReady,
+  init: () => initRaster(),
+  repaint: () => { if (displayDimmed) return; invalidateDeck(); scheduleRender(); },
+  log: (m) => derr(TAG, m),
+});
+
 function renderAll(): void {
   if (displayDimmed) return;
+  const failuresBefore = rasterRecovery.before();
+  try {
+    renderDeck();
+  } finally {
+    rasterRecovery.after(failuresBefore);
+  }
+}
+
+function renderDeck(): void {
   const ev = layoutInput();
   dotExpiry.update(ev.dot as import('@agentdeck/shared').DotDeckSnapshot | null);
   // If the focused session vanished, drop back to the list.
@@ -392,7 +414,9 @@ function resyncStudioBridge(): void {
   scheduleRender();
 }
 const studioSupervisor = new ReconnectSupervisor({
-  connect: () => $UD.connect(PLUGIN_UUID),
+  // Studio's launch endpoint, read before the SDK's first connect consumes argv,
+  // so a reconnect after a drop or wake targets the same port (#730).
+  connect: studioConnector($UD, PLUGIN_UUID, readStudioEndpoint(process.argv)),
   backoffMs: RECONNECT_BACKOFF_MS,
   onReconnect: resyncStudioBridge,
   log: (m) => dlog(TAG, m),
