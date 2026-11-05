@@ -46,7 +46,7 @@
 // SYNC-HASH shared/src/d200h-layout.ts dd608fc707665b3943addb72ba404776176d4376
 // SYNC-HASH shared/src/session-utils.ts b0274ff249f2705cc7fce39752d74a46b25f6b87
 // SYNC-HASH shared/src/dot-deck.ts 2aa36a3fc11092ade2f29f2086eb796c823583c6
-// SYNC-HASH shared/src/session-labels.ts c64d5537886af372c5997b9f5e9570540ec96333
+// SYNC-HASH shared/src/session-labels.ts b1c3c0c8e03ce5c5856c2d59a32f27bfeefb7af0
 //
 // INTENTIONALLY OMITTED (not needed by a read-only preview):
 //   • Actual SVG rasterization. The TS engine emits per-key SVG strings via the
@@ -1189,9 +1189,16 @@ public enum D200HLayoutModel {
         let suffix = " #" + tag
         let full = label.name + suffix
         if full.count <= max { return full }
+        // Keep the surface of a `<workspace> / <surface>` cmux title (sessionLabelText).
+        var specific = label.name
+        if let sep = label.name.range(of: " / ", options: .backwards),
+           sep.lowerBound > label.name.startIndex, sep.upperBound < label.name.endIndex {
+            specific = String(label.name[sep.upperBound...])
+        }
+        if specific.count + suffix.count <= max { return specific + suffix }
         let room = max - suffix.count
         if room <= 1 { return String(("#" + tag).prefix(Swift.max(1, max))) }
-        var head = String(label.name.prefix(room - 1))
+        var head = String(specific.prefix(room - 1))
         while head.last?.isWhitespace == true { head.removeLast() }
         return head + "\u{2026}" + suffix
     }

@@ -147,7 +147,7 @@ node -e "const fs=require('fs');const path=require('path');const p='$OUT';
   // Fonts are load-bearing now: the WASM build has no filesystem and therefore no
   // system-font fallback, so a package missing them renders every tile textless
   // rather than merely differently.
-  for (const f of ['IBMPlexSans-Regular.ttf','IBMPlexSans-Bold.ttf','JetBrainsMono-Regular.ttf','JetBrainsMono-Bold.ttf','IBMPlexSansKR-Regular.ttf','IBMPlexSansKR-Bold.ttf','OFL-IBMPlexSansKR.txt'])
+  for (const f of ['IBMPlexSans-Regular.ttf','IBMPlexSans-Bold.ttf','JetBrainsMono-Regular.ttf','JetBrainsMono-Bold.ttf','IBMPlexSansKR-Regular.ttf','IBMPlexSansKR-Bold.ttf','OFL-IBMPlexSansKR.txt','IBMPlexSansJP-Regular.ttf','IBMPlexSansJP-Bold.ttf','OFL-IBMPlexSansJP.txt'])
     if(!fs.existsSync(p+'/resources/fonts/'+f)) throw new Error('missing bundled font '+f);
 
   // The point of the whole change: nothing in the shipped bundle may be a native

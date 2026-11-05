@@ -139,9 +139,16 @@ export function sessionDeckLabels<T extends { id: string; projectName?: string; 
 export function sessionLabelText(label: SessionDeckLabel | undefined, maxChars?: number): string | undefined {
   if (!label) return undefined;
   if (!label.tag) return label.name;
-  const name = Array.from(label.name);
   const suffix = Array.from(` #${label.tag}`);
-  if (maxChars == null || name.length + suffix.length <= maxChars) return `${label.name} #${label.tag}`;
+  if (maxChars == null || Array.from(label.name).length + suffix.length <= maxChars) return `${label.name} #${label.tag}`;
+  // A live cmux title is `<workspace> / <surface>`. Cut from the right, the
+  // workspace survives and the surface — the part that tells two tabs of one
+  // workspace apart — is lost first (D200X receipt, #544). When the whole label
+  // does not fit, keep the segment after the last separator instead.
+  const sep = label.name.lastIndexOf(' / ');
+  const specific = sep > 0 && sep + 3 < label.name.length ? label.name.slice(sep + 3) : label.name;
+  const name = Array.from(specific);
+  if (name.length + suffix.length <= maxChars) return `${specific} #${label.tag}`;
   const room = maxChars - suffix.length;
   if (room <= 1) return Array.from(`#${label.tag}`).slice(0, Math.max(1, maxChars)).join('');
   return `${name.slice(0, room - 1).join('').trimEnd()}…${suffix.join('')}`;

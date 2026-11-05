@@ -153,3 +153,17 @@ it('keeps session keys, INFO and VOICE bound to the same ID after friendly renam
     expect(detail.some(c=>c.action?.kind==='command' && c.action.command.type==='voice' && c.action.command.sessionId===session.id)).toBe(true);
   }
 });
+
+describe('sessionLabelText — cmux workspace / surface titles', () => {
+  const label = { name: 'hacking papa / accept-cmux', tag: '0e5c' };
+  it('keeps the whole title when it fits', () => {
+    expect(sessionLabelText(label, 40)).toBe('hacking papa / accept-cmux #0e5c');
+  });
+  it('drops the workspace before cutting the surface (D200X receipt, #544)', () => {
+    expect(sessionLabelText(label, 18)).toBe('accept-cmux #0e5c');
+    expect(sessionLabelText(label, 10)).toBe('acc… #0e5c');
+  });
+  it('leaves a title without a separator to the ordinary cut', () => {
+    expect(sessionLabelText({ name: 'hacking papa', tag: '0e5c' }, 10)).toBe('hac… #0e5c');
+  });
+});

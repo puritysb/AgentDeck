@@ -61,6 +61,10 @@ const FONT_FILES = [
   'JetBrainsMono-Bold.ttf',
   'IBMPlexSansKR-Regular.ttf',
   'IBMPlexSansKR-Bold.ttf',
+  // Glyph fallback for kana/kanji the KR face lacks (resvg picks any loaded
+  // face that has the glyph).
+  'IBMPlexSansJP-Regular.ttf',
+  'IBMPlexSansJP-Bold.ttf',
 ];
 
 const FONT_OPTS: { fontBuffers: Uint8Array[]; loadSystemFonts: boolean; defaultFontFamily: string } =
