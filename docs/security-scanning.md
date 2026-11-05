@@ -183,6 +183,34 @@ PlatformIO's [package list](https://docs.platformio.org/en/stable/core/userguide
 describes the package categories; Core 6.1.19 has no JSON list mode, so the
 version-pinned adapter is tested separately.
 
+## Build-local SDK hardening
+
+`esp32/scripts/webserver_security.py` compiles reviewed replacement objects under
+the target's build directory. It leaves downloaded SDK/library files intact and
+refuses a source hash outside the reviewed Arduino-ESP32 2.0.17 / 3.3.11 and
+WiFiManager 2.0.17 set. All configured environments load the middleware,
+including boards that override `extra_scripts`.
+
+Multipart boundaries are limited to 1–70 bytes before body parsing, bounding the
+existing stack array to 75 bytes. Legacy Digest authentication must match the
+requested path without another heap allocation. Modern plaintext-password
+authentication rejects schemes other than Basic/Digest. The applicable upstream
+reports are [multipart parsing](https://github.com/espressif/arduino-esp32/security/advisories/GHSA-8cmm-3887-r32j),
+[Digest URI validation](https://github.com/espressif/arduino-esp32/security/advisories/GHSA-28hv-fwm3-rpcq)
+and [plaintext authentication](https://github.com/espressif/arduino-esp32/security/advisories/GHSA-w887-pg2w-mfj2).
+The portal's separate HTTP firmware-updater registrations are removed and its
+update button is hidden; the supported paired-daemon WS OTA flow retains its
+existing protocol and authorization.
+
+Host C++ executes the transformed policy fragments using synthetic adapters;
+tests cover valid traffic, invalid schemes/paths, boundary lengths, retained Wi-Fi
+configuration routing, source drift and original-cache preservation. TTGO and
+legacy TC001 compile on separate CI runners with the release toolchain. Each
+target retains original/patched source hashes and applied rules as artifacts.
+These are source/build receipts, not installed-board or complete SDK/CVE
+acceptance. Other vendor advisories and disabled-component prerequisites still
+need separate review.
+
 ## Triage and exceptions
 
 The maintainer (`puritysb`) reviews failed scheduled jobs and new alerts. Check the

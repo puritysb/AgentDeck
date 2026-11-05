@@ -141,3 +141,44 @@ jobs:
       - name: Compile and link TTGO firmware
         working-directory: esp32
         run: pio run -e ttgo
+      - name: Verify compiled SDK hardening objects
+        run: python esp32/scripts/webserver_security.py esp32/.pio/build/ttgo
+      - name: Preserve SDK hardening receipts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ttgo-sdk-hardening
+          path: esp32/.pio/build/ttgo/agentdeck-security/*.json
+          retention-days: 30
+
+  # TC001 deliberately retains Arduino 2 / GCC 8. A separate runner/store proves
+  # the backports compile on that branch without replacing TTGO's Arduino 3 SDK.
+  legacy:
+    name: ESP32 legacy TC001 Compile
+    needs: compile
+    if: needs.compile.outputs.esp32_changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.11'
+      - name: Install release PlatformIO
+        run: |
+          python -m venv "$HOME/.platformio/penv"
+          "$HOME/.platformio/penv/bin/python" -m pip install "pioarduino==6.1.19"
+          echo "$HOME/.platformio/penv/bin" >> "$GITHUB_PATH"
+          "$HOME/.platformio/penv/bin/pio" --version
+      - name: Compile and link legacy TC001 firmware
+        working-directory: esp32
+        run: pio run -e led8x32
+      - name: Verify compiled SDK hardening objects
+        run: python esp32/scripts/webserver_security.py esp32/.pio/build/led8x32
+      - name: Preserve SDK hardening receipts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tc001-sdk-hardening
+          path: esp32/.pio/build/led8x32/agentdeck-security/*.json
+          retention-days: 30

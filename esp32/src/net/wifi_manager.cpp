@@ -163,6 +163,11 @@ void wifiInit() {
     wm.setConnectTimeout(8);
     wm.setConfigPortalTimeout(0);  // Portal stays open until configured
     wm.setTitle("AgentDeck");
+    // Firmware updates use the paired daemon WS protocol, not the portal's HTTP updater.
+    // Fixed stack pointers at initialization; WiFiManager retains menu IDs, not this array.
+    const char* portalMenu[] = {"wifi", "info", "exit"};
+    wm.setMenu(portalMenu, static_cast<uint8_t>(sizeof(portalMenu) / sizeof(portalMenu[0])));
+    wm.setShowInfoUpdate(false);
     // Credentials typed into the portal do not come from a provision. Fires
     // on the portal's save, before WiFiManager writes them.
     wm.setPreSaveConfigCallback([]() { CredIdStore().forget(); });
