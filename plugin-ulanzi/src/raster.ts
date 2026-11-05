@@ -100,26 +100,59 @@ function wasmPath(): string | null {
 
 let ready: Promise<void> | null = null;
 let initialized = false;
+/** Rasters that fell back to the blank tile since load — the app's repaint trigger. */
+let failures = 0;
+
+function readBundledWasm(): Uint8Array {
+  const path = wasmPath();
+  if (!path) throw new Error('resvg.wasm not found');
+  return readFileSync(path);
+}
 
 /**
  * Load the WASM module. MUST be awaited before the first raster — `initWasm` is
  * async and may be called only once, so the promise is memoized rather than the
  * boolean checked (two concurrent callers would otherwise both call it and the
  * second would throw "Already initialized").
+ *
+ * A FAILED load is not memoized (#730). It used to resolve the shared promise
+ * with `initialized` still false, so the service ran on with every tile blank
+ * and nothing ever tried again. Now the next call retries; `rasterReady()` says
+ * whether one has succeeded. "Already initialized" means an earlier load did
+ * succeed in this process, so it counts as ready.
  */
-export function initRaster(): Promise<void> {
+export function initRaster(loadWasm: () => Uint8Array = readBundledWasm): Promise<void> {
+  if (initialized) return Promise.resolve();
   if (!ready) {
-    ready = (async () => {
-      const path = wasmPath();
-      if (!path) throw new Error('resvg.wasm not found');
-      await initWasm(readFileSync(path));
-      initialized = true;
-      dinfo('raster', `resvg wasm ready (${path})`);
-    })().catch((err) => {
-      derr('raster', `initWasm failed: ${err}`);
-    });
+    const attempt = (async () => {
+      try {
+        await initWasm(loadWasm());
+        initialized = true;
+        dinfo('raster', 'resvg wasm ready');
+      } catch (err) {
+        if (/already initialized/i.test(String(err))) {
+          initialized = true;
+          return;
+        }
+        derr('raster', `initWasm failed: ${err} — key images stay blank until a retry succeeds`);
+      }
+    })();
+    ready = attempt;
+    // Registered before any caller's continuation, so a caller that awaited a
+    // failed attempt already sees the slot cleared when it retries.
+    void attempt.then(() => { if (!initialized && ready === attempt) ready = null; });
   }
   return ready;
+}
+
+/** True once the WASM module has loaded; until then every raster is the blank tile. */
+export function rasterReady(): boolean {
+  return initialized;
+}
+
+/** Rasters that produced the blank fallback tile since load. */
+export function rasterFailureCount(): number {
+  return failures;
 }
 
 /** 1×1 transparent PNG — the tile a failed raster falls back to. */
@@ -131,8 +164,8 @@ function wrap(svg144: string, size: number): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 144 144">${inner}</svg>`;
 }
 
-/** Rasterize a 144×144 shared-renderer SVG into a square PNG Buffer. */
-export function svgToPng(svg144: string, size = ICON_SIZE): Buffer {
+/** Render to PNG, or null when resvg is not loaded or the SVG fails. */
+function renderPng(svg144: string, size: number): Buffer | null {
   try {
     if (!initialized) throw new Error('resvg wasm not initialized');
     const resvg = new Resvg(wrap(svg144, size), {
@@ -141,9 +174,15 @@ export function svgToPng(svg144: string, size = ICON_SIZE): Buffer {
     });
     return Buffer.from(resvg.render().asPng());
   } catch (err) {
+    failures++;
     derr('raster', `svgToPng failed: ${err}`);
-    return Buffer.from(BLANK_PNG, 'base64');
+    return null;
   }
+}
+
+/** Rasterize a 144×144 shared-renderer SVG into a square PNG Buffer (blank on failure). */
+export function svgToPng(svg144: string, size = ICON_SIZE): Buffer {
+  return renderPng(svg144, size) ?? Buffer.from(BLANK_PNG, 'base64');
 }
 
 // Cache rasterized PNGs by SVG so toggling list↔detail (and recurring session
@@ -156,7 +195,11 @@ export function svgToBase64Png(svg144: string, size = ICON_SIZE): string {
   const key = `${size}|${svg144}`;
   const hit = pngCache.get(key);
   if (hit !== undefined) return hit;
-  const b64 = svgToPng(svg144, size).toString('base64');
+  const png = renderPng(svg144, size);
+  // A failure placeholder is never cached as this SVG's image (#730): the next
+  // render of the same tile must try again rather than serve a blank forever.
+  if (!png) return BLANK_PNG;
+  const b64 = png.toString('base64');
   if (pngCache.size >= PNG_CACHE_MAX) {
     // Evict oldest (Map preserves insertion order).
     const first = pngCache.keys().next().value;

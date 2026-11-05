@@ -98,6 +98,22 @@ checking whenever the tiles or the schedule change:
 Set `AGENTDECK_ULANZI_ANIM=0` to fall back to static PNG tiles — useful for
 isolating whether a device-side rendering problem involves animation at all.
 
+### Blank keys and reconnects
+
+Two failure paths used to leave keys blank or stale with no recovery (#730):
+
+- **Raster failure.** `initWasm failed` or `svgToPng failed` in the log means a
+  key was pushed the blank fallback tile. A failed WASM load is retried and the
+  blank is never cached as that tile's image; the plugin logs
+  `key image raster failed — repainting in <ms>` and repaints every key on a
+  1 s → 30 s backoff until a pass is clean. Repeated retries mean the bundle
+  itself is broken (`resvg.wasm` or fonts missing) — check the package verify.
+- **Reconnect endpoint.** The vendored SDK consumes Studio's `<address> <port>`
+  launch arguments on its first connect. `studio-endpoint.ts` reads them once
+  and passes them on every reconnect, so a `studio bridge reconnected` line
+  after sleep/wake or a USB re-attach must be followed by a full repaint rather
+  than a silent dial to `127.0.0.1:3906`.
+
 ### What the push path can and cannot tell you
 
 An image push is never acknowledged: neither Studio nor the device replies, and
