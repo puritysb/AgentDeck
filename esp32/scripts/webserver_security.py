@@ -43,7 +43,7 @@ DIGEST_GUARD = '''      // GHSA-28hv-fwm3-rpcq: match the requested path, withou
       const int queryIndex = _uri.indexOf('?');
       const size_t uriPathLength = queryIndex < 0 ? _uri.length() : static_cast<size_t>(queryIndex);
       if (uriPathLength != _currentUri.length() ||
-          strncmp(_uri.c_str(), _currentUri.c_str(), uriPathLength) != 0) {
+          memcmp(_uri.c_str(), _currentUri.c_str(), uriPathLength) != 0) {
         authReq = "";
         return false;
       }

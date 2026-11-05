@@ -82,6 +82,9 @@ int main() {
   assert(digestPath("/config","/config")); assert(digestPath("/config?x=1","/config"));
   assert(!digestPath("/public","/private")); assert(!digestPath("/config/extra","/config"));
   assert(!digestPath("/config","/config/extra")); assert(!digestPath("","/config"));
+  String embeddedLeft, embeddedRight;
+  embeddedLeft.value=std::string("/x\0public",9); embeddedRight.value=std::string("/x\0secret",9);
+  assert(!digestPath(embeddedLeft,embeddedRight));
   assert(!boundary("")); assert(bodyReads==0);
   assert(boundary("x")); assert(boundary(std::string(70,'x').c_str())); assert(bodyReads==2);
   assert(!boundary(std::string(71,'x').c_str())); assert(!boundary(std::string(8192,'x').c_str())); assert(bodyReads==2);
