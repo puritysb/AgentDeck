@@ -148,5 +148,7 @@ docs/devlog/view/
 # Generated CJK font copies; canonical source is design/fonts/.
 plugin-ulanzi/com.ulanzi.ulanzistudio.agentdeck.ulanziPlugin/resources/fonts/IBMPlexSansKR-*.ttf
 plugin-ulanzi/com.ulanzi.ulanzistudio.agentdeck.ulanziPlugin/resources/fonts/OFL-IBMPlexSansKR.txt
+plugin-ulanzi/com.ulanzi.ulanzistudio.agentdeck.ulanziPlugin/resources/fonts/IBMPlexSansJP-*.ttf
+plugin-ulanzi/com.ulanzi.ulanzistudio.agentdeck.ulanziPlugin/resources/fonts/OFL-IBMPlexSansJP.txt
 # Native Glance static library build cache
 /shared/glance-raster/target/
