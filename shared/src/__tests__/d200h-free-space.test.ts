@@ -33,9 +33,8 @@ function deckSvg(state: any): string {
   return [...deck.values()].map((c) => c?.svg ?? '').join('|');
 }
 
-/** The empty-slot placeholder is `svgFrame('#0a0a0a', '')` — identified by its
- *  fill. No other tile on this deck uses that exact background color. */
-const renderEmptyMarker = 'fill="#0a0a0a"';
+/** A list key with no session renders the OPEN SLOT card. */
+const renderEmptyMarker = '>OPEN SLOT<';
 
 describe('usage free-space expansion', () => {
   it('uncompacts into keys the roster leaves free — six windows, six keys', () => {
