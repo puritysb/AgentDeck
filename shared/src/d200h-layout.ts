@@ -1077,7 +1077,7 @@ function buildList(
       renderInfoSlot('AgentDeck', 'idle', 'agentdeck', 'agent'),
     ];
     freeSlots.forEach((pos, i) => out.set(pos, {
-      svg: ready[i] ?? renderEmptySlot(),
+      svg: ready[i] ?? renderOpenSlot(),
       action: null,
     }));
     for (const [pos, cell] of usageHere) out.set(pos, cell);
@@ -1102,11 +1102,22 @@ function buildList(
         action: { kind: 'open', sessionId: sess.id },
       });
     } else {
-      out.set(pos, { svg: renderEmptySlot(), action: null });
+      out.set(pos, { svg: renderOpenSlot(), action: null });
     }
   });
   for (const [pos, cell] of usageHere) out.set(pos, cell);
   return out;
+}
+
+/**
+ * A list-view key with no session to show. It used to be the near-black quiet
+ * tile, which on a deck where the user had just dropped AgentDeck onto more keys
+ * than there are sessions read as "the plugin icon is missing" — Ulanzi QA
+ * reported exactly that on a two-session Mac (2026-11-05). The key is working
+ * and waiting for a session, so it says so.
+ */
+export function renderOpenSlot(): string {
+  return renderInfoSlot('OPEN SLOT', 'next session', 'no-session', 'muted');
 }
 
 function buildDetail(

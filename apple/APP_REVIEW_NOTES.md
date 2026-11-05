@@ -616,8 +616,8 @@ long-form sections above are for the Resolution Center reply, where length is no
 ```text
 NO ACCOUNT REQUIRED. A paired Mac is optional for reviewing the offline Device Previews.
 
-NEW IN 2.0.0
-Clearer original choices and supported one-time approvals, accurate Attention and stale-request cleanup, readable sessions/history and improved reconnect behavior. Controls depend on the paired daemon and agent. No new account or cloud service.
+NEW IN 2.1.0
+Reconnects to the selected Mac after its daemon changes, keeps an explicit Disconnect, and can request pairing again after the Mac renews its token. No new permission, account or cloud service.
 
 VERIFY ON A CLEAN IPAD OR IPHONE
 1. Choose an aquarium appearance and continue to connection setup.
@@ -644,8 +644,8 @@ Contact: admin@foundby.kr
 ```text
 NO ACCOUNT REQUIRED. Review on a clean Mac with only AgentDeck installed; no external process or terminal setup is required for these instructions.
 
-NEW IN 2.0.0 — MACOS ONLY
-Clearer supported request controls, native observation and optional CI/calendar context, history/settings continuity, connection/USB fixes, hardened integration commands and a refreshed icon. Codex hook trust remains user-controlled. Dot is excluded.
+NEW IN 2.1.0 — MACOS ONLY
+Pairing settings can renew this Mac's pairing token; retired devices can request pairing again and still need explicit approval. Token custody across daemon handover, USB display discovery, Pixoo previews and Keychain storage for optional evaluation API keys are improved. No new entitlement. Dot is excluded.
 
 WHAT IT DOES
 The sandboxed Swift daemon monitors user-enabled agent integrations, serves Dashboard, pairs companions and evaluates turns. Users start agents independently. An optional experimental Collaboration view displays observed messages, not inferred project dependencies or automatic coordination.

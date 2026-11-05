@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { generateKeyPairSync } from 'node:crypto';
 // @ts-expect-error — release script is native ESM
-import { createASCClient, extractReleaseCopy, runRelease, validateReleaseTarget, verifyReleaseProvenance, verifyDeliveryToolSource } from '../asc-certificates.mjs';
+import { createASCClient, extractReleaseCopy, runRelease, validateReleaseTarget, verifyReleaseProvenance, verifyDeliveryToolSource, validatePlatformRelease, LISTED_RELEASE_VERSIONS } from '../asc-certificates.mjs';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const copy = {
@@ -130,6 +130,24 @@ function fixture(prepared = false, fresh = false) {
     writes: () => state.calls.filter(c => c.method !== 'GET'),
   };
 }
+
+describe('2.1.0 store scope', () => {
+  it('allows iOS prepare/submit for listed versions only', () => {
+    expect(() => validatePlatformRelease('IOS', 'release-prepare', '2.1.0')).not.toThrow();
+    expect(() => validatePlatformRelease('IOS', 'release-submit', '2.0.0')).not.toThrow();
+    expect(() => validatePlatformRelease('IOS', 'release-prepare', '1.9.5')).toThrow();
+    expect(() => validatePlatformRelease('IOS', 'release-replace-prepare', '2.1.0')).toThrow();
+  });
+
+  it.each(LISTED_RELEASE_VERSIONS.flatMap((v) => [[v, 'MAC_OS'], [v, 'IOS']]))(
+    'the %s %s listing file carries the same What\'s New as the prepared copy', (version, platform) => {
+      const listing = JSON.parse(readFileSync(resolve(ROOT, `apple/appstore-submission/metadata-${version}.json`), 'utf8'));
+      expect(listing.version).toBe(version);
+      const copy = extractReleaseCopy(readFileSync(resolve(ROOT, 'docs/appstore-metadata-draft.md'), 'utf8'),
+        readFileSync(resolve(ROOT, 'apple/APP_REVIEW_NOTES.md'), 'utf8').replaceAll('NEW IN 2.1.0', `NEW IN ${version}`), version, platform);
+      for (const locale of ['en-US', 'ko', 'ja']) expect(listing.platforms[platform].localizations[locale].whatsNew).toBe(copy.whatsNew[locale]);
+    });
+});
 
 describe('bounded macOS ASC release', () => {
   it('extracts only current macOS EN/KO/JA and the marked macOS reviewer field', () => {

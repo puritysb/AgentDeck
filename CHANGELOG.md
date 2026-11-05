@@ -45,23 +45,40 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
-### 2.1.0 candidate collection
+## 2026-11-06 — npm 2.1.0, Apple 2.1.0, Android 2.1.0, ESP32 2.1.0, Stream Deck 2.1.0, Ulanzi 2.1.0
 
-Unreleased; manifests, public tags and Store builds have not been advanced.
-Channel applicability and pending work are tracked in the
-[release collection](RELEASING.md#210-candidate-collection-2026-11-04).
+### 2.1 highlights
 
-- **Reconnect after changing daemons.** Apple and Android clients retry the selected host after retry exhaustion, retain authentication backoff, and respect an explicit Disconnect. Older Play installations need the forthcoming signed client update. Existing devices with retired approvals can request pairing again instead of disappearing from the approval list.
-- **More reliable local ownership and devices.** Recover uncertain pairing-rotation readback without repeating the rotation; hand foreground Swift custody to the active daemon once. Bound macOS USB registry discovery and repair current BLE requirements before reporting readiness. Launch the installed Mac app independently of test copies.
-- **Security maintenance.** Harden runtime input and transport boundaries, credential handling and retained inbox resources; update reviewed dependencies and require native security scans and fresh CI evidence. ESP32 setup portals retain the paired-daemon firmware-update path and apply bounded SDK parsing and authentication checks. Details under coordinated disclosure remain private.
-- **Observed-session control.** Read live cmux workspace/surface titles and deliver supported Claude dictation through a bounded private peer inbox, retaining the selected recipient and reporting correlated delivered/held/refused status. Stream Deck and Ulanzi update the selected VOICE tile; standalone Swift peer inbox support is not included.
-- **Firmware trust and recovery.** Keep each board's endpoint and credential bound across reboot, refuse ambiguous discovery and confirmed authentication failures, and repaint USB re-pair guidance. Installed firmware identity and optical acceptance remain separate checks.
-- **Ulanzi key images recover.** The Studio bridge reconnects to the endpoint Studio launched it with instead of the SDK default port, and a failed key-image raster is retried and repainted instead of staying blank. Whether these caused the reported 2.0.0 missing-icon case is still being confirmed on hardware ([#730](https://github.com/puritysb/AgentDeck/issues/730)).
-- **Pixoo64 candidate.** Preserve the bottom usage HUD, give Dot a separate readable Tide slot, route the ordinary scene through its habitat renderer, and make preview follow the configured panel scene. Apple Store builds continue to exclude Dot.
+**Dictation reaches Claude Code in any terminal.** A dictated prompt now goes to
+an observed Claude Code session through its private peer inbox instead of
+depending on a per-terminal scripting path, so Ghostty, WezTerm, kitty, SSH and
+editor terminals work like iTerm2, Terminal.app, tmux and cmux. The selected
+VOICE tile reports whether the prompt was delivered, held or refused by the
+receiving session; a write alone is never reported as delivered. AgentDeck no
+longer asks for Automation access to a terminal app that does not own the
+session. Requires the Node daemon (npm) and a Claude Code version that
+exposes the peer inbox; other agents and older versions keep the terminal
+path. Standalone macOS app peer inbox delivery is not included. Run
+`agentdeck daemon install` (or `npx @agentdeck/setup`) once after upgrading:
+it refreshes the Claude hooks that advertise the inbox, which a plain `claude`
+session does not do on its own. The delivered/held/refused wording on the
+VOICE tile comes from the deck plugin, so update the Stream Deck or Ulanzi
+plugin to 2.1 as well.
 
-The development Rollup resolver no longer installs unused deepmerge (#725).
+- **Live cmux names.** Same-project sessions show their cmux workspace and surface titles and follow renames and moves.
+- **Reconnect after changing daemons.** Apple and Android clients retry the selected host after retries run out, keep authentication backoff, and respect an explicit Disconnect. Devices whose approval was retired can request pairing again instead of disappearing from the approval list.
+- **Pairing token renewal.** `agentdeck token rotate` and the macOS app's Pairing settings renew the active daemon's token. Retired approvals still need explicit approval; offline or older daemons that never observed the renewal are not retired by it.
+- **Local ownership and devices.** Uncertain renewal results recover without renewing twice; Swift custody hands over to the active daemon once. macOS USB registry discovery is bounded, BLE requirements are repaired before readiness is reported, and the installed Mac app launches independently of test copies.
+- **Firmware trust and recovery.** Each board keeps its endpoint and credential bound across reboot, refuses ambiguous discovery and confirmed authentication failures, and repaints USB re-pair guidance. Setup portals keep the paired-daemon firmware update path and apply bounded request parsing and authentication.
+- **Ulanzi keys never sit blank.** A key with no session to show now displays an OPEN SLOT card instead of a near-black tile that looked like a missing icon. Japanese session and cmux titles render instead of empty boxes, and a shortened `workspace / surface` cmux label keeps the surface name that tells tabs apart. The Studio bridge reconnects to the endpoint Studio launched it with instead of the SDK default port, and a failed key-image raster is retried and repainted ([#730](https://github.com/puritysb/AgentDeck/issues/730)).
+- **Calendar feeds.** ICS subscriptions from Outlook and Google keep events that used Windows time-zone names, a week starting on Sunday or monthly "nth weekday" rules; skipped events are reported, and `webcal://` links are fetched over HTTPS (Node and macOS app, [#672](https://github.com/puritysb/AgentDeck/issues/672)).
+- **ESP32 serial discovery on macOS.** A timed-out `ioreg` lookup no longer leaves processes stacking at full CPU ([#677](https://github.com/puritysb/AgentDeck/issues/677)).
+- **Network defaults (Node daemon).** The legacy UDP discovery beacon is off by default; mDNS remains the discovery path, and a client that still needs the beacon can opt in with `"udpDiscoveryEnabled": true` in `settings.json`. ADB reverse mappings that another tool already owns are preserved, and device settings follow `AGENTDECK_DATA_DIR`. ESP32 boards advertise a per-board mDNS name, `agentdeck-display-<board id>`, and stop retrying a token the daemon has rejected (HTTP 401 / WebSocket 4001), showing USB re-pair guidance instead.
+- **Pixoo64.** The bottom usage HUD is preserved, the ordinary scene uses its habitat renderer, and the preview follows the configured panel scene.
+- **Security maintenance.** Runtime input and transport boundaries, credential handling (Keychain storage for optional evaluation API keys, Android credential-backup exclusion, Android OkHttp 4.12.1 compromised-certificate blocking) and retained inbox resources are hardened, and reviewed dependencies are updated. Details under coordinated disclosure remain private.
 
-The merged [#723](https://github.com/puritysb/AgentDeck/pull/723) re-pair correction is included. The separate local Dot experiment remains under scope review, not a verified delivery. No release delivery is implied by this list.
+After updating, refresh enabled integrations (`agentdeck daemon install` or the
+app's setup), and approve any companion that asks to pair again.
 
 ## 2026-11-02 — npm 2.0.0, Apple 2.0.0, Android 2.0.0, ESP32 2.0.0, Stream Deck 2.0.0, Ulanzi 2.0.0
 
