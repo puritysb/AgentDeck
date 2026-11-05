@@ -168,8 +168,15 @@ that a manifest hash misses. VCS/Python caches and installer metadata are exclud
 symlinks hash their link target text without following it. Project build-time patch
 scripts are hashed as inputs, not applied by this resolution-only command.
 
-SDK/component manifests are indexed with hashes and explicit unknown independent
-version/advisory mappings. This is not complete SDK SBOM/CVE coverage, an OSV
+SDK/component manifests are indexed with hashes. ESP-IDF and Arduino-ESP32 version
+headers additionally retain the observed numeric macro declarations, bound to the
+same header hash. Parsing is limited to 64 KiB of UTF-8 text; commented examples
+are ignored; only unambiguous decimal literals are accepted. Missing, duplicate,
+octal/hexadecimal or expression-based declarations remain
+unknown. No C preprocessor or package code is executed by this parser. Numeric
+macros do not identify prereleases or downstream patches, so full release and
+advisory mappings remain explicitly unknown. Other embedded manifests retain
+unknown independent version/advisory mappings. This is not complete SDK SBOM/CVE coverage, an OSV
 scan, a deterministic lockfile or firmware-build acceptance. Both incomplete
 and failed collection retain error receipts; they cannot reuse an earlier pass.
 PlatformIO's [package list](https://docs.platformio.org/en/stable/core/userguide/pkg/cmd_list.html)

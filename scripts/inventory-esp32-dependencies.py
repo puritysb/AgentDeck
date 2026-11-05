@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import subprocess
@@ -50,6 +51,45 @@ def digest(path):
     return h.hexdigest()
 
 
+SDK_HEADERS = {
+    "esp_idf_version.h": ("esp-idf", "ESP_IDF_VERSION"),
+    "esp_arduino_version.h": ("arduino-esp32", "ESP_ARDUINO_VERSION"),
+}
+
+
+def sdk_version_evidence(path, expected_hash):
+    """Observe numeric declarations, never execute C or infer a release/advisory ID."""
+    with Path(path).open("rb") as stream:
+        content = stream.read(64 * 1024 + 1)
+    if len(content) > 64 * 1024:
+        return {"versionMapping": "unknown; version header exceeds parsing limit"}
+    if hashlib.sha256(content).hexdigest() != expected_hash:
+        raise ValueError("SDK version header changed during collection")
+    try:
+        text = content.decode("utf-8")
+    except UnicodeDecodeError:
+        return {"versionMapping": "unknown; version header is not UTF-8"}
+    component, prefix = SDK_HEADERS[Path(path).name]
+    # Ignore commented-out examples. Expressions, duplicate definitions and
+    # missing fields remain unknown rather than evaluating a preprocessor.
+    text = re.sub(r"/\*.*?\*/|//[^\n]*", "", text, flags=re.S)
+    parts = []
+    for field in ("MAJOR", "MINOR", "PATCH"):
+        declarations = re.findall(r"^[ \t]*#[ \t]*define[ \t]+" + prefix + "_" + field + r"\b([^\n]*)", text, re.M)
+        # Accept unambiguous decimal literals only; C treats leading-zero
+        # literals as octal, which must not be silently relabelled as decimal.
+        if len(declarations) != 1 or not re.fullmatch(r"[ \t]*(?:0|[1-9][0-9]{0,3})[ \t\r]*", declarations[0]):
+            return {"versionMapping": "unknown; missing, ambiguous or non-literal numeric declarations"}
+        parts.append(str(int(declarations[0].strip())))
+    return {
+        "versionMapping": "numeric declarations observed; full release identity unknown",
+        "component": component,
+        "numericVersion": ".".join(parts),
+        "releaseIdentity": "unknown; numeric macros do not distinguish releases, prereleases or downstream patches",
+        "advisoryMapping": "unknown; no OSV/CPE identity inferred",
+    }
+
+
 def tree_evidence(directory):
     """Hash complete package bytes, not just a package manifest/cache label."""
     root = Path(directory)
@@ -73,9 +113,10 @@ def tree_evidence(directory):
                 if total > 8 * 1024**3 or count > 300_000:
                     raise ValueError("Package content exceeds inventory limit")
                 value = digest(path)
-                if name in ("idf_component.yml", "library.properties", "library.json", "package.json", "esp_idf_version.h"):
+                if name in ("idf_component.yml", "library.properties", "library.json", "package.json", *SDK_HEADERS):
                     # Embedded manifests are not automatically independent package versions.
-                    embedded.append({"path": relative, "sha256": value, "versionMapping": "unknown; manual upstream mapping required"})
+                    evidence = sdk_version_evidence(path, value) if name in SDK_HEADERS else {"versionMapping": "unknown; manual upstream mapping required"}
+                    embedded.append({"path": relative, "sha256": value, **evidence})
             else:
                 raise ValueError("Non-regular package content")
             h.update(relative.encode() + b"\0" + value.encode() + b"\n")
