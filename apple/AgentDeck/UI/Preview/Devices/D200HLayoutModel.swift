@@ -43,7 +43,7 @@
 // credits tile (the preview only draws credits for a known balance).
 // 2026-11-03: Node peer-receipt subtitles affect detail VOICE tiles only; the
 // Swift device previews consume list mode, whose geometry/content is unchanged.
-// SYNC-HASH shared/src/d200h-layout.ts c96ea0d500dfed621c52353cebadbd1b04fc614d
+// SYNC-HASH shared/src/d200h-layout.ts dd608fc707665b3943addb72ba404776176d4376
 // SYNC-HASH shared/src/session-utils.ts b0274ff249f2705cc7fce39752d74a46b25f6b87
 // SYNC-HASH shared/src/dot-deck.ts 2aa36a3fc11092ade2f29f2086eb796c823583c6
 // SYNC-HASH shared/src/session-labels.ts c64d5537886af372c5997b9f5e9570540ec96333
@@ -609,7 +609,7 @@ public enum D200HLayoutModel {
                     let card = ready[i]
                     out.append(D200HKeySlot(position: pos, col: col, row: row, kind: card.0, label: card.1, subtitle: card.2, action: .none))
                 } else {
-                    out.append(D200HKeySlot(position: pos, col: col, row: row, kind: .empty, label: "", subtitle: nil, action: .none))
+                    out.append(D200HKeySlot(position: pos, col: col, row: row, kind: .info(icon: "no-session", tone: "muted"), label: "OPEN SLOT", subtitle: "next session", action: .none))
                 }
             }
             appendUsage()
@@ -638,7 +638,7 @@ public enum D200HLayoutModel {
                     action: .open(sessionId: sess.id)
                 ))
             } else {
-                out.append(D200HKeySlot(position: pos, col: col, row: row, kind: .empty, label: "", subtitle: nil, action: .none))
+                out.append(D200HKeySlot(position: pos, col: col, row: row, kind: .info(icon: "no-session", tone: "muted"), label: "OPEN SLOT", subtitle: "next session", action: .none))
             }
         }
         appendUsage()

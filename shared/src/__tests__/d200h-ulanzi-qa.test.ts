@@ -121,3 +121,23 @@ describe('buildSessionDeck — a usage provider with no data takes no key', () =
     expect([...deck.values()].map((c) => c.svg).join('')).toContain('CREDITS');
   });
 });
+
+// Ulanzi Studio QA on 2.0.0 (macOS, 2026-11-05): two sessions, AgentDeck on four
+// keys — keys 3 and 4 were the near-black quiet tile and read as a missing icon.
+describe('buildSessionDeck — keys without a session', () => {
+  it('a list key with no session shows the OPEN SLOT card, not a blank tile', () => {
+    const ev = { state: 'IDLE', allSessions: [session('a', 'claude-code', 'alpha'), session('b', 'codex-cli', 'beta')] };
+    const deck = buildSessionDeck(ev, { mode: 'list' }, ['0_0', '1_0', '2_0', '3_0']);
+    expect(openIds(deck, ['0_0', '1_0'])).toEqual(['a', 'b']);
+    for (const pos of ['2_0', '3_0']) {
+      expect(deck.get(pos)!.svg).toContain('>OPEN SLOT<');
+      expect(deck.get(pos)!.action).toBeNull();
+    }
+  });
+
+  it('with no sessions, keys past the three status cards are OPEN SLOT too', () => {
+    const deck = buildSessionDeck({ state: 'IDLE', allSessions: [] }, { mode: 'list' }, ROW0);
+    expect(deck.get('3_0')!.svg).toContain('>OPEN SLOT<');
+    expect(deck.get('4_0')!.svg).toContain('>OPEN SLOT<');
+  });
+});
