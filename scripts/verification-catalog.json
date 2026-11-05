@@ -1,8 +1,8 @@
 {
   "$comment": "What AgentDeck verifies, where, and what it does not. Rendered as the 'What we verify' tab of the GitHub Pages Build Health report (scripts/generate-html-report.py). Gated by scripts/__tests__/verification-catalog.test.ts: every workflow must be listed, every path must exist, and every test file must match a domain (domains are ordered; the first match wins). Edit this file in the same commit as a new gate, workflow or test area. Gate fields: `blocking` means a failure turns its workflow red; `required` means master branch protection lists the gate's check, so GitHub refuses the merge while it fails. Branch protection is a repository setting that CI cannot read, so `merge_policy.as_of` records when `required` was last checked against it.",
   "merge_policy": {
-    "as_of": "2026-11-03",
-    "summary": "Branch protection on master requires ESP32 Sim Compile, npm/Python/Rust dependency audits, dependency review, all eight hosted-validated CodeQL analysis jobs, the CodeQL result check and security pipeline freshness. Administrator enforcement and up-to-date branch checks are enabled. Kotlin and both Swift target analyses completed successfully before promotion."
+    "as_of": "2026-11-05",
+    "summary": "Branch protection on master requires ESP32 simulator, modern TTGO and legacy TC001 build checks, npm/Python/Rust dependency audits, dependency review, all eight hosted-validated CodeQL analysis jobs, the CodeQL result check and security pipeline freshness. Administrator enforcement and up-to-date branch checks are enabled. Target build and native analysis jobs are promoted only after hosted validation."
   },
   "levels": {
     "unit": "One module in isolation; collaborators faked.",
@@ -421,6 +421,7 @@
       "report_suite": "vitest",
       "evidence": ["vitest.setup.ts", "bridge/src/__tests__/auth-token-adoption.test.ts"],
       "proves": [
+        "Host C++ executes the transformed SDK auth-scheme, Digest-path, multipart-boundary and portal-route policies; unreviewed SDK bytes fail and downloaded sources remain unchanged.",
         "bridge, shared, hooks, plugin, plugin-ulanzi, setup, scripts and the experimental Dot relay behave as their tests specify (the domain table below counts them)",
         "USB vendor discovery caches unchanged candidates, bounds retries and retains its subprocess slot until close; fake children cover resisted signals and a POSIX executable fixture covers real timeout/kill recovery",
         "Node/Swift daemon policy mirror drift and common turn-boundary vectors; CLI rejects explicit Swift identity as Node readiness (native policy execution also runs on macOS)",
@@ -845,11 +846,35 @@
       "job": "ttgo",
       "trigger": "PRs and master pushes touching esp32/** or the ESP32 compile/release workflows",
       "blocking": true,
-      "required": false,
+      "required": true,
       "command": "pio run -e ttgo",
-      "evidence": ["esp32/platformio.ini"],
+      "evidence": ["esp32/platformio.ini", "esp32/scripts/webserver_security.py", "scripts/__tests__/esp32-webserver-security.test.ts"],
       "proves": ["a fresh dependency install compiles and links TTGO on the release Xtensa toolchain without static DRAM overflow"],
       "does_not_prove": ["runtime heap headroom, firmware boot, rendering, flashing, or other board targets"]
+    },
+    {
+      "id": "esp32-legacy",
+      "name": "ESP32 legacy TC001 firmware build",
+      "level": [
+        "compile"
+      ],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/esp32-sim.yml",
+      "job": "legacy",
+      "trigger": "PRs and master pushes touching esp32/** or the ESP32 compile/release workflows",
+      "blocking": true,
+      "required": true,
+      "command": "pio run -e led8x32",
+      "evidence": [
+        "esp32/platformio.ini",
+        "esp32/scripts/webserver_security.py"
+      ],
+      "proves": [
+        "The legacy Arduino 2 / GCC 8 target compiles and links with build-local SDK security backports; per-source original/patched hashes and applied rules are retained."
+      ],
+      "does_not_prove": [
+        "Installed firmware, boot, optical acceptance, complete SDK advisory coverage or protection of older installed builds."
+      ]
     },
     {
       "id": "pages-report",
