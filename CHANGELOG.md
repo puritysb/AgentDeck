@@ -45,7 +45,7 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
-## 2026-11-05 — npm 2.1.0, Apple 2.1.0, Android 2.1.0, ESP32 2.1.0, Stream Deck 2.1.0, Ulanzi 2.1.0
+## 2026-11-06 — npm 2.1.0, Apple 2.1.0, Android 2.1.0, ESP32 2.1.0, Stream Deck 2.1.0, Ulanzi 2.1.0
 
 ### 2.1 highlights
 
@@ -65,9 +65,12 @@ path. Standalone macOS app peer inbox delivery is not included.
 - **Pairing token renewal.** `agentdeck token rotate` and the macOS app's Pairing settings renew the active daemon's token. Retired approvals still need explicit approval; offline or older daemons that never observed the renewal are not retired by it.
 - **Local ownership and devices.** Uncertain renewal results recover without renewing twice; Swift custody hands over to the active daemon once. macOS USB registry discovery is bounded, BLE requirements are repaired before readiness is reported, and the installed Mac app launches independently of test copies.
 - **Firmware trust and recovery.** Each board keeps its endpoint and credential bound across reboot, refuses ambiguous discovery and confirmed authentication failures, and repaints USB re-pair guidance. Setup portals keep the paired-daemon firmware update path and apply bounded request parsing and authentication.
-- **Ulanzi key images recover.** The Studio bridge reconnects to the endpoint Studio launched it with instead of the SDK default port, and a failed key-image raster is retried and repainted instead of staying blank ([#730](https://github.com/puritysb/AgentDeck/issues/730)).
+- **Ulanzi keys never sit blank.** A key with no session to show now displays an OPEN SLOT card instead of a near-black tile that looked like a missing icon. The Studio bridge reconnects to the endpoint Studio launched it with instead of the SDK default port, and a failed key-image raster is retried and repainted ([#730](https://github.com/puritysb/AgentDeck/issues/730)).
+- **Calendar feeds.** ICS subscriptions from Outlook and Google keep events that used Windows time-zone names, a week starting on Sunday or monthly "nth weekday" rules; skipped events are reported, and `webcal://` links are fetched over HTTPS (Node and macOS app, [#672](https://github.com/puritysb/AgentDeck/issues/672)).
+- **ESP32 serial discovery on macOS.** A timed-out `ioreg` lookup no longer leaves processes stacking at full CPU ([#677](https://github.com/puritysb/AgentDeck/issues/677)).
+- **Network defaults (Node daemon).** The legacy UDP discovery beacon is off by default; mDNS remains the discovery path, and a client that still needs the beacon can opt in with `"udpDiscoveryEnabled": true` in `settings.json`. ADB reverse mappings that another tool already owns are preserved, and device settings follow `AGENTDECK_DATA_DIR`. ESP32 boards advertise a per-board mDNS name, `agentdeck-display-<board id>`, and stop retrying a token the daemon has rejected (HTTP 401 / WebSocket 4001), showing USB re-pair guidance instead.
 - **Pixoo64.** The bottom usage HUD is preserved, the ordinary scene uses its habitat renderer, and the preview follows the configured panel scene.
-- **Security maintenance.** Runtime input and transport boundaries, credential handling (Keychain storage for optional evaluation API keys, Android credential-backup exclusion) and retained inbox resources are hardened, and reviewed dependencies are updated. Details under coordinated disclosure remain private.
+- **Security maintenance.** Runtime input and transport boundaries, credential handling (Keychain storage for optional evaluation API keys, Android credential-backup exclusion, Android OkHttp 4.12.1 compromised-certificate blocking) and retained inbox resources are hardened, and reviewed dependencies are updated. Details under coordinated disclosure remain private.
 
 After updating, refresh enabled integrations (`agentdeck daemon install` or the
 app's setup), and approve any companion that asks to pair again.

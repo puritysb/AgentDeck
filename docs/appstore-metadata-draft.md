@@ -24,6 +24,7 @@ AgentDeck 2.1 makes pairing, reconnection and connected displays more dependable
 • Renew the pairing token for this Mac from Pairing settings. Devices whose earlier approval was retired can ask to pair again instead of disappearing from the approval list.
 • Keep custody of the pairing token consistent when the daemon hands over, and recover uncertain renewal results without renewing twice.
 • Find USB displays more reliably and keep Pixoo previews in step with the configured panel scene.
+• Keep Outlook and Google calendar events that use Windows time-zone names, Sunday week starts or monthly "nth weekday" rules, and fetch webcal links over HTTPS.
 • Store optional evaluation API keys in the Keychain and tighten connection and input boundaries.
 After updating, approve any companion that asks to pair again.
 ```
@@ -35,6 +36,7 @@ AgentDeck 2.1에서 페어링, 재연결, 연결된 디스플레이를 더 안�
 • 페어링 설정에서 이 Mac의 페어링 토큰을 갱신할 수 있습니다. 이전 승인이 만료된 기기는 승인 목록에서 사라지지 않고 다시 페어링을 요청할 수 있습니다.
 • 데몬이 인계될 때 페어링 토큰을 일관되게 유지하고, 갱신 결과가 불확실하면 두 번 갱신하지 않고 복구합니다.
 • USB 디스플레이를 더 안정적으로 찾고, Pixoo 미리보기가 설정한 패널 장면을 따르도록 개선했습니다.
+• Windows 시간대 이름, 일요일 시작 주, 매월 "n번째 요일" 규칙을 쓰는 Outlook·Google 캘린더 일정을 빠뜨리지 않고, webcal 링크를 HTTPS로 가져옵니다.
 • 선택적 평가 API 키를 키체인에 저장하고 연결과 입력 경계를 강화했습니다.
 업데이트 후 다시 페어링을 요청하는 기기가 있으면 승인해 주세요.
 ```
@@ -46,6 +48,7 @@ AgentDeck 2.1ではペアリング、再接続、接続ディスプレイの信�
 • ペアリング設定からこのMacのペアリングトークンを更新できます。以前の承認が失効したデバイスは承認リストから消えず、再ペアリングを要求できます。
 • デーモンの引き継ぎ時にペアリングトークンを一貫して保持し、更新結果が不明な場合も二重更新せずに復旧します。
 • USBディスプレイの検出を改善し、Pixooプレビューが設定したパネルシーンに従うようにしました。
+• Windowsタイムゾーン名、日曜始まりの週、毎月「第n曜日」ルールを使うOutlook・Googleカレンダーの予定を取りこぼさず、webcalリンクをHTTPSで取得します。
 • 任意の評価用APIキーをキーチェーンに保存し、接続と入力の境界を強化しました。
 更新後、再ペアリングを要求するデバイスがあれば承認してください。
 ```
