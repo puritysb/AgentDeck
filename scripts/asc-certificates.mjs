@@ -32,8 +32,14 @@ export function releasePlatform(value = 'MAC_OS') {
 }
 export function validatePlatformRelease(platform, action, version) {
   releasePlatform(platform);
-  if (platform === 'IOS' && (version !== '2.0.0' || !['release-prepare', 'release-submit'].includes(action))) throw new Error('IOS mutations are scoped to 2.0.0 prepare/submit');
+  if (platform === 'IOS' && (!IOS_RELEASE_VERSIONS.includes(version) || !['release-prepare', 'release-submit'].includes(action))) {
+    throw new Error(`IOS mutations are scoped to ${IOS_RELEASE_VERSIONS.join('/')} prepare/submit`);
+  }
 }
+/** iOS versions this tool may prepare/submit; older iOS versions were never delivered through it. */
+export const IOS_RELEASE_VERSIONS = Object.freeze(['2.0.0', '2.1.0']);
+/** Versions whose localized listing is a checked-in file the copy must match. */
+export const LISTED_RELEASE_VERSIONS = Object.freeze(['2.0.0', '2.1.0']);
 const PLATFORM = releasePlatform(process.env.ASC_RELEASE_PLATFORM);
 const REPOSITORY = 'puritysb/AgentDeck';
 const RELEASE_WORKFLOW = '.github/workflows/apple-release.yml';
@@ -159,7 +165,7 @@ async function storeStatus() {
     const response = await api(path);
     console.log(JSON.stringify({resource: path.split('?')[0].split('/').at(-1), data: response.data, included: response.included ?? []}));
     if (!path.startsWith(`${root}/appStoreVersions?`)) continue;
-    for (const version of response.data.filter(v => v.attributes?.versionString === '2.0.0')) {
+    for (const version of response.data.filter(v => LISTED_RELEASE_VERSIONS.includes(v.attributes?.versionString))) {
       const locales = await api(`/v1/appStoreVersions/${resourceId(version, 'appStoreVersions')}/appStoreVersionLocalizations?limit=200`);
       for (const locale of locales.data) for (const [setType, assetType] of [['appScreenshotSets', 'appScreenshots'], ['appPreviewSets', 'appPreviews']]) {
         const sets = await api(`/v1/appStoreVersionLocalizations/${resourceId(locale, 'appStoreVersionLocalizations')}/${setType}?limit=200`);
@@ -919,8 +925,8 @@ export async function main(args = process.argv.slice(2)) {
     const copy = extractReleaseCopy(
       fs.readFileSync(resolve(root, 'docs/appstore-metadata-draft.md'), 'utf8'),
       fs.readFileSync(resolve(root, 'apple/APP_REVIEW_NOTES.md'), 'utf8'), arg);
-    if (arg === '2.0.0') {
-      const listing = JSON.parse(fs.readFileSync(resolve(root, 'apple/appstore-submission/metadata-2.0.0.json'), 'utf8'));
+    if (LISTED_RELEASE_VERSIONS.includes(arg)) {
+      const listing = JSON.parse(fs.readFileSync(resolve(root, `apple/appstore-submission/metadata-${arg}.json`), 'utf8'));
       requireThat(listing.version === arg, 'Listing version mismatch');
       copy.localized = listing.platforms[PLATFORM].localizations;
       requireThat(LOCALES.every(l => copy.localized[l].whatsNew === copy.whatsNew[l]

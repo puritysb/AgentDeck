@@ -99,8 +99,8 @@ observed portal/artifact state; do not present a candidate as public.
 
 The owner requested **2.1.0** as the next collection bucket. This is an
 unreleased planning label, not a tag, uploaded build or claim of Store delivery.
-The current delta repairs existing 2.0 promises (patch-class changes under the
-policy above); no new minor feature is invented to justify the bucket. Keep
+Most of the delta repairs existing 2.0 promises; the minor milestone is
+justified by one new capability, recorded in the release decision below. Keep
 manifests and consumed Store build numbers unchanged until the final version
 and channel decision is recorded before packaging.
 
@@ -110,7 +110,7 @@ and channel decision is recorded before packaging.
 | Node / Swift ownership and pairing | Bounded CLI rotation readback; single foreground Swift custody handoff | [#722](https://github.com/puritysb/AgentDeck/pull/722); does not silently approve new devices |
 | Node / Swift device reliability | Bounded macOS USB registry discovery; current BLE dependency installation and installed app identity | [#678](https://github.com/puritysb/AgentDeck/pull/678), [#717](https://github.com/puritysb/AgentDeck/pull/717) |
 | Runtime security and CI | Input/transport boundaries, credential custody, retained inbox resources and reviewed dependency updates; native CodeQL and scan freshness checks | [#690](https://github.com/puritysb/AgentDeck/pull/690), [#707](https://github.com/puritysb/AgentDeck/pull/707), [#709](https://github.com/puritysb/AgentDeck/pull/709), [#711](https://github.com/puritysb/AgentDeck/pull/711), [#712](https://github.com/puritysb/AgentDeck/pull/712), [#721](https://github.com/puritysb/AgentDeck/pull/721); includes native key storage and Android credential-backup exclusion; keep private report details private |
-| Pixoo64 | Restore the panel-specific Tide scene on this desk, reserve readable Dot space, preserve the bottom provider usage rows, and preview the selected scene | Candidate branch; verification and deployment evidence recorded with its PR. Dot remains Node/development-preview only; ordinary Apple Store builds exclude Dot |
+| Pixoo64 | Restore the panel-specific Tide scene on this desk, reserve readable Dot space, preserve the bottom provider usage rows, and preview the selected scene | [#724](https://github.com/puritysb/AgentDeck/pull/724), merged; verification and deployment evidence recorded with its PR. Dot remains Node/development-preview only; ordinary Apple Store builds exclude Dot |
 | Node / Swift re-pair feedback | Re-pair requests remain visible after an old credential generation is retired | [#723](https://github.com/puritysb/AgentDeck/pull/723), merged and integrated; retired grants still require explicit approval |
 | Node observed sessions | Live cmux workspace/surface titles and receipt-correlated Claude peer dictation, with terminal ownership checks and bounded inbox resources | [#709](https://github.com/puritysb/AgentDeck/pull/709); public package delivery and physical controller acceptance remain on [#544](https://github.com/puritysb/AgentDeck/issues/544) / [#675](https://github.com/puritysb/AgentDeck/issues/675); standalone Swift peer inbox support is not claimed |
 | ESP32 trust and recovery | Persist the selected endpoint and credential together; refuse ambiguous discovery and confirmed authentication failures until trusted provisioning; repaint re-pair guidance | [#709](https://github.com/puritysb/AgentDeck/pull/709) and [#722](https://github.com/puritysb/AgentDeck/pull/722); firmware artifacts and installed builds have separate evidence in [#674](https://github.com/puritysb/AgentDeck/issues/674) |
@@ -127,6 +127,34 @@ ESP32, Stream Deck and Ulanzi receive no cosmetic version bump for changes that
 only affect their host daemon. Re-evaluate channel applicability from the final
 diff before cutting any artifacts. Full release/archive gates and portal build
 floor readback remain required for an actual release.
+
+#### 2.1.0 release decision — 2026-11-05
+
+**Milestone: dictation reaches Claude Code in any terminal.** Before 2.1 a
+dictated prompt reached an idle observed Claude session only through a
+per-terminal scripting rung (tmux, cmux, iTerm2, Terminal.app); every other
+terminal failed with `no reachable terminal`. The receipt-correlated peer inbox
+(#709) is a new end-to-end workflow users could not accomplish in 2.0, so the
+collection is a minor milestone rather than a patch. Every other row in the
+collection table is a 2.0 repair and is described as such in the notes.
+
+| Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Milestone / applicability |
+| --- | --- | --- | --- | --- | --- |
+| npm (`hooks`, `shared`, `bridge`, `setup`) | 2.0.0 | 2.0.0 | 2.1.0 | Minor: peer-inbox dictation, live cmux titles, active-owner token rotation; daemon/device repairs | Carries the milestone |
+| Apple macOS / App Store | 2.0.0 / 10201 | 2.0.0 / 10201 | 2.1.0 / CI-assigned (> 10201) | Shares 2.1: pairing-token renewal UI, retired-approval re-pair, custody handover, USB discovery, Keychain API keys; peer inbox is Node-only and not claimed | Milestone not delivered natively; 2.1 names the shared collection |
+| Apple iOS / App Store | 2.0.0 / 10201 | 2.0.0 / 10201 | 2.1.0 / CI-assigned (> 10201) | Shares 2.1: reconnect after daemon change, re-pair after renewal | Client of the milestone |
+| Android / Play + GitHub APK | 2.0.0 / 30 | 2.0.0 / 30 | 2.1.0 / 31 | Shares 2.1: reconnect recovery, re-pair after retirement, credential-backup exclusion | Lenovo needs the Play route; recheck the Play versionCode floor before upload |
+| ESP32 / GitHub firmware | 2.0.0 | 2.0.0 | 2.1.0 | Shares 2.1: endpoint/credential binding, refuse ambiguous discovery, portal hardening | Firmware text changes only; no new board |
+| Stream Deck / Maker Console | 2.0.0 (2.0.0.0) | 2.0.0.0 | 2.1.0 (2.1.0.0) | Shares 2.1: VOICE delivery status for the milestone | Controller surface of the milestone |
+| Ulanzi / Marketplace | 2.0.0 | 2.0.0 | 2.1.0 | Shares 2.1: VOICE delivery status; reconnect endpoint and raster recovery (#731) | Controller surface of the milestone |
+
+Root `VERSION` stays **2.0.0** (compatibility major 2; no wire break).
+Store copy: [metadata-2.1.0.json](apple/appstore-submission/metadata-2.1.0.json),
+`docs/appstore-metadata-draft.md` 2.1.0 sections and the `NEW IN 2.1.0` review
+fields; Play [release notes](marketplace/play/2.1.0/release-notes.json); Elgato
+[listing](marketplace/elgato/2.1.0/listing.json). Media are unchanged from 2.0.0.
+Delivery conditions below remain separate: this decision approves numbers and
+copy, not uploads, tags or submissions.
 
 #### Pre-release disposition — 2026-11-04
 

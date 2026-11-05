@@ -12,6 +12,79 @@ Copy-ready text for the App Store Connect submission form. Each field respects A
 **Content Rating**: 4+ (no user-generated content, no ads, no external links to age-restricted sites)
 **Price**: Free
 
+## Prepared macOS 2.1.0 update text
+
+Patch-class follow-up to 2.0; promotional text and description are unchanged from 2.0.0. Full listing in
+[metadata-2.1.0.json](../apple/appstore-submission/metadata-2.1.0.json).
+
+### English — macOS What's New
+
+```text
+AgentDeck 2.1 makes pairing, reconnection and connected displays more dependable.
+• Renew the pairing token for this Mac from Pairing settings. Devices whose earlier approval was retired can ask to pair again instead of disappearing from the approval list.
+• Keep custody of the pairing token consistent when the daemon hands over, and recover uncertain renewal results without renewing twice.
+• Find USB displays more reliably and keep Pixoo previews in step with the configured panel scene.
+• Store optional evaluation API keys in the Keychain and tighten connection and input boundaries.
+After updating, approve any companion that asks to pair again.
+```
+
+### Korean — macOS 새로운 기능
+
+```text
+AgentDeck 2.1에서 페어링, 재연결, 연결된 디스플레이를 더 안정적으로 개선했습니다.
+• 페어링 설정에서 이 Mac의 페어링 토큰을 갱신할 수 있습니다. 이전 승인이 만료된 기기는 승인 목록에서 사라지지 않고 다시 페어링을 요청할 수 있습니다.
+• 데몬이 인계될 때 페어링 토큰을 일관되게 유지하고, 갱신 결과가 불확실하면 두 번 갱신하지 않고 복구합니다.
+• USB 디스플레이를 더 안정적으로 찾고, Pixoo 미리보기가 설정한 패널 장면을 따르도록 개선했습니다.
+• 선택적 평가 API 키를 키체인에 저장하고 연결과 입력 경계를 강화했습니다.
+업데이트 후 다시 페어링을 요청하는 기기가 있으면 승인해 주세요.
+```
+
+### Japanese — macOS このバージョンの新機能
+
+```text
+AgentDeck 2.1ではペアリング、再接続、接続ディスプレイの信頼性を向上しました。
+• ペアリング設定からこのMacのペアリングトークンを更新できます。以前の承認が失効したデバイスは承認リストから消えず、再ペアリングを要求できます。
+• デーモンの引き継ぎ時にペアリングトークンを一貫して保持し、更新結果が不明な場合も二重更新せずに復旧します。
+• USBディスプレイの検出を改善し、Pixooプレビューが設定したパネルシーンに従うようにしました。
+• 任意の評価用APIキーをキーチェーンに保存し、接続と入力の境界を強化しました。
+更新後、再ペアリングを要求するデバイスがあれば承認してください。
+```
+
+## Prepared iOS 2.1.0 update text
+
+Patch-class follow-up to 2.0; promotional text and description are unchanged from 2.0.0. Full listing in
+[metadata-2.1.0.json](../apple/appstore-submission/metadata-2.1.0.json).
+
+### English — iOS What's New
+
+```text
+AgentDeck 2.1 keeps your companion dashboard connected through Mac daemon changes.
+• Reconnect to the selected Mac after it changes daemons or exhausts retries, while keeping an explicit Disconnect and authentication cooldown.
+• When the Mac renews its pairing token, this device can ask to pair again and resume after approval.
+• Tighten connection boundaries for paired sessions.
+Available controls depend on the paired daemon and agent integration.
+```
+
+### Korean — iOS 새로운 기능
+
+```text
+AgentDeck 2.1에서 Mac의 데몬이 바뀌어도 동반 대시보드가 연결을 유지합니다.
+• Mac이 데몬을 바꾸거나 재시도가 끝난 뒤에도 선택한 Mac에 다시 연결하며, 직접 선택한 연결 해제와 인증 대기 시간은 유지합니다.
+• Mac이 페어링 토큰을 갱신하면 이 기기가 다시 페어링을 요청하고 승인 후 이어서 사용할 수 있습니다.
+• 페어링된 세션의 연결 경계를 강화했습니다.
+사용 가능한 제어는 연결된 데몬과 에이전트 연동에 따라 달라집니다.
+```
+
+### Japanese — iOS このバージョンの新機能
+
+```text
+AgentDeck 2.1では、Macのデーモンが切り替わってもコンパニオンダッシュボードの接続を維持します。
+• Macのデーモン切り替えや再試行の終了後も選択したMacに再接続し、明示的な切断と認証の待機時間は保持します。
+• Macがペアリングトークンを更新すると、このデバイスは再ペアリングを要求し、承認後に再開できます。
+• ペアリングしたセッションの接続境界を強化しました。
+利用可能な操作は、接続したデーモンとエージェント連携に依存します。
+```
+
 ## Prepared macOS 2.0.0 update text
 
 The owner authorized this coordinated 2.0 submission. Full version-specific

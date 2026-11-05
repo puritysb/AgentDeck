@@ -1,0 +1,5 @@
+{
+  "en-US": "AgentDeck 2.1 reconnects to the selected computer after its daemon changes or retries run out, while keeping an explicit Disconnect and authentication cooldown. A device whose earlier approval was retired can ask to pair again. Pairing credentials are excluded from device backups. Existing settings are preserved.",
+  "ko-KR": "AgentDeck 2.1은 컴퓨터의 데몬이 바뀌거나 재시도가 끝난 뒤에도 선택한 컴퓨터에 다시 연결하며, 직접 선택한 연결 해제와 인증 대기 시간은 유지합니다. 이전 승인이 만료된 기기는 다시 페어링을 요청할 수 있습니다. 페어링 자격 증명은 기기 백업에서 제외됩니다. 기존 설정은 유지됩니다.",
+  "ja-JP": "AgentDeck 2.1では、コンピューターのデーモン切り替えや再試行の終了後も選択したコンピューターに再接続し、明示的な切断と認証の待機時間は保持します。以前の承認が失効したデバイスは再ペアリングを要求できます。ペアリング資格情報はデバイスのバックアップから除外されます。既存の設定は保持されます。"
+}
