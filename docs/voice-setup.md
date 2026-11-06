@@ -81,11 +81,46 @@ The wake word system is **independent of the SFSpeech transcription path** — w
 
 ---
 
+## Delivering to Claude Code in any terminal
+
+Since 2.1 the CLI daemon (npm, macOS and Linux) delivers a dictated prompt to an
+observed Claude Code session through Claude's own **peer inbox**. No terminal
+scripting is involved, so the session can run in Ghostty, WezTerm, kitty, an SSH
+session or an editor terminal, as well as iTerm2, Terminal.app, tmux or cmux. The
+standalone macOS app and Windows keep terminal delivery.
+
+Two things have to be current:
+
+- **Hooks.** The inbox is advertised by the AgentDeck hooks. After upgrading, run
+  `agentdeck daemon install` (or `npx @agentdeck/setup`) once. A plain `claude`
+  session does not refresh them on its own. Sessions started before the refresh,
+  or Claude Code versions without a peer inbox, use the terminal path below.
+- **Deck plugin.** The VOICE tile wording comes from the Stream Deck or Ulanzi
+  plugin, so update it to 2.1 as well.
+
+The message arrives as a peer message, subject to the receiving session's own
+controls. It is not typed input and never answers a permission dialog. The
+selected VOICE tile reports what happened:
+
+| VOICE tile | Meaning |
+|---|---|
+| received by Claude | The session confirmed the message |
+| receipt pending | Written, but no confirmation yet. AgentDeck never retries through the terminal on its own |
+| approve in Claude | Claude is holding it until you approve it in that session |
+| Claude refused | Claude declined the message |
+| approval declined / approval expired | The approval was declined, or it timed out |
+| message dropped | Claude discarded the message |
+| inbox unavailable | The session's inbox could not be reached |
+
+To use the terminal path for Claude anyway, set `voice.claudeDelivery: "terminal"`.
+Protocol details are in [daemon.md § Claude inbox dictation](daemon.md#claude-inbox-dictation).
+
 ## Terminal host checks
 
-For observed terminal sessions, the CLI daemon tries tmux and cmux first. Before using iTerm2 or Terminal.app, it reads the agent process's executable ancestry with a bounded `ps` query and only sends AppleScript to the identified host. This applies to both dictated prompts and device answers. An unsupported host such as Ghostty reports `terminal host not supported (Ghostty)` without requesting Automation access to unrelated apps. A missing PID or unreadable ancestry reports `terminal host unknown (…)` and skips AppleScript as well.
+Other agents, Claude sessions without an inbox and the standalone macOS app use
+the terminal path. For observed terminal sessions on that path, the CLI daemon tries tmux and cmux first. Before using iTerm2 or Terminal.app, it reads the agent process's executable ancestry with a bounded `ps` query and only sends AppleScript to the identified host. This applies to both dictated prompts and device answers. An unsupported host such as Ghostty reports `terminal host not supported (Ghostty)` without requesting Automation access to unrelated apps. A missing PID or unreadable ancestry reports `terminal host unknown (…)` and skips AppleScript as well.
 
-Ghostty, WezTerm, kitty, Alacritty and editor terminals can receive input through tmux; direct delivery to those hosts is not supported. Granting control over Terminal.app does not enable delivery to another terminal.
+On the terminal path, Ghostty, WezTerm, kitty, Alacritty and editor terminals can receive input through tmux; direct typing into those hosts is not supported. Claude Code sessions there use the peer inbox instead (above). Granting control over Terminal.app does not enable delivery to another terminal.
 
 ## Delivering to a session in cmux
 
@@ -115,6 +150,8 @@ A daemon started with `agentdeck daemon start --foreground` inside a cmux termin
 | Wrong language detected | Your first preferred language is not the one you speak, or its model is missing | Set `voice.locale` (see above), and enable Dictation for that language |
 | Voice cut off at 15 seconds | Hit `maxRecordingDuration` | Press the voice button again for a new turn. Voice commands are designed to be short |
 | Transcript correct but agent doesn't receive | Daemon/bridge not connected | Check the menu bar dashboard — Connection status must be "Connected" before voice sends work |
+| VOICE says `terminal host not supported (Ghostty)` for a Claude Code session | The session has no advertised inbox: hooks were not refreshed after upgrading, or the session started before the refresh | Run `agentdeck daemon install`, then start a new `claude` session |
+| VOICE stays on `receipt pending` or shows `approve in Claude` | The receiving Claude session has not confirmed the message, or is holding it for approval | Check that session; AgentDeck does not resend through the terminal |
 | Daemon logs `delivered=false (cmux socket refused …)` | cmux's Socket Control Mode is "cmux processes only", which rejects a LaunchAgent daemon | Switch it to Automation mode in cmux Settings (see [Delivering to a session in cmux](#delivering-to-a-session-in-cmux)) |
 | Daemon logs `delivered=false (cmux: … holds text someone is typing …)` or `… waiting on a question or dialog …` | cmux refused to type over your draft or into an open dialog | Clear the prompt or answer the dialog, then dictate again. This refusal is deliberate |
 | Deck VOICE key does nothing; daemon logs `voice: host PTT failed: … request timed out` or `helper exited (SIGABRT)` | The CLI daemon's `agentdeck-fm-helper` was built without the embedded usage descriptions, so TCC killed it instead of prompting | Rebuild it: `cd bridge && node scripts/build-fm-helper.mjs` (verify with `codesign -dv assets/fm-helper/agentdeck-fm-helper` → `Info.plist entries=4`), restart the daemon, then grant the two **agentdeck-fm-helper** prompts |
