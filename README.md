@@ -367,7 +367,7 @@ covers all twelve boards, and the Android APK, Stream Deck and Ulanzi 2.1.0
 packages are on GitHub.
 
 - **Apple:** macOS and iPhone/iPad 2.1.0 (build 10301) are waiting for App Store review.
-- **Google Play:** 2.1.0 (31) is not yet submitted.
+- **Google Play:** 2.1.0 (31) is in review for a full production rollout.
 - **Elgato:** 2.1 is pending review, and the Marketplace serves 2.
 - **Ulanzi:** 2.1.0 is in Workshop review. Its public listing showed 1.8.1 when last read on 2026-10-28.
 

@@ -8,15 +8,19 @@ created after 2023-11-13 does not apply — production is reachable directly.
 The APK on GitHub Releases stays; Play is an additional channel, not a
 replacement. Play uses store-managed updates; the sideload APK retains wireless updates.
 
-## 2.1.0 / 31 — bundle built, upload pending (2026-11-06)
+## 2.1.0 / 31 — sent for review (2026-11-06)
 
 The release workflow built `agentdeck-2.1.0-31.aab`: 23,282,442 bytes, SHA-256
 `c7de4d3d8d3d223d5190290a2549dbcb9da7347b364ea83db481b35fdfe24997`. The matching
 signed APK is on the [GitHub Release](https://github.com/puritysb/AgentDeck/releases/tag/android-v2.1.0).
-The owner uploads the bundle in Production → Create new release, using the
-[2.1.0 release notes](2.1.0/release-notes.json), and must finish with
-**Send for review**; saving a draft does not submit it. Lenovo updates through this route.
-2.0.0 / 30 remains the public Play version until then.
+The bundle was uploaded in Production → Create new release. Play read it as
+**31 (2.1.0)**, API 29+, target SDK 36, replacing 30 (2.0.0) with no change in
+supported devices. The release uses the [2.1.0 release notes](2.1.0/release-notes.json)
+(en-US, ja-JP, ko-KR). The only warning is missing native debug symbols.
+**Send for review** was completed for one change, a full production rollout.
+Publishing overview shows **Changes in review**. Managed publishing is off, so
+approval publishes it. Lenovo updates through this route. 2.0.0 / 30 remains the
+public Play version until approval.
 
 ## 2.0.0 / 30 — public at 100% rollout (2026-11-02)
 
