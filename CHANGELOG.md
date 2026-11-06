@@ -75,10 +75,16 @@ plugin to 2.1 as well.
 - **ESP32 serial discovery on macOS.** A timed-out `ioreg` lookup no longer leaves processes stacking at full CPU ([#677](https://github.com/puritysb/AgentDeck/issues/677)).
 - **Network defaults (Node daemon).** The legacy UDP discovery beacon is off by default; mDNS remains the discovery path, and a client that still needs the beacon can opt in with `"udpDiscoveryEnabled": true` in `settings.json`. ADB reverse mappings that another tool already owns are preserved, and device settings follow `AGENTDECK_DATA_DIR`. ESP32 boards advertise a per-board mDNS name, `agentdeck-display-<board id>`, and stop retrying a token the daemon has rejected (HTTP 401 / WebSocket 4001), showing USB re-pair guidance instead.
 - **Pixoo64.** The bottom usage HUD is preserved, the ordinary scene uses its habitat renderer, and the preview follows the configured panel scene.
-- **Security maintenance.** Runtime input and transport boundaries, credential handling (Keychain storage for optional evaluation API keys, Android credential-backup exclusion, Android OkHttp 4.12.1 compromised-certificate blocking) and retained inbox resources are hardened, and reviewed dependencies are updated. Details under coordinated disclosure remain private.
+- **Security maintenance.** Runtime input and transport boundaries, credential handling (Keychain storage for optional evaluation API keys, Android credential-backup exclusion, Android OkHttp 4.12.1 compromised-certificate blocking) and retained inbox resources are hardened, and reviewed dependencies are updated. Two advisories are fixed in this release: [GHSA-c8c5-4xcp-ch39](https://github.com/puritysb/AgentDeck/security/advisories/GHSA-c8c5-4xcp-ch39) (macOS `agentdeck wifi-setup` passed the network name through a shell) and [GHSA-fjph-pj5g-9v47](https://github.com/puritysb/AgentDeck/security/advisories/GHSA-fjph-pj5g-9v47) (ESP32 firmware trusted mDNS discovery with its pairing token).
 
 After updating, refresh enabled integrations (`agentdeck daemon install` or the
 app's setup), and approve any companion that asks to pair again.
+
+### Thanks
+
+- @shin-sforzando proposed terminal-independent delivery through the Claude peer inbox ([#675](https://github.com/puritysb/AgentDeck/issues/675)), tested the ownership fix, and ran the D200X check whose findings added Japanese glyphs and the surface-first INFO label to this release.
+- @nicolasguzca reported the stacking `ioreg` processes with the measurements that made the cause clear ([#677](https://github.com/puritysb/AgentDeck/issues/677)).
+- The Ulanzi Studio review team sent the logs and recordings behind the OPEN SLOT card ([#730](https://github.com/puritysb/AgentDeck/issues/730)).
 
 ## 2026-11-02 — npm 2.0.0, Apple 2.0.0, Android 2.0.0, ESP32 2.0.0, Stream Deck 2.0.0, Ulanzi 2.0.0
 
@@ -95,7 +101,7 @@ records evidence, channel applicability and unfinished acceptance.
 - **More capability in the native Mac daemon.** Expand native agent observation, GitHub CI status enrichment, consented ICS calendar context, Pixoo aquarium loops and APME storage/retention controls. Node/Swift handovers preserve supported timeline identity, in-flight state, session pins and Pixoo settings; opt-in cold recovery retains explicit conflict choices.
 - **A clearer aquarium across screen sizes.** Refine Hermes' shared-shell entrance/return, crowded layouts, swimming lanes and labels on native and compact surfaces. Display sleep/wake propagation and supported Android frontlight recovery are improved.
 - **Safer connections and updates.** Avoid opening known foreign USB serial devices, including the LG monitor interface; respect serial flash suspension and stop. Improve Android discovery/retry/address handling, preserve an explicit Apple connection stop, contain malformed WebSocket input and connecting-socket teardown errors, and retain Android app data on failed updates.
-- **Harden agent integrations.** Refresh generated integration commands while preserving custom handlers and user-owned hook trust. Upgrade the CLI and native installers together and refresh enabled integrations after the corrected builds are available; security-report details remain private.
+- **Harden agent integrations.** Refresh generated integration commands while preserving custom handlers and user-owned hook trust. Upgrade the CLI and native installers together and refresh enabled integrations after the corrected builds are available. This fixes [GHSA-jv6m-83qx-52jp](https://github.com/puritysb/AgentDeck/security/advisories/GHSA-jv6m-83qx-52jp): generated Claude hook commands could import a `json.py` from the project directory and post to an unverified local port.
 - **A consistent product presentation.** Refresh the app/deck icon from one master, with identical generated exports across platforms, and introduce the whole workflow with the new English/Korean/Japanese-captioned product tour.
 - **Experimental: daemon relay v1.** Explicitly configured workers publish observed session metadata to a hub and accept only supported controls over the same connection. Real two-Mac Node/Swift transport/control and signed-app save/relaunch/disable are verified with synthetic sessions. Full remote-terminal operation, remote timeline/APME sync and long-running real-agent two-Mac acceptance are outside this claim. Held Claude questions retain their original options rather than becoming binary approvals (#662). Use the documented trusted-network/tunnel boundary.
 
@@ -103,6 +109,11 @@ CloudKit/Watch observation remains a development experiment. Dot native/local
 routes and DotPreview Apple builds are not standard Store release features.
 Physical e-ink optical performance and D200X friendly-name/VOICE acceptance are
 not certified by the software or media checks below.
+
+### Thanks
+
+- @shin-sforzando privately reported GHSA-jv6m-83qx-52jp with a reproduction and fixes, confirmed the fix on 2.0.0, and reported and tested the same-project session labels ([#544](https://github.com/puritysb/AgentDeck/issues/544)) and the stuck "disconnected" hub ([#545](https://github.com/puritysb/AgentDeck/issues/545)).
+- @q8webmaster fixed USB serial detection opening an LG monitor's control interface ([#641](https://github.com/puritysb/AgentDeck/pull/641)).
 
 ### Changes by target
 
