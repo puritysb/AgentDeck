@@ -16,6 +16,27 @@ Workshop for AgentDeck), which shows Version 1.8.1, D200/D200H/D200X, Category A
 Links in the README, install guide, roadmap, Pages index and `@agentdeck/setup`
 point to the new id; dated records below keep the id they observed.
 
+## 2.1.0 — replaced the 2.0.0 review (2026-11-06)
+
+Ulanzi QA reported missing key icons on 2.0.0 (#730). Their logs showed keys that
+had no session drawing a near-black tile, not a rendering failure. 2.1.0 fixes that
+with an OPEN SLOT card, bundles Japanese glyphs, and keeps Studio's launch
+endpoint across reconnects (#731, #732).
+
+After the owner signed in, **Edit review work** replaced the 2.0.0 main file with
+the official [2.1.0 ZIP](https://github.com/puritysb/AgentDeck/releases/tag/ulanzi-v2.1.0).
+The saved CDN file hashes to the release ZIP
+(`60d2500933947f1584e8e95856b070803f017697fd81bcd5fcd455f8a1430855`).
+
+The upload reset the form, so these were corrected before saving:
+- All seven locales were restored to their 2.0.0 text.
+- Dial and AU05 were deselected, leaving D200/D200H/D200X with Windows and both
+  macOS options.
+
+The update note describes 2.1. The QA thread received a reply-all asking for 2.1.0
+to be reviewed instead. The public listing still serves the previously approved
+version until approval.
+
 ## 2.0.0 — submitted for review (2026-11-02)
 
 The [official 2.0 package](https://github.com/puritysb/AgentDeck/releases/tag/ulanzi-v2.0.0)

@@ -95,10 +95,34 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### 2.1.0 delivery checkpoint 2026-11-06
+
+All six `*-v2.1.0` tags point at merge commit `285a57d1` (PR #733). The table records each
+channel's state, using this document's five-state model. Submission is not publication.
+
+| Channel | State on 2026-11-06 (KST) | Evidence |
+| --- | --- | --- |
+| npm (`hooks`, `shared`, `bridge`, `setup`) | **Public 2.1.0** | Registry readback of all four packages; [release](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.1.0) published after the ESP32 manifest |
+| ESP32 (12 boards) | **Public 2.1.0** on GitHub | [Release](https://github.com/puritysb/AgentDeck/releases/tag/esp32-v2.1.0) manifest read back before the npm tag; installed boards are not updated by the release |
+| Apple macOS / iOS | **Submitted**: 2.1.0 / 10301 `WAITING_FOR_REVIEW`, release after approval | Submit runs [42120903436](https://github.com/puritysb/AgentDeck/actions/runs/42120903436) (macOS) and [42120909299](https://github.com/puritysb/AgentDeck/actions/runs/42120909299) (iOS); read-only [store-status 42156605122](https://github.com/puritysb/AgentDeck/actions/runs/42156605122). 2.0.0 remains READY_FOR_SALE on both |
+| Android GitHub APK | **Public 2.1.0 (31)** | [Release](https://github.com/puritysb/AgentDeck/releases/tag/android-v2.1.0); APK SHA-256 `f221690cd79e9af1a90b12897052709e1474e4545f303ede83849cfbc2bcfb4f`, signer certificate SHA-256 `10603af8ec7b76237f6372106dc8b73f597576fb5f8b82ed28ce6aad31b08923` |
+| Google Play | **Artifact only**: 2.1.0 (31) AAB built, upload pending | AAB SHA-256 `c7de4d3d8d3d223d5190290a2549dbcb9da7347b364ea83db481b35fdfe24997`; the owner uploads through Play Console. Saving a release is not sending it for review. Lenovo updates through this route |
+| Stream Deck (Maker Console) | **Submitted**: 2.1 pending review, automatic publishing off; 2 is published | Parsed as 2.1.0.0, SDK 3, DRM Yes, dials Yes, default profiles Yes; package SHA-256 `b2b19fa3f6f15c7869bfaefbf9256a42361ab9fe9011f9bd0b8d34951e3d146f`. Verify the DRM-processed build's encoders before publishing |
+| Ulanzi Workshop | **Submitted**: 2.1.0 replaced the 2.0.0 review record | Saved Workshop ZIP is byte-identical to the [release](https://github.com/puritysb/AgentDeck/releases/tag/ulanzi-v2.1.0) ZIP (SHA-256 `60d2500933947f1584e8e95856b070803f017697fd81bcd5fcd455f8a1430855`); seven locales restored, Dial/AU05 excluded. Includes the QA fixes from #730 (#731, #732) |
+
+Issue disposition:
+
+- #730 is closed with the Workshop receipt.
+- #544 is closed after the D200X receipt and the 2.1.0 delivery.
+- #673 is folded into #674, which tracks store publication, Lenovo and installed boards.
+- #675 stays open for held/refused peer status on a physical deck.
+- #551 and #635 are unchanged.
+- The two draft advisories fixed by this release now list 2.1.0 as patched. Their publication is still pending coordination.
+
 ### 2.1.0 candidate collection — 2026-11-04
 
-The owner requested **2.1.0** as the next collection bucket. This is an
-unreleased planning label, not a tag, uploaded build or claim of Store delivery.
+The owner requested **2.1.0** as the next collection bucket. It was a
+planning label until the 2.1.0 tags; delivery is recorded in the checkpoint above.
 Most of the delta repairs existing 2.0 promises; the minor milestone is
 justified by one new capability, recorded in the release decision below. Keep
 manifests and consumed Store build numbers unchanged until the final version

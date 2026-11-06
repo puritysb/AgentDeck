@@ -2,15 +2,31 @@
 
 > **Live since 2026-07-28.** The product page is at
 > <https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464>,
-> and the public version is **1.8.1** (Maker Console Versions, read
-> 2026-11-02); 2.0 is pending review with auto-publish off. Earlier: `1.8`
+> and the public version is **2** (published; product page version list read
+> 2026-11-06). 2.1 is pending review with auto-publish off. Earlier: `1.8.1`
+> (2026-10-13), `1.8`
 > (released 2026-10-08 per the public product page, read 2026-10-11), `1.6`
 > (2026-10-03, 758.41 KB), `1.3`, `1.2` and `1.0.6`
 > (2026-08-18), `1.0.5` (2026-08-10), `1.0.4` (2026-08-05), `1.0.3` (2026-07-31)
 > and `1.0.2` (2026-07-28).
 > This file stays the source of the listing copy and asset inventory for future revisions.
 
-## 2.0 — pending review (2026-11-02)
+## 2.1 — pending review (2026-11-06)
+
+Created as a new version from the official
+[2.1.0 package](https://github.com/puritysb/AgentDeck/releases/tag/streamdeck-v2.1.0),
+SHA-256 `b2b19fa3f6f15c7869bfaefbf9256a42361ab9fe9011f9bd0b8d34951e3d146f`.
+Maker Console parsed **2.1.0.0, SDK 3, DRM Yes, Stream Deck+ dials Yes, default
+profiles Yes**. Versions shows **2.1 Pending review**, with **2** published.
+Automatic publication is **off**. The release notes are in the
+[2.1.0 listing](2.1.0/listing.json); listing media are unchanged from 2.0.
+After approval, verify the DRM-processed package's encoders before publishing manually.
+
+## 2.0 — published (submitted 2026-11-02)
+
+The product page lists 2 as published, with the record created 2026-11-02T11:43Z.
+The submission notes below are unchanged.
+
 
 The owner approved the permanent deletion of the old **1.8.2 pending submission**
 to unblock this replacement. Published **1.8.1** remains unchanged.

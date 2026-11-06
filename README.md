@@ -22,11 +22,10 @@ projects and tools. Watch them in a living aquarium, follow the timeline, and
 keep usage limits in view. Use your Mac or terminal on its own, or add a tablet,
 Stream Deck, e-ink reader, or small desk display.
 
-**2.0 delivery:** Google Play, npm and the Android/Stream Deck/Ulanzi/ESP32
-GitHub downloads and the iPhone/iPad 2.0 update are public. macOS 2.0 is still
-awaiting review; deck Marketplace submissions are tracked separately.
-See the [channel-by-channel delivery record](RELEASING.md#20-delivery-checkpoint-2026-11-02).
-Non-automatable physical journeys use the owner's code-review acceptance for this release.
+**2.1 delivery:** npm 2.1.0 and the Android/Stream Deck/Ulanzi/ESP32 2.1.0
+GitHub downloads are public. The Mac, iPhone/iPad, Google Play and deck
+Marketplace updates are in review; their stores still serve 2.0 (Ulanzi: 1.8.1).
+See the [channel-by-channel delivery record](RELEASING.md#210-delivery-checkpoint-2026-11-06).
 
 <p align="center">
   <a href="docs/media/desk-overview.jpg"><img src="docs/media/setup-full.jpg" width="900" alt="AgentDeck on a real desk, photographed September 28, 2026: iPad and Android dashboards, Stream Deck and Ulanzi controls, e-ink readers, ESP32 panels, and LED matrices"></a>
@@ -63,8 +62,8 @@ recorded evidence, then the roles of keypads, tablets, e-ink and small displays.
 
 Actual Mac/iPad UI and production renderers use fictional activity; the phone
 control chapter uses a real local OpenCode execution. Static captures and older
-hardware photographs are labeled in the video. This is a **2.0 development
-candidate**, with English, Korean and Japanese captions; released downloads retain
+hardware photographs are labeled in the video. It was recorded on
+2.0 builds, with English, Korean and Japanese captions; released downloads retain
 their channel versions. CloudKit/Watch remains a separate development experiment.
 
 [Watch the captioned product tour](https://puritysb.github.io/AgentDeck/#product-tour) ·
@@ -353,11 +352,27 @@ for verified publication and Store review status.
 | Product | Install / update | Release tag |
 |---|---|---|
 | Mac · iPhone · iPad | [App Store](https://apps.apple.com/app/id6784822497?pt=128040795&ct=github-readme-202610&mt=8) | `apple-v*` |
-| Android tablets and e-ink | [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck) · [signed GitHub APK](https://github.com/puritysb/AgentDeck/releases?q=android-v&expanded=true) | [`android-v2.0.0`](https://github.com/puritysb/AgentDeck/releases/tag/android-v2.0.0) |
-| CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | [`npm-v2.0.0`](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.0.0) public |
+| Android tablets and e-ink | [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck) · [signed GitHub APK](https://github.com/puritysb/AgentDeck/releases?q=android-v&expanded=true) | [`android-v2.1.0`](https://github.com/puritysb/AgentDeck/releases/tag/android-v2.1.0) |
+| CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | [`npm-v2.1.0`](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.1.0) public |
 | Stream Deck / Mini / XL / Plus / + XL | [Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) | `streamdeck-v*` |
 | Ulanzi D200H / D200X LCD keys | [Ulanzi Marketplace](https://ugc.ulanzistudio.com/contentView/1239890184745660416); D200X encoders are not supported | `ulanzi-v*` |
 | ESP32 panels and TRMNL 7.5" | [Browser flasher](https://puritysb.github.io/AgentDeck/flash/) · [firmware releases](https://github.com/puritysb/AgentDeck/releases?q=esp32-v&expanded=true) | `esp32-v*` |
+
+**2.1 delivery, updated 2026-11-06:** [npm 2.1.0](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.1.0)
+is public for all four packages. It carries the 2.1 milestone: dictated prompts
+reach Claude Code in any terminal through its peer inbox. Run
+`agentdeck daemon install` (or `npx @agentdeck/setup`) once after upgrading.
+The [ESP32 2.1.0 firmware set](https://github.com/puritysb/AgentDeck/releases/tag/esp32-v2.1.0)
+covers all twelve boards, and the Android APK, Stream Deck and Ulanzi 2.1.0
+packages are on GitHub.
+
+- **Apple:** macOS and iPhone/iPad 2.1.0 (build 10301) are waiting for App Store review.
+- **Google Play:** 2.1.0 (31) is not yet submitted.
+- **Elgato:** 2.1 is pending review, and the Marketplace serves 2.
+- **Ulanzi:** 2.1.0 is in Workshop review. Its public listing showed 1.8.1 when last read on 2026-10-28.
+
+Until each store updates, it serves its previous version. See the
+[2.1.0 delivery record](RELEASING.md#210-delivery-checkpoint-2026-11-06).
 
 **2.0 delivery, updated 2026-11-04:** [npm 2.0.0](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.0.0)
 is public for all four packages and includes the integration-command hardening.
@@ -372,9 +387,7 @@ available, update the ones you use, refresh enabled integrations and review
 Codex hook trust when prompted. See the
 [Apple delivery evidence](RELEASING.md#apple-delivery-evidence-2026-11-04) and
 [2.0 delivery record](RELEASING.md#20-delivery-checkpoint-2026-11-02).
-Later corrections are collected in the
-[unreleased 2.1 candidate](RELEASING.md#210-candidate-collection-2026-11-04);
-they are not included in the published 2.0 artifacts.
+Later corrections shipped in 2.1.0 (above).
 
 **Delivery, 2026-10-29:** [npm 1.9.6 is public](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.6).
 A late update to a timeline row (summary, evaluation score, approval result) now
