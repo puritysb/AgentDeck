@@ -17,9 +17,12 @@ Runbook for the published site surfaces and the CI report generator. Moved out o
 
 ## Public aquarium media
 
-The README uses `docs/media/aquarium-preview.gif` as a linked motion preview;
-the overview plays `docs/media/aquarium-demo.mp4` with native controls and
-`preload="none"`. It does not autoplay. The poster is `aquarium-dashboard.jpg`;
+The README uses `docs/media/aquarium-preview.gif` as a linked motion preview to
+the overview's `#current-habitat` recording. Since 2026-11-06 the overview no
+longer embeds `docs/media/aquarium-demo.mp4` or the 1.8.0 supplement below. Both
+remain published at their `media/` URLs for existing links and store records, and
+the Pages assembly still copies them. When it was embedded, the player used native
+controls and `preload="none"` and did not autoplay. The poster is `aquarium-dashboard.jpg`;
 `aquarium-ipad.jpg` illustrates the Apple guide. The Pages assembly copies these
 assets explicitly (JPEGs use the existing photo copy step).
 
@@ -62,8 +65,8 @@ not temporary review-status copy in installation instructions.
 
 ### 1.8.0 scenario supplement
 
-The original introduction and hardware photographs remain intact. The overview's
-`#showcase-180` section and README add `aquarium-180-showcase.mp4` plus three
+Archived from the overview and README on 2026-11-06; the files stay published.
+The overview's former `#showcase-180` section and README added `aquarium-180-showcase.mp4` plus three
 native screenshots: `aquarium-180-overview.jpg`, `aquarium-180-ci.jpg`, and
 `aquarium-180-complete.jpg`. This is a native iPad **simulator** recording with
 fictional sessions, not footage of a physical device or a live private workspace.

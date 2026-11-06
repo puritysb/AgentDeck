@@ -338,10 +338,6 @@ html body :target { scroll-margin-block-start: 0; }
   .media-history { margin-top:var(--s-8); text-align:left; }
   .media-history summary { cursor:pointer; color:var(--kelp-700); }
   @media(max-width:700px) { .current-layout { grid-template-columns:1fr; } }
-  .showcase-media video { aspect-ratio: auto; }
-  .showcase-stills { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: var(--s-4); }
-  .showcase-stills .hero-shot { margin-top: var(--s-4); }
-  .showcase-stills img { aspect-ratio: auto; height: auto; }
 
   /* ── Section ── */
   h2 { font-size: clamp(30px, 4vw, 44px); letter-spacing: -0.02em; margin: var(--s-20) 0 var(--s-2); }
@@ -349,7 +345,7 @@ html body :target { scroll-margin-block-start: 0; }
 
   /* ── Nav cards ── */
   .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: var(--s-4); }
-  .cards > *, .showcase-stills > *, .access-grid > * { min-width:0; }
+  .cards > *, .access-grid > * { min-width:0; }
   .card {
     display: block; text-decoration: none; color: var(--ink-900);
     background: var(--tide-100); border: 1px solid var(--tide-200); border-radius: var(--r-2xl);
@@ -628,18 +624,6 @@ html body :target { scroll-margin-block-start: 0; }
       <p class="section-lede"><a href="hardware/#current-captures" data-i18n="current.devices">See current device captures and the labeled photo composite →</a> · <a href="media/current/manifest.json" data-i18n="current.sources">Media sources</a></p>
     </section>
     </details>
-    <details class="media-history"><summary data-i18n="current.history">Earlier aquarium introduction · archived recording</summary>
-    <figure id="aquarium" class="hero-shot">
-      <video controls playsinline preload="none" poster="media/aquarium-dashboard.jpg" width="2752" height="2000" aria-describedby="aquarium-caption">
-        <source src="media/aquarium-demo.mp4" type="video/mp4">
-        <track kind="captions" src="media/aquarium-story.en.vtt" srclang="en" label="English" default>
-        <track kind="captions" src="media/aquarium-story.ko.vtt" srclang="ko" label="한국어">
-        <track kind="captions" src="media/aquarium-story.ja.vtt" srclang="ja" label="日本語">
-        <a href="media/aquarium-demo.mp4" data-i18n="video.download">Download the aquarium demo</a>
-      </video>
-      <figcaption id="aquarium-caption" data-i18n="video.caption">Earlier introduction: one coding task, five sessions. Watch agents join, edit, test, wait for permission, and finish as the timeline fills. Recorded in the native iPad app with fictional sample activity. Silent, 43 seconds, 2752 × 2000; expand to full screen for detail.</figcaption>
-    </figure>
-    </details>
     <section id="get-agentdeck" class="get-started" aria-labelledby="get-agentdeck-title">
       <div class="get-started-head">
         <p class="eyebrow" data-i18n="get.eyebrow">Get AgentDeck</p>
@@ -688,25 +672,6 @@ html body :target { scroll-margin-block-start: 0; }
     </figure>
   </header>
 
-  <section id="showcase-180" aria-labelledby="showcase-title">
-    <h2 id="showcase-title" data-i18n="showcase.h">More agents, one living workspace</h2>
-    <p class="section-lede" data-i18n="showcase.p">Hermes Agent joins the aquarium. GitHub CI companions orbit the sessions waiting for checks, then leave when checks finish.</p>
-    <figure class="hero-shot showcase-media">
-      <video controls playsinline preload="none" poster="media/aquarium-180-overview.jpg" width="1920" height="1334" aria-describedby="showcase-caption">
-        <source src="media/aquarium-180-showcase.mp4" type="video/mp4">
-        <track kind="captions" src="media/aquarium-180.en.vtt" srclang="en" label="English" default>
-        <track kind="captions" src="media/aquarium-180.ko.vtt" srclang="ko" label="한국어">
-        <track kind="captions" src="media/aquarium-180.ja.vtt" srclang="ja" label="日本語">
-        <a href="media/aquarium-180-showcase.mp4" data-i18n="showcase.download">Download the 1.8.0 showcase</a>
-      </video>
-      <figcaption id="showcase-caption" data-i18n="showcase.caption">AgentDeck 1.8.0, recorded in the native iPad simulator with fictional activity. Real app rendering; silent, 36 seconds, 1920 × 1334. The earlier introduction above is retained.</figcaption>
-    </figure>
-    <div class="showcase-stills">
-      <figure class="hero-shot"><a href="media/aquarium-180-overview.jpg"><img src="media/aquarium-180-overview.jpg" alt="Native AgentDeck 1.8.0 aquarium with Hermes Agent and multiple coding agents" loading="lazy"></a><figcaption data-i18n="showcase.overview">Hermes Agent alongside the coding agents.</figcaption></figure>
-      <figure class="hero-shot"><a href="media/aquarium-180-ci.jpg"><img src="media/aquarium-180-ci.jpg" alt="GitHub CI companion orbiting a session waiting for checks" loading="lazy"></a><figcaption data-i18n="showcase.ci">GitHub CI waiting stays attached to its session.</figcaption></figure>
-      <figure class="hero-shot"><a href="media/aquarium-180-complete.jpg"><img src="media/aquarium-180-complete.jpg" alt="Native aquarium after the fictional checks finish" loading="lazy"></a><figcaption data-i18n="showcase.complete">Checks finish and the aquarium settles.</figcaption></figure>
-    </div>
-  </section>
 
   <h2 data-i18n="aquarium.h">Your agents, in view</h2>
   <p class="section-lede" data-i18n="aquarium.p">Choose a dashboard that fits your screen and the way you work. Existing appearance choices stay yours.</p>
@@ -717,7 +682,7 @@ html body :target { scroll-margin-block-start: 0; }
       <p data-i18n="view.p">Live 3D creatures on Apple and Android LCD screens. Mobile viewing mode fades the panels and brings the habitat closer. E-ink keeps its own calm, static backdrop.</p>
     </a>
     <a class="card" href="https://github.com/puritysb/AgentDeck/blob/master/docs/apple-app.md#collaboration-beta">
-      <div class="ci">Collaboration</div>
+      <div class="ci" data-i18n="collab.ci">Collaboration</div>
       <h3 data-i18n="collab.h">Follow the handoff</h3>
       <p data-i18n="collab.p">See the selected task, recent task history, and reported subagent activity. Busy scenes keep up to eight foreground residents while the roster retains every session.</p>
     </a>
@@ -725,6 +690,11 @@ html body :target { scroll-margin-block-start: 0; }
       <div class="ci" data-i18n="usage.ci">Across your devices</div>
       <h3 data-i18n="usage.h">Keep the essentials close</h3>
       <p data-i18n="usage.p">Claude, Codex, and z.ai/GLM usage where available, adapted to the display. Android GitHub APKs update wirelessly from Settings; store installs use their store.</p>
+    </a>
+    <a class="card" href="https://github.com/puritysb/AgentDeck/blob/master/docs/voice-setup.md#delivering-to-claude-code-in-any-terminal">
+      <div class="ci" data-i18n="voice.ci">New in 2.1 · Voice</div>
+      <h3 data-i18n="voice.h">Dictate into any terminal</h3>
+      <p data-i18n="voice.p">Speak a prompt from your deck and it reaches Claude Code in Ghostty, WezTerm, kitty, SSH or an editor terminal. The VOICE key shows whether the session received it, is holding it or refused it. Requires the CLI daemon.</p>
     </a>
   </div>
 
@@ -883,30 +853,24 @@ html body :target { scroll-margin-block-start: 0; }
         "current.returned": "활동 종료 뒤 · 크리처가 돌아가고 해당 라벨도 정리됩니다.",
         "current.devices": "최신 기기별 캡처와 출처가 표시된 사진 합성 보기 →",
         "current.sources": "미디어 출처",
-        "current.history": "이전 수족관 소개 · 보관 영상",
 
-        "showcase.h": "더 다양한 에이전트, 하나의 작업 공간",
-        "showcase.p": "Hermes Agent가 수족관에 합류합니다. GitHub CI 크리처는 검증을 기다리는 세션 주위를 공전하고, 검증이 끝나면 떠납니다.",
-        "showcase.download": "1.8.0 소개 영상 다운로드",
-        "showcase.caption": "가상의 작업으로 네이티브 iPad 시뮬레이터에서 촬영한 AgentDeck 1.8.0입니다. 실제 앱 렌더링이며 무음, 36초, 1920 × 1334 영상입니다. 위의 기존 소개 영상도 유지했습니다.",
-        "showcase.overview": "코딩 에이전트들과 함께하는 Hermes Agent.",
-        "showcase.ci": "GitHub CI 대기가 해당 세션 곁에 표시됩니다.",
-        "showcase.complete": "검증이 끝나고 수족관이 잔잔해집니다.",
 
         "stat.agents": "공통 세션 모델",
         "stat.local": "컴퓨터에서 실행하는 허브",
-        "video.download": "수족관 데모 다운로드",
-        "video.caption": "기존 소개 영상: 하나의 코딩 작업에 다섯 세션이 합류해 수정·테스트·권한 대기·완료로 이어지고, 타임라인이 채워집니다. 가상의 샘플 작업으로 실제 iPad 앱을 촬영했습니다. 무음, 43초, 2752 × 2000. 전체 화면으로 자세히 보세요.",
         "aquarium.h": "에이전트가 한눈에",
         "aquarium.p": "화면과 작업 방식에 맞는 대시보드를 선택하세요. 기존 화면 설정은 그대로 유지됩니다.",
         "view.ci": "네이티브 수족관",
         "view.h": "작업을 보고, 수족관을 감상하고",
         "view.p": "Apple과 Android LCD 화면의 실시간 3D 크리처. 모바일 감상 모드는 패널을 숨기고 수족관을 가까이 보여줍니다. 전자책은 차분한 정적 배경을 사용합니다.",
+        "collab.ci": "협업",
         "collab.h": "작업 인계를 따라가세요",
         "collab.p": "선택한 작업, 최근 작업 기록, 보고된 서브에이전트 활동을 확인하세요. 화면에는 최대 8개 크리처를 읽기 쉽게 배치하고 전체 세션은 목록에 유지합니다.",
         "usage.ci": "여러 기기에서",
         "usage.h": "필요한 정보를 가까이",
         "usage.p": "제공 가능한 Claude·Codex·z.ai/GLM 사용량을 화면에 맞게 표시합니다. Android GitHub APK는 설정에서 무선 업데이트하고, 스토어 설치본은 해당 스토어를 사용합니다.",
+        "voice.ci": "2.1 신기능 · 음성",
+        "voice.h": "어느 터미널에든 음성으로",
+        "voice.p": "덱에서 말한 프롬프트가 Ghostty, WezTerm, kitty, SSH, 에디터 터미널의 Claude Code까지 전달됩니다. VOICE 키에 세션이 받았는지, 보류 중인지, 거절했는지 표시됩니다. CLI 데몬이 필요합니다.",
         'hero.kicker': 'AI 코딩 에이전트를 위한 피지컬 컨트롤 서피스',
         'hero.lede': 'AgentDeck은 코딩 에이전트의 작업을 책상 위에서 확인하고 제어하게 해줍니다. 하나의 로컬 허브가 29개 서피스에 작업·응답 대기 상태를 전하고, 연결된 컨트롤러에서 지원되는 선택지와 승인 요청에 응답할 수 있습니다.',
         'cta.start': '내 환경에 맞게 시작하기',
@@ -984,30 +948,24 @@ html body :target { scroll-margin-block-start: 0; }
         "current.returned": "活動終了後 · 住人が戻り、対応するラベルも消えます。",
         "current.devices": "最新デバイスのキャプチャと出典付き合成写真を見る →",
         "current.sources": "メディアの出典",
-        "current.history": "以前の水槽紹介 · 保存映像",
 
-        "showcase.h": "多彩なエージェントを、ひとつのワークスペースに",
-        "showcase.p": "Hermes Agentが水槽に参加。GitHub CIのクリーチャーはチェック待ちのセッションを周回し、完了すると離れます。",
-        "showcase.download": "1.8.0紹介動画をダウンロード",
-        "showcase.caption": "架空の作業を使い、ネイティブiPadシミュレーターで撮影したAgentDeck 1.8.0です。実際のアプリ描画による無音動画。36秒、1920 × 1334。従来の紹介動画も上に残しています。",
-        "showcase.overview": "コーディングエージェントと一緒に動くHermes Agent。",
-        "showcase.ci": "GitHub CIの待機状態を対象セッションのそばに表示。",
-        "showcase.complete": "チェックが完了し、水槽が落ち着きます。",
 
         "stat.agents": "共通セッションモデル",
         "stat.local": "コンピューター上のハブ",
-        "video.download": "水槽デモをダウンロード",
-        "video.caption": "従来の紹介動画：ひとつの開発タスクに5つのセッションが参加。編集・テスト・許可待ち・完了の流れがタイムラインに並びます。架空のサンプル作業を実際のiPadアプリで撮影。無音、43秒、2752 × 2000。全画面で詳細をご覧ください。",
         "aquarium.h": "エージェントをひと目で",
         "aquarium.p": "画面と作業スタイルに合うダッシュボードを選べます。既存の表示設定は保持されます。",
         "view.ci": "ネイティブ水槽",
         "view.h": "作業を見守り、水槽を楽しむ",
         "view.p": "AppleとAndroid LCD画面で動く3Dクリーチャー。モバイルの鑑賞モードはパネルを隠して水槽に近づきます。電子ペーパーには落ち着いた静的背景を使います。",
+        "collab.ci": "コラボレーション",
         "collab.h": "作業の引き継ぎを追う",
         "collab.p": "選択したタスク、最近の履歴、報告されたサブエージェントの活動を確認できます。手前のクリーチャーは最大8体に整理し、全セッションは一覧に残します。",
         "usage.ci": "さまざまなデバイスで",
         "usage.h": "必要な情報を手元に",
         "usage.p": "利用可能なClaude・Codex・z.ai/GLM使用量を画面に合わせて表示。Android GitHub APKは設定から無線更新し、ストア版は各ストアで更新します。",
+        "voice.ci": "2.1の新機能 · 音声",
+        "voice.h": "どのターミナルにも音声で",
+        "voice.p": "デッキから話したプロンプトが、Ghostty、WezTerm、kitty、SSH、エディターのターミナルで動くClaude Codeに届きます。VOICEキーには、セッションが受け取ったか、保留中か、拒否したかが表示されます。CLIデーモンが必要です。",
         'hero.kicker': 'AIコーディングエージェントのためのフィジカルコントロールサーフェス',
         'hero.lede': 'AgentDeckはエージェントの作業を机の上で確認・操作できます。ひとつのローカルハブが29のサーフェスに作業中・応答待ちの状態を伝え、接続したコントローラーから対応する選択肢や承認要求に応答できます。',
         'cta.start': '環境に合わせて始める',

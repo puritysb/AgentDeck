@@ -231,6 +231,101 @@ later #709/#721/#722/#723 or this candidate's changes. The remaining condition
 on #635 is private coordination. No new upload or submission was made during
 this review.
 
+### README delivery history 2026-10-12 to 2026-11-04
+
+These status paragraphs were in the README's Releases section until 2026-11-06. They
+were moved here unchanged so that the README shows only the current delivery.
+Later entries supersede earlier ones, as each paragraph notes.
+
+**2.0 delivery, updated 2026-11-04:** [npm 2.0.0](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.0.0)
+is public for all four packages and includes the integration-command hardening.
+The complete [ESP32 firmware set](https://github.com/puritysb/AgentDeck/releases/tag/esp32-v2.0.0)
+covers all twelve shipping boards.
+Google Play **2.0.0 / 30** is public at 100% rollout. The November 4 ASC
+readback reports both macOS and iPhone/iPad **2.0.0 READY_FOR_SALE**, with
+their existing review submissions COMPLETE. Elgato/Ulanzi submission
+receipts remain separate from Marketplace approval and public availability. The 1.9.7 / macOS 1.9.5 preparation numbers were
+superseded by this coordinated 2.0 release. After corrected installers are
+available, update the ones you use, refresh enabled integrations and review
+Codex hook trust when prompted. See the
+[Apple delivery evidence](RELEASING.md#apple-delivery-evidence-2026-11-04) and
+[2.0 delivery record](RELEASING.md#20-delivery-checkpoint-2026-11-02).
+Later corrections shipped in 2.1.0 (above).
+
+**Delivery, 2026-10-29:** [npm 1.9.6 is public](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.6).
+A late update to a timeline row (summary, evaluation score, approval result) now
+survives a restart. macOS **1.9.4 / 10001** reached **READY_FOR_SALE** with
+automatic release after approval in the [October 30 19:47 UTC ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/41118096845).
+It replaces the withdrawn 1.9.3 submission and carries its changes. The proposed
+1.9.5 correction is a subsequent candidate, not a replacement of a pending review.
+Android 1.10.2 (29) is live on Google Play. Stream Deck 1.8.2 and Ulanzi 1.8.2
+are still in marketplace review. See the
+[delivery checkpoint](RELEASING.md#2026-10-29-delivery-checkpoint).
+
+**npm and deck plugins, 2026-10-28:** [npm 1.9.5 is public](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.5)
+for all four packages. Long-running background work now goes on standby instead
+of holding a session at "working". Stream Deck 1.8.2 is pending Elgato review,
+and Ulanzi 1.8.2 is in Ulanzi's review queue. Both marketplaces still serve
+1.8.1. See the
+[delivery checkpoint](RELEASING.md#2026-10-28-npm-stream-deck-and-ulanzi-delivery-checkpoint).
+
+**Android delivery, checked 2026-10-26 (superseded: live on Google Play
+on October 29):** the signed
+[1.10.2 (29) APK](https://github.com/puritysb/AgentDeck/releases/tag/android-v1.10.2)
+is public on GitHub. Google Play 1.10.2 (29) is **in review** for a 100% rollout
+across the existing 178 countries after approval; its current public version
+remains 1.10.1 (28). The public APK passed a data-preserving Pantone upgrade and
+live dashboard check. See the
+[delivery receipt](RELEASING.md#2026-10-26-non-dot-delivery-checkpoint).
+
+**Previous npm delivery, 2026-10-27:** [1.9.4 was public](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.4)
+for all four packages. Their downloaded payloads match the accepted source,
+include the root LICENSE and pass an isolated installation with native dependencies.
+The Codex terminal-error correction is retained. See the
+[delivery checkpoint](RELEASING.md#2026-10-27-follow-up-delivery-checkpoint).
+The October 28 entry above supersedes it.
+
+**Apple checkpoint, 2026-10-27 (superseded: withdrawn October 29 for
+1.9.4):** macOS **1.9.3 / 9801** passed final artifact
+and three-mode runtime acceptance, replaced the previous 9501 submission and was
+**in review** at the October 28 readback, with automatic release after approval. The verified public
+macOS version remains **1.9.2 / 9401**; this is submission, not public availability.
+See the [delivery checkpoint](RELEASING.md#2026-10-27-follow-up-delivery-checkpoint)
+and its measured recovery limits. Dot remains excluded from standard Store builds.
+
+**Apple delivery, 2026-10-24:** macOS **1.9.2 / 9401 is public** in the
+[Mac App Store](https://apps.apple.com/kr/app/agentdeck/id6784822497?platform=mac),
+with Dashboard and Settings responsiveness corrections. Apple reports
+`READY_FOR_SALE` and the review submission is complete; the public listing's
+release time is **07:07:56 KST on October 24**, independently confirmed at
+09:26 KST. iOS/iPadOS remains **1.9.1**. On October 25 the actual Store build
+passed 15 Swift live assertions; the operator confirmed Settings/3D restoration,
+Stream Deck+/D200H buttons and sleep/wake recovery. See the scoped results in the
+[public release receipt](RELEASING.md#2026-10-24-macos-192-9401-public-release).
+
+**Historical delivery, 2026-10-14:** npm 1.9.2 was public, with clearer creature-led
+iDotMatrix status and counts verified on hardware. macOS 1.9.1 / 8601 passed the
+Store artifact checks and was submitted with automatic release after approval;
+iOS 1.9.1 / 8501 was also awaiting review. Apple 1.9.0 was the verified public
+Store version at that readback; the October 24 status above supersedes it.
+Stream Deck and Ulanzi 1.8.1 were public on GitHub and awaiting marketplace
+review; ESP32 1.9.2 was public.
+See the [release delivery record](RELEASING.md#2026-10-14-idotmatrix-readability-correction).
+
+**Previous delivery, 2026-10-12:** Android 1.9.0 (26) is public on Google Play
+(100% rollout across 178 countries/regions) and as a signed GitHub APK. Its
+three-step setup covers appearance, computer connection and readiness on LCD
+and e-ink, while preserving existing settings and paired hosts on upgrade.
+All four npm packages and their `latest` tags are public at 1.9.0. ESP32 1.9.0
+firmware is public for twelve boards; all 60 binaries match the release manifest.
+
+At that October 12 readback, Apple 1.9.0 / 7901 was Waiting for Review; the
+October 23 Apple check above supersedes that status. Elgato
+1.8 is public (Marketplace read October 11). Ulanzi 1.8.0 remains submitted,
+with 1.6.0 the last verified public version. Neither deck plugin was republished
+in this round. The October 28 entry above supersedes both deck-plugin statuses. See the [additional-channel delivery readback](RELEASING.md#additional-190-delivery-readback-2026-10-12)
+for verification and remaining hardware limitations.
+
 ### Native delivery readback 2026-11-03
 
 The [read-only ASC run 41560313213](https://github.com/puritysb/AgentDeck/actions/runs/41560313213)
