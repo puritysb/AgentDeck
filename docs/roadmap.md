@@ -77,6 +77,7 @@ Eval results broadcast to every device simultaneously (Stream Deck/Apple/Android
 - [x] Stream Deck+ v4 session-per-button layout
 - [x] Daemon mode with multi-session aggregation
 - [x] Voice assistant pipeline (wake word → STT → LLM → TTS)
+- [x] Dictated prompts reach Claude Code in any terminal through its peer inbox, with delivered/held/refused status on the deck (2.1.0, Node daemon)
 - [x] Display sleep/wake sync across all surfaces
 - [x] Color E-ink support (Kaleido 3)
 - [x] Creature simulator demo page (GitHub Pages `/demo/`)
