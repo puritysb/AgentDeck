@@ -349,9 +349,9 @@ for verified publication and Store review status.
 | ESP32 panels and TRMNL 7.5" | [Browser flasher](https://puritysb.github.io/AgentDeck/flash/) · [firmware releases](https://github.com/puritysb/AgentDeck/releases?q=esp32-v&expanded=true) | `esp32-v*` |
 
 **2.1 delivery, checked 2026-11-07:** [npm 2.1.0](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.1.0)
-is public for all four packages. Its Node daemon lets dictated prompts reach
-Claude Code in any terminal through the peer inbox, with a Claude Code version
-that supports it. Run `agentdeck daemon install` (or `npx @agentdeck/setup`)
+is public for all four packages. On macOS, its Node daemon lets dictated prompts
+reach Claude Code in any terminal through the peer inbox, with a Claude Code
+version that supports it. Run `agentdeck daemon install` (or `npx @agentdeck/setup`)
 once after upgrading this npm installation. This capability is separate from
 the native daemon bundled with the Mac App Store app.
 The [ESP32 2.1.0 firmware set](https://github.com/puritysb/AgentDeck/releases/tag/esp32-v2.1.0)

@@ -118,7 +118,7 @@ A public listing does not establish every region's rollout or an installed devic
 The Mac app includes its own native daemon. iPhone/iPad, Android and deck plugins
 are companion surfaces; their available controls depend on a reachable daemon
 and integration. The 2.1 peer-inbox dictation feature requires the **npm/Node daemon
-2.1** and a compatible Claude Code version; it is not a claim about the native
+2.1 on macOS** and a compatible Claude Code version; it is not a claim about the native
 Mac App Store daemon. Ulanzi support covers D200H and D200X LCD keys, not D200X encoders.
 No client installation, firmware flash or new release was performed for this documentation readback.
 
