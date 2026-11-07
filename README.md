@@ -22,9 +22,10 @@ projects and tools. Watch them in a living aquarium, follow the timeline, and
 keep usage limits in view. Use your Mac or terminal on its own, or add a tablet,
 Stream Deck, e-ink reader, or small desk display.
 
-**2.1 delivery:** npm 2.1.0 and the Android/Stream Deck/Ulanzi/ESP32 2.1.0
-GitHub downloads are public. The Mac, iPhone/iPad, Google Play and deck
-Marketplace updates are in review; their stores still serve 2.0 (Ulanzi: 1.8.1).
+**2.1 delivery, checked 2026-11-07:** Mac, iPhone/iPad and Google Play list
+2.1.0; Elgato Marketplace lists 2.1. npm 2.1.0 and the
+Android/Stream Deck/Ulanzi/ESP32 2.1.0 GitHub downloads are public.
+Ulanzi's Workshop update was submitted, but public 2.1.0 availability is not yet verified.
 See the [channel-by-channel delivery record](RELEASING.md#210-delivery-checkpoint-2026-11-06).
 
 <p align="center">
@@ -347,20 +348,33 @@ for verified publication and Store review status.
 | Ulanzi D200H / D200X LCD keys | [Ulanzi Marketplace](https://ugc.ulanzistudio.com/contentView/1239890184745660416); D200X encoders are not supported | `ulanzi-v*` |
 | ESP32 panels and TRMNL 7.5" | [Browser flasher](https://puritysb.github.io/AgentDeck/flash/) · [firmware releases](https://github.com/puritysb/AgentDeck/releases?q=esp32-v&expanded=true) | `esp32-v*` |
 
-**2.1 delivery, updated 2026-11-06:** [npm 2.1.0](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.1.0)
-is public for all four packages. It carries the 2.1 milestone: dictated prompts
-reach Claude Code in any terminal through its peer inbox. Run
-`agentdeck daemon install` (or `npx @agentdeck/setup`) once after upgrading.
+**2.1 delivery, checked 2026-11-07:** [npm 2.1.0](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.1.0)
+is public for all four packages. Its Node daemon lets dictated prompts reach
+Claude Code in any terminal through the peer inbox, with a Claude Code version
+that supports it. Run `agentdeck daemon install` (or `npx @agentdeck/setup`)
+once after upgrading this npm installation. This capability is separate from
+the native daemon bundled with the Mac App Store app.
 The [ESP32 2.1.0 firmware set](https://github.com/puritysb/AgentDeck/releases/tag/esp32-v2.1.0)
 covers all twelve boards, and the Android APK, Stream Deck and Ulanzi 2.1.0
 packages are on GitHub.
 
-- **Apple:** macOS and iPhone/iPad 2.1.0 (build 10301) are waiting for App Store review.
-- **Google Play:** 2.1.0 (31) is in review for a full production rollout.
-- **Elgato:** 2.1 is pending review, and the Marketplace serves 2.
-- **Ulanzi:** 2.1.0 is in Workshop review. Its public listing showed 1.8.1 when last read on 2026-10-28.
+- **Mac:** the [Mac App Store](https://apps.apple.com/us/app/agentdeck-dashboard/id6784822497?platform=mac)
+  lists **2.1.0**. It includes a native daemon; no separate Node installation is required.
+- **iPhone / iPad:** the [App Store](https://apps.apple.com/us/app/agentdeck-dashboard/id6784822497)
+  lists **2.1.0**. These are companion dashboards for a reachable paired Mac or supported daemon,
+  not environments that run coding agents themselves.
+- **Android:** [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck)
+  lists **2.1.0**, updated November 6. The [2.1.0 GitHub APK](https://github.com/puritysb/AgentDeck/releases/tag/android-v2.1.0)
+  is a separate distribution route. Update through the existing install's signing channel;
+  Play and GitHub APK signatures can differ. Android also needs a reachable paired daemon.
+- **Stream Deck:** [Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464)
+  lists **2.1** for macOS and Windows, with Stream Deck 6.9 or later and an AgentDeck daemon.
+- **Ulanzi D200H / D200X LCD keys:** the [2.1.0 GitHub package](https://github.com/puritysb/AgentDeck/releases/tag/ulanzi-v2.1.0)
+  is public. The Workshop update was submitted November 6; public Marketplace 2.1.0 availability
+  remains **unverified** because its listing could not be read in this check. D200X encoders are not supported.
 
-Until each store updates, it serves its previous version. See the
+These are public listing observations, not confirmation that every region or
+installed device has updated. See the
 [2.1.0 delivery record](RELEASING.md#210-delivery-checkpoint-2026-11-06).
 
 **Earlier deliveries:** 2.0 (2026-11-02) and the 1.9.x rounds are recorded in the

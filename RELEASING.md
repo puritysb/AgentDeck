@@ -100,17 +100,29 @@ observed portal/artifact state; do not present a candidate as public.
 All six `*-v2.1.0` tags point at merge commit `285a57d1` (PR #733). The table records each
 channel's state, using this document's five-state model. Submission is not publication.
 
-| Channel | State on 2026-11-06 (KST) | Evidence |
+**Public storefront readback updated 2026-11-07 (UTC / KST).** Apple US storefronts,
+Google Play's Korean listing and Elgato Marketplace now show the versions below.
+The November 6 submission receipts are retained as history, not current review states.
+A public listing does not establish every region's rollout or an installed device's version.
+
+| Channel | Latest verified state | Evidence |
 | --- | --- | --- |
 | npm (`hooks`, `shared`, `bridge`, `setup`) | **Public 2.1.0** | Registry readback of all four packages; [release](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.1.0) published after the ESP32 manifest |
 | ESP32 (12 boards) | **Public 2.1.0** on GitHub | [Release](https://github.com/puritysb/AgentDeck/releases/tag/esp32-v2.1.0) manifest read back before the npm tag; installed boards are not updated by the release |
-| Apple macOS / iOS | **Submitted**: 2.1.0 / 10301 `WAITING_FOR_REVIEW`, release after approval | Submit runs [42120903436](https://github.com/puritysb/AgentDeck/actions/runs/42120903436) (macOS) and [42120909299](https://github.com/puritysb/AgentDeck/actions/runs/42120909299) (iOS); read-only [store-status 42156605122](https://github.com/puritysb/AgentDeck/actions/runs/42156605122). 2.0.0 remains READY_FOR_SALE on both |
+| Apple macOS / iOS | **Public 2.1.0** on both storefronts, read back 2026-11-07 | [Mac App Store](https://apps.apple.com/us/app/agentdeck-dashboard/id6784822497?platform=mac) and [iPhone/iPad App Store](https://apps.apple.com/us/app/agentdeck-dashboard/id6784822497) each show Version 2.1.0 and platform-specific release notes. Historical build 10301 submissions: [42120903436](https://github.com/puritysb/AgentDeck/actions/runs/42120903436) (macOS), [42120909299](https://github.com/puritysb/AgentDeck/actions/runs/42120909299) (iOS); [November 6 store-status](https://github.com/puritysb/AgentDeck/actions/runs/42156605122) predates this public readback |
 | Android GitHub APK | **Public 2.1.0 (31)** | [Release](https://github.com/puritysb/AgentDeck/releases/tag/android-v2.1.0); APK SHA-256 `f221690cd79e9af1a90b12897052709e1474e4545f303ede83849cfbc2bcfb4f`, signer certificate SHA-256 `10603af8ec7b76237f6372106dc8b73f597576fb5f8b82ed28ce6aad31b08923` |
-| Google Play | **Submitted**: 2.1.0 (31) production release, full rollout, sent for review 2026-11-06 | AAB SHA-256 `c7de4d3d8d3d223d5190290a2549dbcb9da7347b364ea83db481b35fdfe24997`, the same file the release workflow built; Publishing overview shows **Changes in review**. Managed publishing is off, so approval publishes. The only warning is missing native debug symbols. 2.0.0 (30) stays public until then. Lenovo updates through this route |
-| Stream Deck (Maker Console) | **Submitted**: 2.1 pending review, automatic publishing off; 2 is published | Parsed as 2.1.0.0, SDK 3, DRM Yes, dials Yes, default profiles Yes; package SHA-256 `b2b19fa3f6f15c7869bfaefbf9256a42361ab9fe9011f9bd0b8d34951e3d146f`. Verify the DRM-processed build's encoders before publishing |
-| Ulanzi Workshop | **Submitted**: 2.1.0 replaced the 2.0.0 review record | Saved Workshop ZIP is byte-identical to the [release](https://github.com/puritysb/AgentDeck/releases/tag/ulanzi-v2.1.0) ZIP (SHA-256 `60d2500933947f1584e8e95856b070803f017697fd81bcd5fcd455f8a1430855`); seven locales restored, Dial/AU05 excluded. Includes the QA fixes from #730 (#731, #732) |
+| Google Play | **Public listing 2.1.0**, read back 2026-11-07 | [Store listing](https://play.google.com/store/apps/details?id=dev.agentdeck): App info shows Version 2.1.0 and Updated on November 6, 2026; What's new describes 2.1 reconnection and pairing. Historical production submission: 2.1.0 (31), full rollout requested November 6, managed publishing off; AAB SHA-256 `c7de4d3d8d3d223d5190290a2549dbcb9da7347b364ea83db481b35fdfe24997`. Public readback does not attest rollout percentage or the installed Lenovo version; keep Play-installed devices on their matching signing channel |
+| Stream Deck / Elgato Marketplace | **Public 2.1**, read back 2026-11-07 | [Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) shows Version 2.1, macOS/Windows, Stream Deck 6.9 or later, 810.3 KB, and 2.1 peer-inbox release notes. Historical submitted package: 2.1.0.0, SDK 3, DRM Yes, dials Yes, default profiles Yes; SHA-256 `b2b19fa3f6f15c7869bfaefbf9256a42361ab9fe9011f9bd0b8d34951e3d146f`. Listing availability does not attest physical encoder operation in the DRM-processed build |
+| Ulanzi Workshop | **Submitted 2.1.0** on November 6; current public version **unverified** | Saved Workshop ZIP is byte-identical to the public [2.1.0 GitHub release](https://github.com/puritysb/AgentDeck/releases/tag/ulanzi-v2.1.0) ZIP (SHA-256 `60d2500933947f1584e8e95856b070803f017697fd81bcd5fcd455f8a1430855`); seven locales restored, Dial/AU05 excluded. Includes the QA fixes from #730 (#731, #732). The [public listing](https://ugc.ulanzistudio.com/contentView/1239890184745660416) rendered blank in the November 7 readback; its last readable 1.8.1 observation was October 28, not a claim about today |
 
-Issue disposition:
+The Mac app includes its own native daemon. iPhone/iPad, Android and deck plugins
+are companion surfaces; their available controls depend on a reachable daemon
+and integration. The 2.1 peer-inbox dictation feature requires the **npm/Node daemon
+2.1** and a compatible Claude Code version; it is not a claim about the native
+Mac App Store daemon. Ulanzi support covers D200H and D200X LCD keys, not D200X encoders.
+No client installation, firmware flash or new release was performed for this documentation readback.
+
+Issue disposition at the November 6 delivery checkpoint (historical):
 
 - #730 is closed with the Workshop receipt.
 - #544 is closed after the D200X receipt and the 2.1.0 delivery.
