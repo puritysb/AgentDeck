@@ -131,7 +131,55 @@ retry/failure-memory policy; the repeated 300-second observation captured recove
 No manual hook reinstall or token rotation was needed. Optical measurements and
 new Bluetooth permissions were not attested. Private screenshots remain local.
 The prior manual Node operating mode was restored with the installed candidate.
-Publication remains pending the release PR, exact tag and registry readback.
+At this pre-tag checkpoint, publication remained pending the release PR, exact
+tag and registry readback. Completed delivery is recorded below.
+
+#### npm 2.1.1 delivery checkpoint — 2026-11-08
+
+[PR #743](https://github.com/puritysb/AgentDeck/pull/743) merged as `b7246c33`.
+Only `npm-v2.1.1` was tagged, at that exact merge commit. The
+[npm Release run](https://github.com/puritysb/AgentDeck/actions/runs/42476618100)
+completed successfully and the
+[GitHub Release](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.1.1)
+became public at **2026-11-08 11:43:54 UTC** (20:43:54 KST).
+
+Public registry readback verified all four exact versions, `latest` tags and
+`gitHead` values at 11:44 UTC. Each `gitHead` matches the full tagged merge SHA
+`b7246c33d59a27022960389d3d2a0d7439177cdd`.
+
+| Package | Exact version | `latest` |
+| --- | --- | --- |
+| `@agentdeck/shared` | 2.1.1 | 2.1.1 |
+| `@agentdeck/hooks` | 2.1.1 | 2.1.1 |
+| `@agentdeck/bridge` | 2.1.1 | 2.1.1 |
+| `@agentdeck/setup` | 2.1.1 | 2.1.1 |
+
+The setup registry README was non-empty (4,189 characters returned by
+`npm view @agentdeck/setup readme`). Hosted release-PR checks finished with
+30 passes and two conditional skips; all eight CodeQL categories succeeded.
+The [download transport recovery](docs/security-scanning.md#github-release-download-recovery)
+passed fifteen offline regressions and a fresh isolated ips35 inventory, followed
+by successful full hosted inventory and Rust/Java scans. Local quick and
+changed-area verification passed; the full npm candidate receipt and three-mode
+acceptance above remain the product verification evidence.
+
+All four public archives were downloaded with npm and their SHA-512 integrity
+values matched registry metadata. The publisher retained the license-copy
+`prepack` entry that pnpm's candidate archives omitted. The linked local
+dependency layout also produced 146 different module-label prefixes in
+`dot-runtime.mjs`; normalizing only that dependency-root prefix made the bundle
+identical. Every other payload file matched byte for byte. These are packaging
+metadata/location-label differences, with unchanged program logic.
+
+The global CLI was then installed from the four exact public npm versions.
+Its public bundle matched the downloaded archive, native ABI probes passed,
+and the supported `daemon restart --no-build` completed on port 9120.
+Runtime and installed build digests both read `7443cb52437e`; the Node daemon
+retained manual operation without registering a service.
+
+Apple, Android, ESP32, Stream Deck and Ulanzi delivery versions were unchanged;
+root `VERSION` remains 2.0.0. No other channel was tagged or uploaded in this
+delivery.
 
 ### 2.1.0 delivery checkpoint 2026-11-06
 

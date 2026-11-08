@@ -335,8 +335,10 @@ narrow Gradle configurations, separate the Git tree from the disk, and read the
 response content type before accepting an XSS result.
 
 The photo-path fix merged in [#740](https://github.com/puritysb/AgentDeck/pull/740)
-after the 2.1.0 release. It is not included in npm 2.1.0; npm 2.1.1 is in release preparation,
-with the fix recorded in [CHANGELOG.md](../CHANGELOG.md). The Swift daemon has no
+after the 2.1.0 release. It is not included in npm 2.1.0; it was delivered in
+[npm 2.1.1](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.1.1), with
+[registry readback](../RELEASING.md#npm-211-delivery-checkpoint-2026-11-08) recorded.
+The Swift daemon has no
 photo-upload route, so this fix applies to the npm/Node daemon.
 
 ### GitHub release download recovery
@@ -350,7 +352,7 @@ pioarduino assets. The official asset API delivered the same complete
 `scripts/github_release_download.py` resolves the exact original release URL
 through GitHub's API and checks its declared size and SHA-256 before exposing
 any bytes to the caller. Unpinned missing digests, partial responses, mismatches and
-unexpected identities fail. Metadata credentials are restricted to a
+unexpected identities fail. Credentials are restricted to
 non-redirecting API requests; storage downloads carry no credential. Java CodeQL
 uses verified local CodeQL 2.27.4 and Gradle 8.14.5 archives. The temporary
 Gradle wrapper URL changes only its transport, retaining a checksum.
