@@ -45,6 +45,8 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+## 2026-11-08 — npm 2.1.1
+
 - **Node daemon photo uploads.** Keep device-supplied board IDs inside the photo
   directory when saving JPEGs, preventing an authenticated upload from writing
   outside it. Covers HTTP uploads and device capture frames; requires an updated

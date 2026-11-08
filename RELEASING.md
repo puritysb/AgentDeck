@@ -95,6 +95,18 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### npm 2.1.1 release decision — 2026-11-08
+
+| Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
+| --- | --- | --- | --- | --- | --- |
+| npm / hooks, shared, bridge, setup | 2.1.0, registry read back November 8 | None; all four 2.1.1 versions checked unused | 2.1.1, four packages in lockstep | Patch: keep authenticated device-photo uploads inside the photo directory (#740) | Completes the existing photo-upload boundary; no new milestone |
+
+The owner authorized npm-only publication on November 8. Only the four public
+npm manifests and the daemon version mirror advance. Apple, Android, ESP32,
+Stream Deck and Ulanzi remain on their delivered versions; root `VERSION` remains
+2.0.0. Full pre-release verification, packaged acceptance and the pre-tag
+three-mode daemon soak remain required. This decision is not a delivery receipt.
+
 ### 2.1.0 delivery checkpoint 2026-11-06
 
 All six `*-v2.1.0` tags point at merge commit `285a57d1` (PR #733). The table records each
