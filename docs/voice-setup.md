@@ -112,6 +112,14 @@ selected VOICE tile reports what happened:
 | message dropped | Claude discarded the message |
 | inbox unavailable | The session's inbox could not be reached |
 
+Acceptance scope ([#675](https://github.com/puritysb/AgentDeck/issues/675),
+November 8, 2026): physical D200X testing confirmed `received by Claude` for
+Ghostty and cmux, with the intended recipient and no duplicate terminal input.
+Held/refused behavior has isolated real-Claude protocol and automated rendering
+coverage. Physical display of held/refused, approval/decline/exit transitions,
+dropped and receipt-pending remains unverified and is an optional follow-up,
+not a condition for issue completion. See the [release closeout](../RELEASING.md#claude-inbox-acceptance-closeout-2026-11-08).
+
 To use the terminal path for Claude anyway, set `voice.claudeDelivery: "terminal"`.
 Protocol details are in [daemon.md § Claude inbox dictation](daemon.md#claude-inbox-dictation).
 

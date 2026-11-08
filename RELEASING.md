@@ -213,9 +213,30 @@ Issue disposition at the November 6 delivery checkpoint (historical):
 - #730 is closed with the Workshop receipt.
 - #544 is closed after the D200X receipt and the 2.1.0 delivery.
 - #673 is folded into #674, which tracks store publication, Lenovo and installed boards.
-- #675 stays open for held/refused peer status on a physical deck.
+- #675 was open for physical held/refused status at this checkpoint; the [November 8 closeout](#claude-inbox-acceptance-closeout-2026-11-08) makes that follow-up optional.
 - #551 and #635 are unchanged.
 - The two draft advisories fixed by this release now list 2.1.0 as patched. Their publication is still pending coordination.
+
+### Claude inbox acceptance closeout — 2026-11-08
+
+[#675](https://github.com/puritysb/AgentDeck/issues/675) meets its completion
+conditions: terminal ownership guards and receipt-correlated peer delivery are
+merged in [#709](https://github.com/puritysb/AgentDeck/pull/709) and shipped since
+npm 2.1.0, retained in npm 2.1.1. Stream Deck and Ulanzi 2.1.0 carry the status
+wording. The [D200X receipt](https://github.com/puritysb/AgentDeck/issues/675#issuecomment-6665010780)
+confirms Ghostty and cmux delivery to the intended recipient, `received by Claude`
+and no terminal fallback duplicate. Isolated real-Claude protocol checks cover
+accept/hold/refuse; automated tests cover receipt correlation and deck rendering.
+
+**Optional physical follow-up, not a closure or release gate:** held/refused VOICE
+display and transitions after approval, decline or recipient exit remain
+unverified on a physical deck. The D200X receipt did not reproduce denied,
+expired, dropped or submitted/receipt-pending either. No physical acceptance is
+claimed for these states. This follows the [maintainer's optional-check disposition](https://github.com/puritysb/AgentDeck/issues/675#issuecomment-6681640620)
+and the owner's November 8 closeout decision; it does not require further testing
+from the reporter. The [disposable-settings recipe](https://github.com/puritysb/AgentDeck/issues/675#issuecomment-6680600133)
+is a proposed procedure, not a completed device run. Standalone Swift and Windows
+peer inbox support remain outside this Node macOS/Linux delivery scope.
 
 ### 2.1.0 candidate collection — 2026-11-04
 
@@ -234,7 +255,7 @@ and channel decision is recorded before packaging.
 | Runtime security and CI | Input/transport boundaries, credential custody, retained inbox resources and reviewed dependency updates; native CodeQL and scan freshness checks | [#690](https://github.com/puritysb/AgentDeck/pull/690), [#707](https://github.com/puritysb/AgentDeck/pull/707), [#709](https://github.com/puritysb/AgentDeck/pull/709), [#711](https://github.com/puritysb/AgentDeck/pull/711), [#712](https://github.com/puritysb/AgentDeck/pull/712), [#721](https://github.com/puritysb/AgentDeck/pull/721); includes native key storage and Android credential-backup exclusion; keep private report details private |
 | Pixoo64 | Restore the panel-specific Tide scene on this desk, reserve readable Dot space, preserve the bottom provider usage rows, and preview the selected scene | [#724](https://github.com/puritysb/AgentDeck/pull/724), merged; verification and deployment evidence recorded with its PR. Dot remains Node/development-preview only; ordinary Apple Store builds exclude Dot |
 | Node / Swift re-pair feedback | Re-pair requests remain visible after an old credential generation is retired | [#723](https://github.com/puritysb/AgentDeck/pull/723), merged and integrated; retired grants still require explicit approval |
-| Node observed sessions | Live cmux workspace/surface titles and receipt-correlated Claude peer dictation, with terminal ownership checks and bounded inbox resources | [#709](https://github.com/puritysb/AgentDeck/pull/709); public package delivery and physical controller acceptance remain on [#544](https://github.com/puritysb/AgentDeck/issues/544) / [#675](https://github.com/puritysb/AgentDeck/issues/675); standalone Swift peer inbox support is not claimed |
+| Node observed sessions | Live cmux workspace/surface titles and receipt-correlated Claude peer dictation, with terminal ownership checks and bounded inbox resources | [#709](https://github.com/puritysb/AgentDeck/pull/709); delivery and controller acceptance were tracked on [#544](https://github.com/puritysb/AgentDeck/issues/544) / [#675](https://github.com/puritysb/AgentDeck/issues/675); see the [November 8 closeout](#claude-inbox-acceptance-closeout-2026-11-08) for completed scope and optional physical status checks; standalone Swift peer inbox support is not claimed |
 | ESP32 trust and recovery | Persist the selected endpoint and credential together; refuse ambiguous discovery and confirmed authentication failures until trusted provisioning; repaint re-pair guidance | [#709](https://github.com/puritysb/AgentDeck/pull/709) and [#722](https://github.com/puritysb/AgentDeck/pull/722); firmware artifacts and installed builds have separate evidence in [#674](https://github.com/puritysb/AgentDeck/issues/674) |
 | Stream Deck / Ulanzi | Present correlated peer-delivery status and refresh the selected VOICE tile; retain the recipient identity | [#709](https://github.com/puritysb/AgentDeck/pull/709); these are controller source changes since the public 2.0 tags, not host-only changes |
 | Development dependencies | Remove unused deepmerge from the Rollup resolver with an exact-consumer patch and removal override | [#725](https://github.com/puritysb/AgentDeck/pull/725), integrated into the candidate; consumer regressions and the dated removal receipt remain authoritative |
@@ -302,7 +323,7 @@ The following receipt/README reconciliation changes no executable input.
 | Exact candidate checks and review | Run clean full verification after integration; resolve current-head CI and review before source merge. A local ARM64 native run does not replace universal signed archives or hosted Windows acceptance | #724; release workflows and this document's channel procedures |
 | Public corrected clients/packages | Publish only channels with changed executable content. Rebuild each changed controller/firmware channel from its final diff; host-only fixes do not require empty device releases | [#673](https://github.com/puritysb/AgentDeck/issues/673), [#674](https://github.com/puritysb/AgentDeck/issues/674) |
 | Client signing and recovery matrix | Lenovo's Play signer requires the matching Play route; preserve app data. Retain iPhone's explicitly deferred final post-handover check as unverified, alongside its earlier successful dashboard receipt | #673 / #674; no forced uninstall or token rotation to clear a checklist |
-| D200X labels / INFO / VOICE | Public live-title/peer-status delivery and physical recipient acceptance remain pending; automated renderer and receiver tests do not establish the physical result | [#544](https://github.com/puritysb/AgentDeck/issues/544), [#675](https://github.com/puritysb/AgentDeck/issues/675) |
+| D200X labels / INFO / VOICE | Pending at this historical checkpoint; subsequent D200X recipient acceptance and public delivery are recorded above. Physical held/refused status is an optional, unverified follow-up under the [November 8 closeout](#claude-inbox-acceptance-closeout-2026-11-08) | [#544](https://github.com/puritysb/AgentDeck/issues/544), [#675](https://github.com/puritysb/AgentDeck/issues/675) |
 | E-ink optical measurements | Operator-deferred camera latency/ghosting checks remain open for all three panels. Prior release waivers do not automatically waive this candidate's lab gates | [#551](https://github.com/puritysb/AgentDeck/issues/551) |
 | Private security coordination | Original macOS 2.0 Store delivery condition is met; finish coordination in the private channel separately. Do not publish report details in candidate notes | [#635](https://github.com/puritysb/AgentDeck/issues/635) |
 | Security maintenance | deepmerge removal is complete. Scheduled-scan acceptance, renderer/Rust migrations, custom token-pattern coverage and firmware/dependency inventory retain their recorded owners and deadlines; new actionable advisories take priority | [#713](https://github.com/puritysb/AgentDeck/issues/713); this is not a list of unresolved confirmed vulnerabilities |
