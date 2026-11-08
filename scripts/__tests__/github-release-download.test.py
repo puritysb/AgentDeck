@@ -85,14 +85,12 @@ class DownloadTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 metadata({**ASSET, **changed})
 
-    def test_full_bytes_verified_and_asset_request_has_no_credential(self):
-        def open_asset(request, **kwargs):
-            self.assertEqual(request.full_url, 'https://api.github.com/repos/example/tool/releases/assets/123')
-            self.assertIsNone(request.get_header('Authorization'))
-            self.assertEqual(kwargs['timeout'], 60)
+    def test_full_bytes_verified(self):
+        def open_asset(api):
+            self.assertEqual(api, 'https://api.github.com/repos/example/tool/releases/assets/123')
             return Response(BODY)
         with patch.object(download, 'asset_metadata', return_value=('example', 'tool', ASSET)), \
-             patch.object(download, 'OPEN', side_effect=open_asset), \
+             patch.object(download, 'asset_response', side_effect=open_asset), \
              patch.dict('os.environ', {'GITHUB_TOKEN': 'synthetic-not-a-real-token'}):
             stream, size = download.verified_asset(URL)
             with stream:
@@ -117,9 +115,52 @@ class DownloadTests(unittest.TestCase):
             response = Response(body)
             response.status = status
             with patch.object(download, 'asset_metadata', return_value=('example', 'tool', ASSET)), \
-                 patch.object(download, 'OPEN', return_value=response):
+                 patch.object(download, 'asset_response', return_value=response):
                 with self.assertRaises(ValueError):
                     download.verified_asset(URL)
+
+    def test_asset_api_redirect_never_forwards_credential_and_refreshes_missing_blob(self):
+        api = 'https://api.github.com/repos/example/tool/releases/assets/123'
+        location = 'https://release-assets.githubusercontent.com/example/blob?signed=synthetic'
+        def api_request(request, **kwargs):
+            self.assertEqual(request.get_header('Authorization'), 'Bearer synthetic-token')
+            self.assertTrue(request.full_url.startswith(api))
+            raise urllib.error.HTTPError(request.full_url, 302, 'synthetic redirect', {'Location': location}, io.BytesIO())
+        calls = []
+        def blob_request(request):
+            self.assertEqual(request.full_url, location)
+            self.assertIsNone(request.get_header('Authorization'))
+            calls.append(request)
+            if len(calls) == 1:
+                raise urllib.error.HTTPError(location, 404, 'synthetic expired blob', {}, io.BytesIO())
+            return Response(BODY)
+        with patch.dict('os.environ', {'GITHUB_TOKEN': 'synthetic-token'}), \
+             patch.object(urllib.request, 'build_opener', return_value=types.SimpleNamespace(open=api_request)), \
+             patch.object(download, 'storage_open', side_effect=blob_request), patch.object(download.time, 'sleep'):
+            with download.asset_response(api) as response:
+                self.assertEqual(response.read(), BODY)
+        self.assertEqual(len(calls), 2)
+
+    def test_storage_does_not_follow_a_second_redirect(self):
+        request = urllib.request.Request('https://release-assets.githubusercontent.com/blob')
+        with patch.object(urllib.request, 'build_opener', return_value=types.SimpleNamespace(open=lambda *a, **k: Response(BODY))) as builder:
+            with download.storage_open(request) as response:
+                self.assertEqual(response.read(), BODY)
+            self.assertIsInstance(builder.call_args.args[0], download.NoRedirect)
+
+    def test_asset_redirect_refuses_other_hosts_and_metadata_never_follows(self):
+        api = 'https://api.github.com/repos/example/tool/releases/assets/123'
+        for location in ['https://other.test/blob', 'http://release-assets.githubusercontent.com/blob', 'https://user@release-assets.githubusercontent.com/blob']:
+            error = urllib.error.HTTPError(api, 302, 'synthetic redirect', {'Location': location}, io.BytesIO())
+            with patch.object(download, 'OPEN', side_effect=error), patch.object(download.time, 'sleep') as sleep:
+                with self.assertRaises(ValueError):
+                    download.api_open(urllib.request.Request(api), asset_redirect=True)
+                sleep.assert_not_called()
+        error = urllib.error.HTTPError(api, 302, 'synthetic redirect', {'Location': 'https://release-assets.githubusercontent.com/blob'}, io.BytesIO())
+        with patch.object(download, 'OPEN', side_effect=error) as opening:
+            with self.assertRaises(urllib.error.HTTPError):
+                download.api_open(urllib.request.Request(api))
+            self.assertEqual(opening.call_count, 1)
 
     def test_metadata_token_is_confined_to_nonredirecting_api_request(self):
         def open_metadata(request, **kwargs):

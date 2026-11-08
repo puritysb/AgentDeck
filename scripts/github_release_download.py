@@ -21,6 +21,7 @@ from urllib.parse import quote, unquote, urlsplit
 OPEN = urllib.request.urlopen
 TRANSIENT = {502, 503, 504}
 MAX_BYTES = 2 * 1024 ** 3
+ASSET_HOSTS = {'release-assets.githubusercontent.com', 'objects.githubusercontent.com'}
 # Before GitHub supplied asset digests: the zip's 13 ELF payloads match the
 # existing installation byte for byte; its reviewed tools.json pins the tar.
 # Keep identity + size + hash together, and never learn new pins at runtime.
@@ -58,7 +59,11 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def api_open(request, opener=None):
+def storage_open(request):
+    return urllib.request.build_opener(NoRedirect()).open(request, timeout=60)
+
+
+def api_open(request, opener=None, asset_redirect=False):
     """Bounded retry, refreshing stale API redirects without changing identity."""
     opener = opener or OPEN
     for attempt in range(3):
@@ -67,9 +72,22 @@ def api_open(request, opener=None):
             url = request.full_url + '?agentdeck_retry=' + str(time.time_ns())
             current = urllib.request.Request(url, headers=dict(request.header_items()))
         try:
-            return opener(current, timeout=60)
+            try:
+                return opener(current, timeout=60)
+            except urllib.error.HTTPError as redirect:
+                if redirect.code != 302 or not asset_redirect:
+                    raise
+                location = redirect.headers.get('Location', '')
+                target = urlsplit(location)
+                if target.scheme != 'https' or target.netloc not in ASSET_HOSTS:
+                    redirect.close()
+                    raise ValueError('Unexpected release asset redirect')
+                redirect.close()
+                # The API credential must never reach storage, even on retry.
+                return storage_open(urllib.request.Request(location, headers={'User-Agent': 'AgentDeck-CI'}))
         except urllib.error.HTTPError as error:
-            if error.code not in TRANSIENT:
+            expired_storage = asset_redirect and error.code == 404 and urlsplit(error.url).netloc in ASSET_HOSTS
+            if error.code not in TRANSIENT and not expired_storage:
                 raise
             error.close()
             if attempt == 2:
@@ -81,6 +99,15 @@ def api_open(request, opener=None):
             if isinstance(error.reason, ssl.SSLError) or not isinstance(error.reason, (TimeoutError, ConnectionError)) or attempt == 2:
                 raise
         time.sleep(2 ** (attempt + 1))
+
+
+def asset_response(api):
+    headers = {'Accept': 'application/octet-stream', 'User-Agent': 'AgentDeck-CI'}
+    token = os.environ.get('GITHUB_TOKEN')
+    if token:
+        headers['Authorization'] = 'Bearer ' + token
+    return api_open(urllib.request.Request(api, headers=headers),
+                    urllib.request.build_opener(NoRedirect()).open, asset_redirect=True)
 
 
 def asset_metadata(url):
@@ -118,12 +145,10 @@ def asset_metadata(url):
 def verified_asset(url):
     owner, repo, asset = asset_metadata(url)
     api = f'https://api.github.com/repos/{owner}/{repo}/releases/assets/{asset["id"]}'
-    request = urllib.request.Request(api, headers={'Accept': 'application/octet-stream', 'User-Agent': 'AgentDeck-CI'})
     stream = tempfile.TemporaryFile()
     try:
         total, digest, started = 0, hashlib.sha256(), time.monotonic()
-        # Deliberately no Authorization header on this redirecting request.
-        with api_open(request) as response:
+        with asset_response(api) as response:
             if response.status != 200:
                 raise ValueError('Expected a complete release asset response')
             while chunk := response.read(1024 * 1024):

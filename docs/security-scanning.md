@@ -351,11 +351,15 @@ pioarduino assets. The official asset API delivered the same complete
 through GitHub's API and checks its declared size and SHA-256 before exposing
 any bytes to the caller. Unpinned missing digests, partial responses, mismatches and
 unexpected identities fail. Metadata credentials are restricted to a
-non-redirecting API request; asset downloads carry no credential. Java CodeQL
+non-redirecting API requests; storage downloads carry no credential. Java CodeQL
 uses verified local CodeQL 2.27.4 and Gradle 8.14.5 archives. The temporary
 Gradle wrapper URL changes only its transport, retaining a checksum.
 API connection failures and HTTP 502/503/504 have three bounded attempts;
 retries refresh the API redirect while keeping the exact asset identity and hash.
+Binary API responses may stream directly or redirect to an allow-listed GitHub
+storage host. Storage 404 responses refresh the signed link through the API;
+an API 404 remains a failure. Neither metadata nor binary API credentials follow
+redirects. Other redirect hosts and insecure URLs are refused.
 
 Only the disposable firmware inventory job enables the Python transport hooks
 through its scoped `PYTHONPATH` and `AGENTDECK_GITHUB_ASSET_FALLBACK=1`. The hooks
