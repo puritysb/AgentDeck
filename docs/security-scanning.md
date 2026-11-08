@@ -335,8 +335,8 @@ narrow Gradle configurations, separate the Git tree from the disk, and read the
 response content type before accepting an XSS result.
 
 The photo-path fix merged in [#740](https://github.com/puritysb/AgentDeck/pull/740)
-after the 2.1.0 release. It is not included in npm 2.1.0; its pending delivery is
-recorded under [Unreleased](../CHANGELOG.md#unreleased). The Swift daemon has no
+after the 2.1.0 release. It is not included in npm 2.1.0; npm 2.1.1 is in release preparation,
+with the fix recorded in [CHANGELOG.md](../CHANGELOG.md). The Swift daemon has no
 photo-upload route, so this fix applies to the npm/Node daemon.
 
 ### Monthly run
