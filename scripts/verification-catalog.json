@@ -1036,6 +1036,31 @@
       ]
     },
     {
+      "id": "snyk-monthly",
+      "name": "Snyk monthly comparison",
+      "level": [
+        "static"
+      ],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/snyk-monthly.yml",
+      "job": "snyk",
+      "trigger": "1st of each month and manual",
+      "blocking": false,
+      "required": false,
+      "command": "node scripts/snyk-monthly.mjs --code <sarif> --oss <json>",
+      "evidence": [
+        "scripts/snyk-monthly.mjs",
+        "scripts/__tests__/snyk-monthly.test.ts",
+        "security/snyk-baseline.json"
+      ],
+      "proves": [
+        "Snyk Open Source (pnpm workspaces, Android release/sideload runtime) and Snyk Code ran with the repository token; findings absent from the triaged baseline open or update one tracking issue; raw results are kept for 90 days."
+      ],
+      "does_not_prove": [
+        "Anything CodeQL and the dependency audits do not; the 2026-11-08 trial found neither tool reported the three published advisories. Warnings and notes in the baseline were recorded without individual review. It never fails a PR."
+      ]
+    },
+    {
       "id": "python-dependency-audit",
       "name": "Python dependency audit",
       "level": [
@@ -1602,6 +1627,7 @@
         "scripts/__tests__/security-audit.test.ts",
         "scripts/__tests__/android-runtime-audit.test.ts",
         "scripts/__tests__/security-pipeline-health.test.ts",
+        "scripts/__tests__/snyk-monthly.test.ts",
         "scripts/__tests__/dependency-security.test.ts"
       ]
     }

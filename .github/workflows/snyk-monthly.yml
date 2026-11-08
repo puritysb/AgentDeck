@@ -1,0 +1,113 @@
+name: Snyk monthly
+
+# A second opinion next to security-scan.yml and codeql.yml, not a gate.
+# Findings are compared with security/snyk-baseline.json; only new ones open an
+# issue. See docs/security-scanning.md § Snyk trial 2026-11-08.
+
+on:
+  schedule:
+    - cron: '17 0 1 * *' # 1st of each month, 09:17 KST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: snyk-monthly
+  cancel-in-progress: false
+
+jobs:
+  snyk:
+    name: Snyk comparison
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      SNYK_CLI: snyk@1.1308.4
+      OUT: diagnostics/snyk
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Require the Snyk token
+        run: |
+          if [ -z "$SNYK_TOKEN" ]; then
+            echo "SNYK_TOKEN is not set in the repository secrets." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          version: 11.5.0
+          run_install: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+      - name: Install workspace dependencies without lifecycle scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      # Snyk exits 1 when it finds something; only 2 (failure) and 3 (no
+      # supported project) are errors here.
+      - name: Open source — pnpm workspaces
+        run: |
+          mkdir -p "$OUT"
+          set +e
+          pnpm dlx "$SNYK_CLI" test --all-projects --detection-depth=4 \
+            --exclude=android,apple,esp32,tools,node_modules,dist \
+            --json-file-output="$OUT/oss-workspace.json" > "$OUT/oss-workspace.txt" 2>&1
+          code=$?
+          set -e
+          tail -5 "$OUT/oss-workspace.txt"
+          [ "$code" -le 1 ]
+      # Release and sideload runtime only: the default scan also reads unit-test
+      # and test-platform configurations (Robolectric's netty/bouncycastle).
+      - name: Open source — Android release runtime
+        working-directory: android
+        run: |
+          set +e
+          pnpm dlx "$SNYK_CLI" test --file=app/build.gradle.kts \
+            --configuration-matching='^(release|sideload)RuntimeClasspath$' \
+            --json-file-output="../$OUT/oss-android.json" > "../$OUT/oss-android.txt" 2>&1
+          code=$?
+          set -e
+          tail -5 "../$OUT/oss-android.txt"
+          [ "$code" -le 1 ]
+      - name: Snyk Code
+        run: |
+          set +e
+          pnpm dlx "$SNYK_CLI" code test --sarif-file-output="$OUT/code.sarif" > "$OUT/code.txt" 2>&1
+          code=$?
+          set -e
+          tail -5 "$OUT/code.txt"
+          [ "$code" -le 1 ]
+      - name: Compare with the baseline
+        run: |
+          node scripts/snyk-monthly.mjs --code "$OUT/code.sarif" \
+            --oss "$OUT/oss-workspace.json" --oss "$OUT/oss-android.json" --out "$OUT"
+          cat "$OUT/summary.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Open or update the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          count=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$OUT/new-findings.json','utf8')).length)")
+          [ "$count" -eq 0 ] && exit 0
+          body="$OUT/issue.md"
+          { cat "$OUT/summary.md"; echo; echo "Run: $RUN_URL"; } > "$body"
+          existing=$(gh issue list --state open --search 'in:title "Snyk monthly:"' --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file "$body"
+          else
+            gh issue create --title "Snyk monthly: $count new findings to triage" --body-file "$body"
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: snyk-monthly
+          path: diagnostics/snyk/
+          retention-days: 90
+          if-no-files-found: ignore

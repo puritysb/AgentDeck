@@ -17,6 +17,7 @@ complements [the reporting policy](../SECURITY.md) and [testing](testing.md).
 | CodeQL `security-extended` | PR, master push, weekly, manual | Extraction/analysis failures fail the job; alerts need separate triage | GitHub Security → Code scanning |
 | Dependabot | Continuous alerts; weekly version PRs | Maintainer review, no automatic merge | Security → Dependabot, update PRs |
 | Secret scanning + push protection | GitHub service | Existing provider-secret protections retained | GitHub Security → Secret scanning |
+| Snyk monthly (`snyk-monthly.yml`) | 1st of each month, manual | Never blocks; findings missing from `security/snyk-baseline.json` open or update one `Snyk monthly:` issue; a missing `SNYK_TOKEN` or a Snyk failure fails the run | Code SARIF and open-source JSON; 90-day artifact |
 
 CodeQL currently covers JavaScript/TypeScript, Python, Actions, C/C++ and Rust,
 using `build-mode: none`. C++ without target headers/build flags has limited
@@ -27,7 +28,7 @@ PlatformIO/Arduino dependency inventory and inspection of every installed user
 environment still require separate checks.
 Dependabot additionally checks Gradle manifests and GitHub Actions. A configured
 workflow and a completed analysis are separate states; inspect the actual run.
-Snyk is not part of CI; see [Snyk trial](#snyk-trial-2026-11-08) for a local comparison. These checks provide a baseline without an
+Snyk runs monthly as a non-blocking second opinion; see [Snyk trial](#snyk-trial-2026-11-08). These checks provide a baseline without an
 additional external service account.
 
 ## Action runtimes
@@ -330,6 +331,20 @@ A local, read-only comparison with the Snyk CLI 1.1308.4 (free plan, `snyk test`
 Snyk Code also found one path CodeQL had not. Its other value was the triage practice:
 narrow Gradle configurations, separate the Git tree from the disk, and read the
 response content type before accepting an XSS result.
+
+### Monthly run
+
+`.github/workflows/snyk-monthly.yml` repeats the three useful scans on the 1st of
+each month: pnpm workspaces, the Android release/sideload runtime, and Snyk Code.
+It needs a `SNYK_TOKEN` repository secret. `scripts/snyk-monthly.mjs` compares the
+results with `security/snyk-baseline.json` by Snyk's finding identity (stable
+across code motion: 280 of 289 v1.9.6 findings kept it on master) and opens one
+issue for anything new.
+
+To triage an issue: fix the finding, or rerun the comparison with
+`--write-baseline` and write the reason in that entry's `decision`. Error-level
+entries in the 2026-11-08 baseline each carry a reviewed reason; warnings and
+notes say `recorded, not individually reviewed`.
 
 ## Remaining findings
 
