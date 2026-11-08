@@ -22,8 +22,11 @@ projects and tools. Watch them in a living aquarium, follow the timeline, and
 keep usage limits in view. Use your Mac or terminal on its own, or add a tablet,
 Stream Deck, e-ink reader, or small desk display.
 
-**2.1 delivery, checked 2026-11-07:** Mac, iPhone/iPad and Google Play list
-2.1.0; Elgato Marketplace lists 2.1. npm 2.1.0 and the
+**npm delivery, checked 2026-11-08:** [2.1.1](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.1.1)
+is public for all four packages, with the device-photo path hardening.
+
+**Other 2.1 channels, checked 2026-11-07:** Mac, iPhone/iPad and Google Play list
+2.1.0; Elgato Marketplace lists 2.1. The
 Android/Stream Deck/Ulanzi/ESP32 2.1.0 GitHub downloads are public.
 Ulanzi's Workshop update was submitted, but public 2.1.0 availability is not yet verified.
 See the [channel-by-channel delivery record](RELEASING.md#210-delivery-checkpoint-2026-11-06).
@@ -328,8 +331,9 @@ a one-time folder grant for its transcripts. Detailed setup and limitations:
 
 ## Releases
 
-npm 2.1.1 is in release preparation for the device-photo path hardening;
-2.1.0 remains the verified public npm version until registry readback.
+[npm 2.1.1](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.1.1) is public
+for all four packages. This patch keeps device-photo uploads inside the photo directory.
+See the [delivery readback](RELEASING.md#npm-211-delivery-checkpoint-2026-11-08).
 
 ### Compatibility and delivery channels
 
@@ -346,17 +350,20 @@ for verified publication and Store review status.
 |---|---|---|
 | Mac · iPhone · iPad | [App Store](https://apps.apple.com/app/id6784822497?pt=128040795&ct=github-readme-202610&mt=8) | `apple-v*` |
 | Android tablets and e-ink | [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck) · [signed GitHub APK](https://github.com/puritysb/AgentDeck/releases?q=android-v&expanded=true) | [`android-v2.1.0`](https://github.com/puritysb/AgentDeck/releases/tag/android-v2.1.0) |
-| CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | [`npm-v2.1.0`](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.1.0) public |
+| CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | [`npm-v2.1.1`](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.1.1) public |
 | Stream Deck / Mini / XL / Plus / + XL | [Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) | `streamdeck-v*` |
 | Ulanzi D200H / D200X LCD keys | [Ulanzi Marketplace](https://ugc.ulanzistudio.com/contentView/1239890184745660416); D200X encoders are not supported | `ulanzi-v*` |
 | ESP32 panels and TRMNL 7.5" | [Browser flasher](https://puritysb.github.io/AgentDeck/flash/) · [firmware releases](https://github.com/puritysb/AgentDeck/releases?q=esp32-v&expanded=true) | `esp32-v*` |
 
-**2.1 delivery, checked 2026-11-07:** [npm 2.1.0](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.1.0)
-is public for all four packages. On macOS, its Node daemon lets dictated prompts
+**npm delivery, checked 2026-11-08:** [npm 2.1.1](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.1.1)
+is public for all four packages. The 2.1 Node daemon on macOS lets dictated prompts
 reach Claude Code in any terminal through the peer inbox, with a Claude Code
-version that supports it. Run `agentdeck daemon install` (or `npx @agentdeck/setup`)
-once after upgrading this npm installation. This capability is separate from
+version that supports it. To enable this capability after upgrading from an older
+minor, run `agentdeck daemon install` (or `npx @agentdeck/setup`) once. This capability is separate from
 the native daemon bundled with the Mac App Store app.
+
+**Other 2.1 channels, checked 2026-11-07:**
+
 The [ESP32 2.1.0 firmware set](https://github.com/puritysb/AgentDeck/releases/tag/esp32-v2.1.0)
 covers all twelve boards, and the Android APK, Stream Deck and Ulanzi 2.1.0
 packages are on GitHub.
