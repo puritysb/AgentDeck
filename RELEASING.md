@@ -178,8 +178,8 @@ Runtime and installed build digests both read `7443cb52437e`; the Node daemon
 retained manual operation without registering a service.
 
 Apple, Android, ESP32, Stream Deck and Ulanzi delivery versions were unchanged;
-root `VERSION` remains 2.0.0. The installed npm candidate remains in manual Node
-operation. No other channel was tagged or uploaded in this delivery.
+root `VERSION` remains 2.0.0. No other channel was tagged or uploaded in this
+delivery.
 
 ### 2.1.0 delivery checkpoint 2026-11-06
 
