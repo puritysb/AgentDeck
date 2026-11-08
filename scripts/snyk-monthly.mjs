@@ -68,6 +68,9 @@ export function compare(findings, baseline) {
   return { fresh, gone };
 }
 
+/** Markdown table cell: escape backslashes first, then pipes; fold newlines. */
+export const cell = (text) => String(text).replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/[\r\n]+/g, ' ');
+
 const ORDER = ['critical', 'error', 'high', 'warning', 'medium', 'low', 'note'];
 const rank = (l) => { const i = ORDER.indexOf(l); return i < 0 ? ORDER.length : i; };
 
@@ -78,7 +81,7 @@ export function summary({ findings, fresh, gone }) {
     lines.push('| Level | Rule | Where | Message |', '|---|---|---|---|');
     for (const f of [...fresh].sort((a, b) => rank(a.level) - rank(b.level))) {
       const where = f.line ? `${f.file}:${f.line}` : f.file;
-      lines.push(`| ${f.level} | \`${f.rule}\` | \`${where}\` | ${f.message.replace(/\|/g, '\\|').replace(/\n/g, ' ')} |`);
+      lines.push(`| ${f.level} | \`${f.rule}\` | \`${where}\` | ${cell(f.message)} |`);
     }
     lines.push('', 'Triage each one: fix it, or add it to the baseline with a reason (`--write-baseline`, then edit `decision`).');
   }

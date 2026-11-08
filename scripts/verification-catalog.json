@@ -1627,6 +1627,7 @@
         "scripts/__tests__/security-audit.test.ts",
         "scripts/__tests__/android-runtime-audit.test.ts",
         "scripts/__tests__/security-pipeline-health.test.ts",
+        "scripts/__tests__/snyk-monthly.test.ts",
         "scripts/__tests__/dependency-security.test.ts"
       ]
     }

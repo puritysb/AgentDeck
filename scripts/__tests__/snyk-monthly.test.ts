@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { codeFindings, compare, ossFindings, summary } from '../snyk-monthly.mjs';
+import { cell, codeFindings, compare, ossFindings, summary } from '../snyk-monthly.mjs';
 
 const sarif = (results: unknown[]) => ({ runs: [{ results }] });
 const codeResult = (identity: string, fp0: string, ruleId = 'javascript/PT', line = 10) => ({
@@ -39,5 +39,12 @@ describe('snyk monthly comparison', () => {
     const text = summary({ findings: found, fresh: found, gone: [] });
     expect(text).toContain('**1 new**');
     expect(text).toContain('Unsanitized input \\| flows');
+  });
+});
+
+describe('summary table cells', () => {
+  it('escapes backslashes before pipes so a cell cannot end early', () => {
+    expect(cell('a\\|b')).toBe('a\\\\\\|b');
+    expect(cell('x\ny')).toBe('x y');
   });
 });
