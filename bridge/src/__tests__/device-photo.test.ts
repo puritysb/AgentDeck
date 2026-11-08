@@ -105,3 +105,27 @@ describe('prunePhotoDir', () => {
     expect(() => prunePhotoDir(join(dir, 'nope'))).not.toThrow();
   });
 });
+
+describe('photo file names', () => {
+  it('keeps a hostile board id inside the photo directory', () => {
+    const c = new DevicePhotoCollector(dir);
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    const saved = c.saveDirect(jpeg, { board: '../../escape/evil', sessionId: '', width: 0, height: 0 });
+    expect(saved.path.startsWith(dir + '/')).toBe(true);
+    expect(saved.path).toMatch(/-escapeevil\.jpg$/);
+    expect(saved.board).toBe('../../escape/evil');
+    expect(readdirSync(dir).filter((f) => f.endsWith('.jpg'))).toHaveLength(1);
+  });
+
+  it('falls back to esp32 when nothing usable is left', () => {
+    const c = new DevicePhotoCollector(dir);
+    const saved = c.saveDirect(Buffer.from([1]), { board: '../..', sessionId: '', width: 0, height: 0 });
+    expect(saved.path).toMatch(/-esp32\.jpg$/);
+  });
+
+  it('keeps ordinary board ids unchanged', () => {
+    const c = new DevicePhotoCollector(dir);
+    const saved = c.saveDirect(Buffer.from([1]), { board: 't_display_s3_pro', sessionId: '', width: 0, height: 0 });
+    expect(saved.path).toMatch(/-t_display_s3_pro\.jpg$/);
+  });
+});

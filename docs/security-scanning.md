@@ -27,7 +27,7 @@ PlatformIO/Arduino dependency inventory and inspection of every installed user
 environment still require separate checks.
 Dependabot additionally checks Gradle manifests and GitHub Actions. A configured
 workflow and a completed analysis are separate states; inspect the actual run.
-Snyk has not been run or connected. These checks provide a baseline without an
+Snyk is not part of CI; see [Snyk trial](#snyk-trial-2026-11-08) for a local comparison. These checks provide a baseline without an
 additional external service account.
 
 ## Action runtimes
@@ -313,6 +313,23 @@ first.
 | resvg 2.6.2 maintenance notices (RUSTSEC-2025-0056, RUSTSEC-2026-0206, RUSTSEC-2026-0192) | When upstream releases, move the Rust, JS and WASM renderers to one revision together and rerun the pixel, wire and native gates. | The OSV exceptions expire 2026-12-01 |
 | Deferred majors: Bleak 3 (#691), Anthropic SDK 1.x (#696), TypeScript 7 (#697), Android Kotlin/AGP 9/serialization/Robolectric (#699, #701–#703), Rust 1.120 (#708) | Treat as normal compatibility upgrades, each with its own build and device checks. They are not security fixes. | Next maintenance pass |
 | CodeQL exception review | Re-review the recorded per-alert decisions when an authentication or trust-boundary file changes. | When those files change |
+
+## Snyk trial 2026-11-08
+
+A local, read-only comparison with the Snyk CLI 1.1308.4 (free plan, `snyk test` and
+`snyk code test`, no `snyk monitor`, no GitHub integration). Snyk is not part of CI.
+
+| Scan | Result | Reading |
+|---|---|---|
+| `snyk test --all-projects` on master | pnpm workspaces 0; `android/app` 77 | The Android matches (netty, bouncycastle, older guava/protobuf/asm) come from unit-test and test-platform configurations. Run from `android/` with `--configuration-matching='^(release\|sideload)RuntimeClasspath$'` it reports 0, matching the Android runtime OSV audit |
+| Same, other projects | 12 each in `tools/tc002-emulator`, `tools/ulanzi-sdk/UlanziDeckSimulator` | Both are gitignored local tools: Snyk scans the disk, not the Git tree |
+| Not covered | `shared/glance-raster/Cargo.lock`, `bridge/python/requirements-ble.txt`, PlatformIO; `esp32/robot` needs an installed environment | OSV, pip-audit and the ESP32 inventory keep these |
+| `snyk code test` on `npm-v1.9.6` | 289 results, none on the three vulnerable paths | Like CodeQL, it did not report GHSA-jv6m, GHSA-c8c5 or GHSA-fjph |
+| `snyk code test` on master | 337 results, 24 at error level | One real issue: the photo upload file name took `?board=` unchanged (fixed in this change). The rest were JSON responses read as HTML, a host-allow-listed OAuth fetch, localStorage key names and fixture values, trusted local hook input, and server-chosen firmware paths |
+
+Snyk Code also found one path CodeQL had not. Its other value was the triage practice:
+narrow Gradle configurations, separate the Git tree from the disk, and read the
+response content type before accepting an XSS result.
 
 ## Remaining findings
 
