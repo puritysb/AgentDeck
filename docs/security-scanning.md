@@ -335,9 +335,46 @@ narrow Gradle configurations, separate the Git tree from the disk, and read the
 response content type before accepting an XSS result.
 
 The photo-path fix merged in [#740](https://github.com/puritysb/AgentDeck/pull/740)
-after the 2.1.0 release. It is not included in npm 2.1.0; its pending delivery is
-recorded under [Unreleased](../CHANGELOG.md#unreleased). The Swift daemon has no
+after the 2.1.0 release. It is not included in npm 2.1.0; npm 2.1.1 is in release preparation,
+with the fix recorded in [CHANGELOG.md](../CHANGELOG.md). The Swift daemon has no
 photo-upload route, so this fix applies to the npm/Node daemon.
+
+### GitHub release download recovery
+
+The November 8 npm 2.1.1 preparation encountered persistent HTTP 504 responses
+from public GitHub release download URLs, including Gradle, CodeQL and
+pioarduino assets. The official asset API delivered the same complete
+`esp_install-v5.3.4.zip` with SHA-256
+`c85a91287a95c08f6605461db1c41dcbf35f19e2f362ca8e9c2c104c70d4f360`.
+
+`scripts/github_release_download.py` resolves the exact original release URL
+through GitHub's API and checks its declared size and SHA-256 before exposing
+any bytes to the caller. Unpinned missing digests, partial responses, mismatches and
+unexpected identities fail. Metadata credentials are restricted to a
+non-redirecting API requests; storage downloads carry no credential. Java CodeQL
+uses verified local CodeQL 2.27.4 and Gradle 8.14.5 archives. The temporary
+Gradle wrapper URL changes only its transport, retaining a checksum.
+API connection failures and HTTP 502/503/504 have three bounded attempts;
+retries refresh the API redirect while keeping the exact asset identity and hash.
+Binary API responses may stream directly or redirect to an allow-listed GitHub
+storage host. Storage 404 responses refresh the signed link through the API;
+an API 404 remains a failure. Neither metadata nor binary API credentials follow
+redirects. Other redirect hosts and insecure URLs are refused.
+
+Only the disposable firmware inventory job enables the Python transport hooks
+through its scoped `PYTHONPATH` and `AGENTDECK_GITHUB_ASSET_FALLBACK=1`. The hooks
+replace GETs for exact public GitHub release assets only after HTTP 502/503/504
+or connection/time-out failures. TLS certificate errors, other routes, methods
+and HTTP errors retain their original behavior. Rust's OSV Scanner uses the
+same verified API transfer and still checks its independent pinned checksum. Package URLs,
+versions, checksum checks, isolated stores and content hashing remain intact.
+This adds no installed daemon behavior or npm package content.
+
+Two older ROM archives predate GitHub's digest field. Their exact asset IDs,
+sizes and SHA-256 values are reviewed source pins, never learned at runtime.
+The pioarduino zip's thirteen ELF payloads matched the existing installation
+byte for byte; its remaining `tools.json` was inspected and supplies the
+upstream Espressif tar's checksum. Changed IDs, sizes or declared digests fail.
 
 ### Monthly run
 

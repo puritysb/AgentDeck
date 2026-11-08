@@ -328,6 +328,9 @@ a one-time folder grant for its transcripts. Detailed setup and limitations:
 
 ## Releases
 
+npm 2.1.1 is in release preparation for the device-photo path hardening;
+2.1.0 remains the verified public npm version until registry readback.
+
 ### Compatibility and delivery channels
 
 Use the channel for your device. Components with the same major version work

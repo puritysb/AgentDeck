@@ -95,6 +95,44 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### npm 2.1.1 release decision — 2026-11-08
+
+| Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
+| --- | --- | --- | --- | --- | --- |
+| npm / hooks, shared, bridge, setup | 2.1.0, registry read back November 8 | None; all four 2.1.1 versions checked unused | 2.1.1, four packages in lockstep | Patch: keep authenticated device-photo uploads inside the photo directory (#740) | Completes the existing photo-upload boundary; no new milestone |
+
+The owner authorized npm-only publication on November 8. Only the four public
+npm manifests and the daemon version mirror advance. Apple, Android, ESP32,
+Stream Deck and Ulanzi remain on their delivered versions; root `VERSION` remains
+2.0.0. Full pre-release verification, packaged acceptance and the pre-tag
+three-mode daemon soak remain required. This decision is not a delivery receipt.
+
+#### npm 2.1.1 pre-tag acceptance — 2026-11-08
+
+Clean candidate `e01bfd6b` passed `pnpm verify:full --record --allow-keychain`:
+27 automatic gates passed, including 7,622 Vitest tests (42 skips), macOS/iOS
+and optimized DotPreview builds, CloudKit fixtures, ESP32 builds and 12 clean
+npm package checks with a 60-second daemon soak. The
+[recorded receipt](verification/receipts/2026-11-08-e01bfd6.json) distinguishes the
+Windows host skip and four unperformed channel-specific labs from passes.
+The initial run lacked the x86_64 Rust standard library; a task-scoped Rust
+1.97.0 toolchain supplied it, and the clean candidate's full rerun passed.
+
+The four candidate tarballs were installed through the maintainer's real CLI
+command path on Node 26.5.0; native ABI and the installed photo-path boundary
+passed. The counterpart was the public Mac App Store app 2.1.0 / 10301, with its
+Store receipt verified. Swift-only and CLI-only modes each completed a directly
+launched synthetic Claude turn; the app, rendered Pixoo frame and live downstream
+transport were observed. With both processes running, Node held the sole 9120
+listener and the app read its roster. After CLI shutdown, Swift recovered 9120
+without intervention in 177.2 seconds and restored Pixoo, D200H and eleven serial
+connections. A 120-second observation was too short for the existing macOS bind
+retry/failure-memory policy; the repeated 300-second observation captured recovery.
+No manual hook reinstall or token rotation was needed. Optical measurements and
+new Bluetooth permissions were not attested. Private screenshots remain local.
+The prior manual Node operating mode was restored with the installed candidate.
+Publication remains pending the release PR, exact tag and registry readback.
+
 ### 2.1.0 delivery checkpoint 2026-11-06
 
 All six `*-v2.1.0` tags point at merge commit `285a57d1` (PR #733). The table records each
