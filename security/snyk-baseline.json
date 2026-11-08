@@ -1,0 +1,3057 @@
+{
+  "$comment": "Triaged Snyk findings for scripts/snyk-monthly.mjs. Error-level code findings were reviewed one by one on 2026-11-08 (docs/security-scanning.md \u00a7 Snyk trial 2026-11-08); warnings and notes were recorded without individual review. A new finding is one whose key or alt is not listed here.",
+  "generated": "2026-11-08",
+  "findings": [
+    {
+      "kind": "code",
+      "key": "bf0ee92d-7b5a-4eb9-8002-e6144383500e",
+      "alt": "836fc5b0f4ea6881b5265a473aa32bfe87e3bf715fb22803f15955897fa4fe0e",
+      "rule": "cpp/ImproperNullTermination",
+      "level": "note",
+      "file": "esp32/src/audio/ips10_voice.cpp",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "f08f6d03-3ec8-46c8-a6e5-84fcd8767993",
+      "alt": "912aea1e76e982af246c09da533c0dd1dcc8025cf0db48b14bc03808aa17e9fa",
+      "rule": "cpp/ImproperNullTermination",
+      "level": "note",
+      "file": "esp32/src/audio/ips10_voice.cpp",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "16a8c0d7-b949-4200-badf-e5d4b20b1a97",
+      "alt": "4b8388c37640fb1d846d8428dce3b5fbbd38ec4a31d6d5aa4da4440bc4b2fa93",
+      "rule": "cpp/ImproperNullTermination",
+      "level": "note",
+      "file": "esp32/src/audio/ips10_voice.cpp",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "90f6bf57-0b04-4fad-a2b9-a5d205457cde",
+      "alt": "0fe5b20ef5ef09a783d86e849c3ca27540a1d54f3094d52d69fa709d35c420d4",
+      "rule": "javascript/DisablePoweredBy",
+      "level": "warning",
+      "file": "bridge/src/hook-server.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "64430684-afa5-4d59-9e7a-773c08140799",
+      "alt": "37aa6202e27118d628337089544adf86d0b0642c4ada4340c55984b868ed4f2b",
+      "rule": "swift/PT/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/fixtures/pairing-retirement-main.swift",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "266e17be-f16a-4489-aab9-523c7bd05c92",
+      "alt": "736d9515c399d9e23d8e38ab67a98cdc7c738407f2acd6f83fae9fb60380eb1e",
+      "rule": "swift/PT/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/fixtures/pixoo-native-device.swift",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "96f0b5dc-bd02-473d-bc51-0293f96000b4",
+      "alt": "02799a7ad7e31977ba030d87ba616e50821709900c64e6cb3b605c44306c3d64",
+      "rule": "swift/PT/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/fixtures/pixoo-native-device.swift",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "c110b2e9-2b56-4b4b-883e-c6d8c1806466",
+      "alt": "ec5e6e91172f287e91c5b3d26d453c3beca9f9714f785afccd2eaa4b011a37d9",
+      "rule": "swift/Ssrf",
+      "level": "warning",
+      "file": "apple/AgentDeck/UI/Settings/PixooSheet.swift",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "cb44209e-e30b-4ee4-a5da-a75cc8193a69",
+      "alt": "12b10417500223377436af9ca6af456520e566961863f27a5984ed4986070133",
+      "rule": "swift/Ssrf/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/fixtures/pixoo-native-device.swift",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "9967b5c1-d9a6-4b3d-a67a-0e2ccfe97a8a",
+      "alt": "361a048d7ff588eedd6737bbe5ba069b7821a1e3ee53728d910f1dbf238e15f9",
+      "rule": "javascript/HardcodedNonCryptoSecret",
+      "level": "error",
+      "file": "apple/DeviceAcceptance/fixtures/opencode-attention.mjs",
+      "decision": "False positive: a localStorage key name or an isolated test fixture value."
+    },
+    {
+      "kind": "code",
+      "key": "0c2f3777-8f34-424f-8ae7-43601384d82c",
+      "alt": "a2bb15b4061010846c679fdf3545dea0644214970f150e2b9d8fe214c2014a6d",
+      "rule": "javascript/HardcodedNonCryptoSecret",
+      "level": "error",
+      "file": "apple/DeviceAcceptance/fixtures/opencode-attention.mjs",
+      "decision": "False positive: a localStorage key name or an isolated test fixture value."
+    },
+    {
+      "kind": "code",
+      "key": "b88c033e-dc3c-4069-8f5f-e3e146b9a501",
+      "alt": "e6845dca483412531d9252cdefe3eb1171758ab333bb3406409f5f62e52e1a84",
+      "rule": "javascript/HardcodedNonCryptoSecret",
+      "level": "error",
+      "file": "docs/design/AgentDeck Tide Bento (D1).html",
+      "decision": "False positive: a localStorage key name or an isolated test fixture value."
+    },
+    {
+      "kind": "code",
+      "key": "6ff21499-ef0b-423e-9035-d980b9c9471b",
+      "alt": "88ef739f737221269bf98b1ceb3d8795f0a96590d5190ebb6f984aa11d5518f9",
+      "rule": "javascript/HardcodedNonCryptoSecret",
+      "level": "error",
+      "file": "docs/hardware/index.html",
+      "decision": "False positive: a localStorage key name or an isolated test fixture value."
+    },
+    {
+      "kind": "code",
+      "key": "5b7af0b6-07f4-46e3-ad20-2ba693de4442",
+      "alt": "31ba50299312326dde88f3bfb1ca13b5e7a86ac8aae325134993af2473ebb286",
+      "rule": "javascript/HardcodedNonCryptoSecret",
+      "level": "error",
+      "file": "scripts/pages-index.html",
+      "decision": "False positive: a localStorage key name or an isolated test fixture value."
+    },
+    {
+      "kind": "code",
+      "key": "58cab8aa-dde9-49a5-982f-65309d1e132d",
+      "alt": "3aea231400736f6df17423ab3c226779add8890ab0e3d9b968736a6d45c2dc84",
+      "rule": "javascript/HardcodedNonCryptoSecret",
+      "level": "error",
+      "file": "tools/creature-simulator/index.html",
+      "decision": "False positive: a localStorage key name or an isolated test fixture value."
+    },
+    {
+      "kind": "code",
+      "key": "d61f0183-f212-4419-b072-2c5600f44e25",
+      "alt": "e0062cd07a0d47417545c31108a8129772c5e076b7bdf586d090ae5badfe8d28",
+      "rule": "javascript/HardcodedNonCryptoSecret/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/apme-classifier.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "de3ee5c1-a112-4dbb-8cf0-c6866c547c57",
+      "alt": "cb9404ed496f965d22ea57ca15e169e4ffaec2eb2550cf06f754fc1238f20569",
+      "rule": "javascript/HardcodedNonCryptoSecret/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/apme-settings.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "fdf64da8-0d79-445f-a1bb-f003fad2f9e5",
+      "alt": "f17bbf6425a48d0be22f9d1407a320fa88e94eabb7789cc989febb43574c2071",
+      "rule": "javascript/HardcodedNonCryptoSecret/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/connection-diagnostics.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "c4268884-8b8b-4e13-8dc0-8dfbb2d57cde",
+      "alt": "9c9d52a5555876b3fc5064300432fd06720ac4477fa10ee1a2a3d204147071db",
+      "rule": "javascript/HardcodedNonCryptoSecret/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/esp32-serial-node.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "1c70559c-3c90-4ed8-801c-499edfab8ed9",
+      "alt": "35861cdaac4c38ab4c3dd3c517b8e90c4bb56d8ae23d6c1677f573b29b9b7f0d",
+      "rule": "javascript/HardcodedNonCryptoSecret/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/esp32-serial-node.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "6702c8de-fada-46a8-af37-908de295be32",
+      "alt": "e8413203942019b66ca377b413f4a3aa92400026736e41c38738addce931629e",
+      "rule": "javascript/HardcodedNonCryptoSecret/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/esp32-serial-node.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "9a027ea2-57dc-4338-9c3d-dc1385974904",
+      "alt": "b7282133f31d098c1b8a35414e2bb3a9a27da345bf11e7adbf9fea491eac821b",
+      "rule": "javascript/HardcodedNonCryptoSecret/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/esp32-wifi-setup.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "b63c976d-e56e-448c-b687-98ff4c97ceaa",
+      "alt": "af31c2a6277bd8fdc99ed35058869aa1860827e91e1cc796409c3adabb7886f2",
+      "rule": "javascript/HardcodedNonCryptoSecret/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/esp32-wifi-setup.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "82c9c5dc-7bb0-4ff6-a759-f2e8b9daf84b",
+      "alt": "3b20f831e4dfb34986500bdfcc8c990bafc10d66ff23fca67e2ebfc61f767ce3",
+      "rule": "javascript/HardcodedNonCryptoSecret/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/usage-api.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "f074cc9b-62b5-4510-8659-ac62ede0aaa1",
+      "alt": "5256a8480d2b92e80532db6b951a37fdcfda65b65378f8fec1c0a17dba19e511",
+      "rule": "javascript/HardcodedNonCryptoSecret/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/usage-api.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "151c9475-e51a-45c7-a4ea-f0b65f3d91fb",
+      "alt": "68f07aacc66833766bbce1a06190200865e7fadf0e972cada12dd638863af8d6",
+      "rule": "javascript/HardcodedNonCryptoSecret/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/usage-api.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "a37b462f-1198-452b-bdd7-0e3c35b9923e",
+      "alt": "a045cc1b84c98c9b23b5207229253076fe9267e81331e3ba3f5fd528ba5ccb73",
+      "rule": "javascript/HardcodedNonCryptoSecret/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/usage-api.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "e2dd48f4-640f-4c39-aadf-90bc0a936d1c",
+      "alt": "442b3017302b562b6ee66c2180f56f3435a8a3a9824a7618474abc78f68c1f45",
+      "rule": "javascript/HardcodedNonCryptoSecret/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/usage-api.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "a09d4fce-f132-43d5-9f43-136723983209",
+      "alt": "3c298c7f12a3de86075d2698b6f83f1e311bc7d0d7070502934799453c1465be",
+      "rule": "javascript/HardcodedNonCryptoSecret/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/usage-api.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "8e49c069-b34f-4e61-9404-7085e7944cbd",
+      "alt": "ea3f86a933192e8b439f41ee41943150026715e04e12829ecce178571de4639e",
+      "rule": "javascript/HardcodedNonCryptoSecret/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/usage-api.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "ee6abe4c-df59-460b-8c14-12239b9f90f8",
+      "alt": "23fd417bb3d9993ac4a1e02e952589c02343554362c91021c742f7877bc12c10",
+      "rule": "javascript/HardcodedNonCryptoSecret/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/usage-api.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "a2bdc78a-9e07-4535-b989-19326c6513c0",
+      "alt": "ab0a391c24330a87b43e838102b2793619fc4a16f16c044b5561fab67eec72b1",
+      "rule": "javascript/HardcodedNonCryptoSecret/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/weather-config.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "f5034764-51f7-4513-9f1f-6941e9c6cbf0",
+      "alt": "9d6a9637f593d33c556598f9813746dc437ff8cc4883cce80013b485c6e741d4",
+      "rule": "javascript/HardcodedNonCryptoSecret/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/ws-server-startup.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "249d1fc4-0273-4083-8dcd-5d228e809398",
+      "alt": "965ab81f4116470a4dac5013ee647034bc3bf6acaf146fa912cc4c27a523b00a",
+      "rule": "javascript/HardcodedNonCryptoSecret/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/ws-server-startup.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "9ae4e48a-fa46-4884-be12-631c0e78a1f7",
+      "alt": "a29c914769b2014f720daae66f517c38b572e6f2274c9a539ad78e537fe7f06d",
+      "rule": "javascript/HardcodedNonCryptoSecret/test",
+      "level": "note",
+      "file": "hooks/src/__tests__/opencode-install.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "c1040af0-29db-44e8-b41d-4382bd3e1852",
+      "alt": "b86e578fa4aea2a5d30e206cd881f29966ce074e25e02292efd130c047361ee8",
+      "rule": "javascript/HardcodedNonCryptoSecret/test",
+      "level": "note",
+      "file": "tests/e2e/daemon-hub.e2e.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "8ec0c3ad-e3e4-4fac-97eb-f1b9eeb97b00",
+      "alt": "560f14e54d0c06f22842111006dbe27287b775eb7732189789e1ff4759c4472d",
+      "rule": "javascript/HardcodedNonCryptoSecret/test",
+      "level": "note",
+      "file": "tests/e2e/daemon-hub.e2e.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "caf53f15-5d93-4fd2-80fe-1b953660847c",
+      "alt": "a0e692e0c90298b3655390aa875177dbd901fef4153fd11af19e33a2c8c0f5c4",
+      "rule": "javascript/HardcodedNonCryptoSecret/test",
+      "level": "note",
+      "file": "tests/e2e/daemon-hub.e2e.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "4f8391ee-3edd-42fa-97ef-8a87aeab9148",
+      "alt": "26cd7a9c9d545e06f8e7aa1996331d419129dc9943ab30035927cd4d74722afa",
+      "rule": "javascript/HttpToHttps",
+      "level": "warning",
+      "file": "apple/DeviceAcceptance/fixtures/opencode-attention.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "eba2a368-f068-4e7d-a0ca-a9e654068b35",
+      "alt": "535a49cb508295efb22718e6e4cf423cd1b8fffb5b7e2bca6556e55be17fcbe2",
+      "rule": "javascript/HttpToHttps",
+      "level": "warning",
+      "file": "bridge/scripts/pixoo-live.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "6dee496a-440c-4a16-8626-6abe1e71220d",
+      "alt": "c224a4ed0613887dccde7cc1508a95ae72d03b6bcca41fc93010aee06457e8c4",
+      "rule": "javascript/HttpToHttps",
+      "level": "warning",
+      "file": "scripts/appstore-demo-orchestrator.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "4ec7f91c-835c-4f12-b02a-4ae1cca83688",
+      "alt": "0fe0c475a18694ea898770a4aa159073039d3e18d74bd0cb3484667d71e42046",
+      "rule": "javascript/HttpToHttps",
+      "level": "warning",
+      "file": "scripts/product-tour-fixture.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "bfb9a298-fd93-47f0-9797-0ef2b178e671",
+      "alt": "76538f25a02b1942182fafb594b4b456dc6afbc760b0a33fadd9c220e24bea4d",
+      "rule": "javascript/HttpToHttps",
+      "level": "warning",
+      "file": "services/dot-relay/src/server.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "29b795fe-fc53-4af3-965e-b45fef82eb16",
+      "alt": "2c936b6fb842bc2e0da53bca1294233a4f5c48a88170c087209f76f47b81ce27",
+      "rule": "javascript/HttpToHttps",
+      "level": "warning",
+      "file": "bridge/src/adapters/openclaw.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "fc83c079-58f6-49b6-a9a8-a301adfdc4de",
+      "alt": "340aeb3322b599f26973f10ee0f7d0724eab730df460f80884f161b2c57529f0",
+      "rule": "javascript/HttpToHttps",
+      "level": "warning",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "31a2a043-f363-4dde-8ae2-06bb0410f297",
+      "alt": "0abb7260fb5f36acd385114fcf608f02781f852972510d218872983b641bdf7d",
+      "rule": "javascript/HttpToHttps",
+      "level": "warning",
+      "file": "bridge/src/hook-server.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "858ae90e-e501-425f-a87c-af16925d6941",
+      "alt": "7537e00d04df22b441717456bf1960d8ffdcc42fb3a88ccdee72871e4609f4d7",
+      "rule": "javascript/HttpToHttps",
+      "level": "warning",
+      "file": "bridge/src/apme/activity-history.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "0c63c2f3-f902-4156-8d48-cc1fe072de32",
+      "alt": "c4adfe76388f82638118d1bd7706109525a152aa0e7d1d9541dafd8b879c2cac",
+      "rule": "javascript/HttpToHttps",
+      "level": "warning",
+      "file": "bridge/src/cli.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "42e72f79-9cba-490d-8b76-32ff906b117a",
+      "alt": "75754d818997e02799ff30cf65c016d3bebc868bc734dd1b32e8dfa54bd91f8c",
+      "rule": "javascript/HttpToHttps",
+      "level": "warning",
+      "file": "bridge/src/connection-diagnostics.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "f4490602-7624-4695-90a9-d5aeb321fa4f",
+      "alt": "23e750bf39358fd04efb41daf8bd1f65874186feab3c6648a318175135469d77",
+      "rule": "javascript/HttpToHttps",
+      "level": "warning",
+      "file": "hooks/src/hermes-diagnostics.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "8a0d26fa-3c36-4b12-98a7-5c9346e14f6c",
+      "alt": "1d4a89161529c38ee890c7d45d61caae95a2c326a3c80280e69473571c3971d5",
+      "rule": "javascript/HttpToHttps",
+      "level": "warning",
+      "file": "bridge/src/session-registry.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "c282dc40-6bc2-41c3-b27c-8253ae768fa8",
+      "alt": "56a28cd33210bbfd8f1b7596897a8fdf290094034f70ffd7657ef8616b49307b",
+      "rule": "javascript/HttpToHttps",
+      "level": "warning",
+      "file": "bridge/src/session-registry.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "fdbc2351-66a6-4b16-8900-5a46efb02f70",
+      "alt": "10991454f2864bf846c5ab135595a8963ca640df3822053de6e3b9217ebb6165",
+      "rule": "javascript/HttpToHttps",
+      "level": "warning",
+      "file": "bridge/src/session-registry.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "1777a950-7fd4-4d8a-a57a-2d12c3389d49",
+      "alt": "59147a2b09acca963557d467cf78db4aad7d1963693e6293b3d3015b2534aded",
+      "rule": "javascript/HttpToHttps",
+      "level": "warning",
+      "file": "bridge/src/session-registry.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "b920c233-0cf4-4aa5-a20d-6dd99eaef960",
+      "alt": "77d52100f5bc368033117d9ab1a8f4db64e8449e5ed2c78e78eca6812184384d",
+      "rule": "javascript/HttpToHttps",
+      "level": "warning",
+      "file": "plugin-ulanzi/src/daemon-discovery.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "a8953768-d0d9-45d8-967b-7afe2c26ce92",
+      "alt": "5ac8d51acd709aad99097f3d1eb57fe875189522eec06e292621093d61ef5064",
+      "rule": "cpp/IntegerOverflow",
+      "level": "warning",
+      "file": "esp32/sim/src/sim_main.cpp",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "2789f601-c026-4b3d-98af-ba08f695d8f8",
+      "alt": "64a031de13c4ff71a9ce234e991c7e70e7cddeb02d928b4440956255ce2b24f3",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/apme-history-reader.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "891c042c-7faf-4725-bb5e-15cff948d88d",
+      "alt": "6398e99775e65112ae135fd0c00375cd517b04338ed003a37be0d81751011c3d",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/credential-response-fence.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "23a1dd13-2afd-4961-8cc6-c7539636c9b4",
+      "alt": "56ed128e8544566f8334deca12570f3a148918e404d1cd147852d8006c7d6288",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/daemon-checkpoint-handover.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "3af087cc-4eae-43dd-bbcd-69c788b25030",
+      "alt": "be31470c9647068d43368290ee819b8223001a5d2e268e12164dd45067c3367b",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/daemon-relay-native.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "a116e9b2-adb5-40b1-a4dd-4ca69a6d501b",
+      "alt": "0515e7930b5bdff4a2ea090258b8630fc3b55eaa67c766e82d0f70cb96602fe6",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/daemon-socket-drain.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "22b40065-a175-4615-b11b-a780c8877dc0",
+      "alt": "3e60a50849b631c251eddfd704d1f5554f5522a0239c64d56036dd40a07c1201",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/pixoo-configuration-client.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "0502f9f4-9ce9-4da9-9cf6-ac3d02d819b8",
+      "alt": "a52f439bffb1abc42c8dd8be88435455a99437ae033ecf53d2d3f3e178395354",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/session-settings-command.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "e6b19955-76be-4170-84cd-f44cba24c650",
+      "alt": "cfe95b26dd4135b66a287dbf00452c74497b79853ee91a4a4e93e738ec44d8eb",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/ws-server-startup.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "b02670f3-5ca8-490f-8557-8287c5107166",
+      "alt": "5ce77a312df7d6431c91904c111f9bf038fad0f724716e8e13512327934aa387",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "hooks/src/__tests__/codex-install.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "afa15eef-c9e8-47fc-90cd-aa78e7425cd5",
+      "alt": "47714f11b1997679cceb905a374b154b008a38b28a2290af075c48c4b0c3f8aa",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "hooks/src/__tests__/install.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "d4722448-1d32-435b-824c-24e28628b1be",
+      "alt": "8664b91de44f92a89c992bf0acd6c6c7e127cedec6cf0875b7142960ddf8c7fc",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "hooks/src/__tests__/statusline-relay.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "807fb748-ec4b-4440-bf3a-193e7e506a18",
+      "alt": "ad2fa5e23af6f0de338d02a0a373b3effe1a52906c27b803f692168dcfc21d48",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "hooks/src/__tests__/windows-codex-pid.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "f133f246-bdb1-4f72-b5c6-e8407bdb25c5",
+      "alt": "a95700b429c28f514b2fd79f8dbf4ce75ba4e7c4fd0075565e317852ccd433c0",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "plugin-ulanzi/src/__tests__/daemon-discovery.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "3f5c9849-23ee-4109-8d18-be3a3df2bba7",
+      "alt": "e8b9477fe2021f8f59a8a62e945872972fee9d82989716f411e5b0c9a47d813d",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "plugin-ulanzi/src/__tests__/daemon-transport.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "7d86d51d-496f-4c61-8542-ddff33112ecb",
+      "alt": "22a4fd95de63fe8314d675af3b578e65a2725d64a826774d5ff3b473027b85a6",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "plugin-ulanzi/src/__tests__/deck-settings-integration.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "965a7bfe-6235-4b83-9752-bf6dda143d73",
+      "alt": "0dc3ae9c4fd3d8ad749541810b2348800178c47957b2b515944f55d8e4dd0105",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "plugin/src/__tests__/deck-settings-integration.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "ac76971f-61eb-4dae-97f9-f162afecdc33",
+      "alt": "d8cf61a6a0cbf01984de2a38e2c7ecf45e30a0a7e158d4fa3bdea45cffb0fa88",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "services/dot-relay/src/__tests__/local-oauth.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "7a368b1f-c1e5-4c46-b35f-753ec04458d2",
+      "alt": "877373951154b0560599c9b26b4fe6337911773567802ff2b80f423c6d31fa51",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/apme-http.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "b53e302e-a6fa-4981-a086-713ad6c704d3",
+      "alt": "8155a52d2076c4c2b2bef85c98dd40de17fcc22bf276de6148a44c2e0a882b40",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/bridge-core-sessions.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "b6fbc810-60fc-467d-9de1-b504c0137b4c",
+      "alt": "d9adb38aba97b15b3fbf038d886f7da94e395af10bea410e0bbfde3e55a8fee5",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/bridge-core.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "1c70bfa0-a760-4d38-960b-987095a786af",
+      "alt": "dd1ccd91108683b7bfeb3047ff3f6723e16ab6877b677d7fe54363c8d2c477db",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/claude-statusline-core.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "051fc511-d8d6-43ef-8718-1b3ad8ff3f33",
+      "alt": "1962a08d00e1f9af3fd4a35bf05f521cdfbb2489f7dd6149f7d8494cb8fb6928",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/daemon-relay.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "19b62816-620b-4412-89e3-ab670403434e",
+      "alt": "cfd54b9fb7165b52d4c4816be49be7d37242557704b18f4f71dc5c44b182bb31",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/daemon-ws-client.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "6d9ff1db-7c60-437d-8b2f-d3580f172a1a",
+      "alt": "6cca693ec7b318cc28705993cf50b820c395f7efa65f754443cb775f146f40ce",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/daemon-ws-client.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "07554bbd-0a2f-49af-96dd-13d79e699098",
+      "alt": "b51c80f70694e0ed583f8f3ff9c3b4e2a7a397bcccf5d7ce4379c391802a0b43",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/daemon-ws-client.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "9c2f47fd-0828-48b1-a41a-91c961dd7abe",
+      "alt": "79b2a76c09e302b88314a38da9cbc0b8eabd4bc40c66c72fb5c30e40d568ed43",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/local-trust-servers.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "b6ea7f8e-70d3-49bd-ab07-39c4d7aa3698",
+      "alt": "750ae7f8d0f7c3a13f187a5c2d59cf9366a3d27875de59a828ef8fab9db5d107",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/managed-hook-harness.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "7d54646f-8ceb-481d-a777-9bbdb2015932",
+      "alt": "2ba841b6707e988ea8bbcef8bc5afe6746f869cfb68b8eed1217cfbf770643d0",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/openclaw-gateway-wedge.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "d314e3f7-4b62-41d7-8327-9df408fbad0d",
+      "alt": "e7f2423188e78ceeafcc2cafbdfda54237fe1646fde7ccfbca5f1d2e4ce2eee6",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/openclaw-gateway-wedge.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "67c0db5b-c7e2-4842-bc5f-7a1a63d2bc5b",
+      "alt": "369695efaae2b9609edde3b4e476940b47a793d1b093456be9d5ad0f3b87fc58",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/remote-reverse-e2e.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "78cdc6e2-e72d-48b9-b095-f895bb2ebb0b",
+      "alt": "b1517c76b69cfc95ce25a1c748153a2cb82ecc5008bcecc6e229959a7b70cfe5",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/usage-relay-fallback.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "fc4be146-fa81-481e-a65f-afb8de86f81f",
+      "alt": "4da4b5f52dbb80815c5736077b6f7778bbbe378797539ed3f6ec08f4c0384a1a",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/usage-relay-fallback.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "711cc7e0-7f56-4655-8f25-91561bec162b",
+      "alt": "3978561aedb1a360f3b4d843e491ac36553c3ff1f8974986c70186072f3de2de",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/usage-relay.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "ce4fd161-b2c1-4c44-b37f-ac196b74671c",
+      "alt": "ff7b802ac271da9f8ac32c436f87768db4345665cf795ede11cb3fb70598fb97",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/ws-server-auth.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "05e913b0-4df7-4235-82bb-bb193b5a7844",
+      "alt": "3157018fb94bc4f70a88635729881b79ef9206dcb4f05eaa09a288d572cacf05",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/ws-server-broadcast-actionability.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "9f76df91-0f69-4f2f-b503-ac711ece3563",
+      "alt": "ced71d1d42fa6a6bd16a16a6bfa063925426e1e994f86281af9836ce1251e13d",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/ws-server-broadcast-actionability.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "3c555e8b-3b07-4135-b4eb-ccd1bcecd090",
+      "alt": "d48f1fe7f76c0f6be81b2b2a694e69b70d4e76de835cd2cd8afa99bb6ab3a0d3",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "plugin/src/__tests__/bridge-client.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "5af9d5e5-9b31-45ff-a491-55fe90e55968",
+      "alt": "53d59ace7ebec91c8d6842e16759e9ddc31b68b6b1673c21b2f3bae4ad2a9f70",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "plugin/src/__tests__/bridge-client.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "93d8aa07-f95c-4847-be4a-7e5c1380c4e9",
+      "alt": "dfb9f9384bceeccd7defba345ab5f9625425f308e18a5d9d713147678f417f11",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "plugin/src/__tests__/connection-integration.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "dd51f4b2-78ed-4dfd-95ea-e996d168e2f8",
+      "alt": "82da4d6fca61e5fdd4700c416d3da95c802b1de0370daf7b7133d121b1551476",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/connection-diagnostics.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "6632e1ec-72bf-43f4-aca1-204e36222ccf",
+      "alt": "4815705d679d5613a704b09a06cc5d31aa65cd23952b9cab0ca984431f8f2687",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/pixoo-upload.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "bca049fc-21fd-466d-9f22-fa5a1fa2b176",
+      "alt": "c5be4257199e94ebfcc5045b651913faf7b270b442adddcb4ebcbbd0ce9d6af2",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "hooks/src/__tests__/hermes-diagnostics.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "e86ec6ca-91f2-4da7-a951-d408bb809a8b",
+      "alt": "507ca9be46831542beb732df0aa0c1381587c8cb5e75dc63075f2eb0ab68f637",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/local-trust-servers.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "2d79d903-faeb-4ad4-8edc-ed82efcb4516",
+      "alt": "fb2c98bd2e5cc6d4dc1409e22ab19e5514921a247bfb85b55ad979af62c06de1",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/local-trust-servers.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "4c05086a-0d3b-4059-abf0-6c55c6fab4da",
+      "alt": "146abb5ea82ae5e8c3d11364a8fc458c8a72cf5b6b8639a95c08a60ec84ceb0f",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/local-trust-servers.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "164972f5-42f7-474e-9a41-d4598b6507bd",
+      "alt": "8b861a9dbf5a223e5938ac4510fb4119103b555364577544efc3b38e29442518",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/session-registry.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "c3705ebc-49d6-401e-bd60-d40ff85ce5a5",
+      "alt": "95cd800374a26d7270ba6b5ac1a7ce2b78929520651d423bb3cd2bd5c95a8561",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/session-registry.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "57f2a027-ece3-4bb6-b905-07b71b60aa70",
+      "alt": "29fc08c957a112700d4fc3826c84c408051d4b38b9486270069d0b35fbb89256",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "services/dot-relay/src/__tests__/runtime.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "9e573edf-ddd3-4bf1-b7e6-b9d50658f94b",
+      "alt": "c0b12dc8d3a5d243c73e5ebfad9d1b3c7f70c3b33bd41f1d8ed7abda490ba478",
+      "rule": "javascript/HttpToHttps/test",
+      "level": "note",
+      "file": "tests/e2e/daemon-hub.e2e.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "b2545820-6389-4bca-bf6b-3c9fd472a13d",
+      "alt": "1b65bb165733f733560fbbd341a537366e6873c94bc4d6c7ac4b300284629506",
+      "rule": "javascript/ImproperCodeSanitization/test",
+      "level": "note",
+      "file": "scripts/__tests__/build-health-report.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "32a9ed73-ad42-4e85-a97f-6b52187f6dd5",
+      "alt": "6caa2e72b5f648ce64c00218b80c37aa2a68406e4528973bee2161c915f397c7",
+      "rule": "javascript/IndirectCommandInjection",
+      "level": "warning",
+      "file": "scripts/verify.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "8ebffc16-b156-4fe3-85bd-51e35d7d3688",
+      "alt": "adb2541430f4e540ea68a19d7aad8c06f370f4e8305872980670ec83bd2e9fae",
+      "rule": "javascript/IndirectCommandInjection",
+      "level": "warning",
+      "file": "scripts/verify.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "f077c55b-ad2b-4570-9d05-7e2f98a3d96a",
+      "alt": "7407604a21149e881e59ffa7252b51ad187b48f61c1d1b2686f029c03a92a2e1",
+      "rule": "javascript/InsecureHash",
+      "level": "note",
+      "file": "bridge/src/apme/collector.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "03a574b5-2baa-411b-a468-70a8a97b46c4",
+      "alt": "a31bcff1c15fa83e22bb5a9dae54e4057144ad618d6736e684ed7d17385e17cd",
+      "rule": "javascript/InsecureHash",
+      "level": "note",
+      "file": "bridge/src/apme/collector.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "b59eb881-7778-46d3-9745-bf3add06726e",
+      "alt": "3f664ceb3a2d8bd03662e73b466a6e2dd3dcb68c03ab32d7f6755c5b7b282b3a",
+      "rule": "javascript/InsecureHash",
+      "level": "note",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "c29d0746-a1cb-4e90-b825-237f766d6997",
+      "alt": "162cf060a91b532203bf5bfe6140ff569bd0839a6cbb61f22fdb6a155f0f55f1",
+      "rule": "javascript/InsecureHash",
+      "level": "note",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "8e70a6ef-2e4a-4a50-b72c-1475bd2dc83c",
+      "alt": "b2655f56a15b26baeeb93290ce8f38d3b11152033ef9e6eed22323ee412feefc",
+      "rule": "javascript/InsecureHash",
+      "level": "note",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "a88341bd-031f-4587-ae99-6dfb87bcdf87",
+      "alt": "0e6bf5550ec71ea880bab3568c47991eb97a9433a79f8aadf455c7cd9bdb4094",
+      "rule": "cpp/MemoryLeak/test",
+      "level": "note",
+      "file": "esp32/test/main_axs15231b_test.cpp",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "0a80a5ba-feb3-43b5-baef-91ee9f13081c",
+      "alt": "ed18cae7bbbddb8733ad5546d1066564da87e5e9b09cf11663d3ff19fabec7f4",
+      "rule": "javascript/InsecureHash",
+      "level": "note",
+      "file": "bridge/src/esp32-flash.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "2b94c192-42da-463f-8565-5a5caff3fa2c",
+      "alt": "b652df5f4330837d9d637aa2fea8eb5342f038b838d4c5469f67326dd085586f",
+      "rule": "javascript/InsecureHash",
+      "level": "note",
+      "file": "bridge/src/font-pack.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "cefab3fa-ee3a-43a2-b290-e0c074b2b6ac",
+      "alt": "6cab59c171d057acd0603878aedacbe40b85d399c13e88db880a6e70afb0b6b7",
+      "rule": "javascript/InsecureHash",
+      "level": "note",
+      "file": "bridge/src/learning-pack.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "53c609c1-9cf7-4ba0-923c-776ae5b8b00e",
+      "alt": "f590b91acab890e1749d6f8aa18ffa040042865f3eda38bb433dafd60b978dd5",
+      "rule": "javascript/InsecureHash",
+      "level": "note",
+      "file": "scripts/asc-release-media.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "26c2aa02-572d-4b0c-b18d-18c3392f050b",
+      "alt": "88f16e0ad50c8c2c84a85ac109edf528bd2319baa1eb64a349ab702bf6ee8a85",
+      "rule": "javascript/InsecureHash",
+      "level": "note",
+      "file": "scripts/asc-release-media.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "0776aa2c-0145-4f90-bae4-f7c0926669ba",
+      "alt": "7458f8eb498043fcc136c853b7622db50b9d998b3a4ba295ec2ab08ff241b5ab",
+      "rule": "javascript/InsecureHash",
+      "level": "note",
+      "file": "scripts/generate-streamdeck-profiles.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "95ab1549-a286-41d5-b1ac-a140f14a28e1",
+      "alt": "a045d44e533f7cd184424e7af060e762a4414d050dc197d8707d264177534406",
+      "rule": "javascript/InsecureHash/test",
+      "level": "note",
+      "file": "scripts/__tests__/web-flasher-flash-path.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "66c7e854-fae9-4315-bf4f-451c0338074c",
+      "alt": "8a24549aedddaf236cd11561da6dee6c13a1e7fa870194d7a895e2a78c850331",
+      "rule": "javascript/InsufficientPostmessageValidation",
+      "level": "note",
+      "file": "scripts/verify-packaged-daemon.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "9a174da0-37d9-47bd-b2b5-8a4e29cc15f8",
+      "alt": "18d751055c6f29cebdc8d889ecfb92fc0e1b00e1cf955cfc006fac271dfa4e50",
+      "rule": "javascript/InsufficientPostmessageValidation",
+      "level": "note",
+      "file": "scripts/verify-swift-codex-live.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "af1fd20d-4eda-439d-a40a-1d23f64645c4",
+      "alt": "23c1ca25c1f5807617b410b47c32c78526901edd98dbc886400f81848dfb20be",
+      "rule": "javascript/InsufficientPostmessageValidation/test",
+      "level": "note",
+      "file": "tests/e2e/daemon-hub.e2e.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "977442da-39a7-49d5-9d01-44a00f393850",
+      "alt": "9a32ae94d179bb7b2e20d9458974c6c5171edbee9b3f1503ee5df4e51057dceb",
+      "rule": "javascript/InsufficientPostmessageValidation/test",
+      "level": "note",
+      "file": "tests/e2e/daemon-relay.e2e.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "3dc34c9d-82ad-49c1-9fa4-52b5eb6d76ad",
+      "alt": "61ae06bf2c578e8f644c19dd8b511b30cdff28e6913d117d22b36390cf4442f6",
+      "rule": "javascript/NoHardcodedPasswords/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/esp32-serial-node.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "3c1fba3d-26b9-4bf2-a637-415cc6e11adf",
+      "alt": "d4971a2caa8a21d5350c77fb1a4d90939c11d44f8c289c7817e8333787a4139d",
+      "rule": "javascript/NoHardcodedPasswords/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/esp32-serial-node.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "71b9f9f9-239c-4b7b-b594-2ffaeeaf269f",
+      "alt": "abb0ec87382c41e577a14b40d64c4759f725fa7b1bd97cbc604c110eee6c8829",
+      "rule": "javascript/NoHardcodedPasswords/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/esp32-wifi-setup.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "e48bf1b2-7cb8-4f18-adb6-c616e0b0a733",
+      "alt": "26bb3775778b01b9935a868e0538aab4e6fb1db57c9a2fc8fddec81eaba4e233",
+      "rule": "javascript/NoHardcodedPasswords/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/wifi-config.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "1f7efc7e-0be2-4865-beac-12963a94c578",
+      "alt": "9aa662ae276ca0c462279457dab5bb5bed24d4fa6c81dd3f54d38aba4351250e",
+      "rule": "javascript/NoHardcodedPasswords/test",
+      "level": "note",
+      "file": "tests/e2e/daemon-hub.e2e.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "6ce5e52c-75ee-416c-a573-7b332a0b4350",
+      "alt": "9664acbdb9ae9daede851d330c72cc9e0f2727f47de6c0ebd942af8204cdabff",
+      "rule": "javascript/NoHardcodedPasswords/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/esp32-wifi-setup.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "013bdcdd-4cc0-440a-be00-9e0ee00441e7",
+      "alt": "83dce63a6fafef985392870cdd977be7cc078406f09fab0439dd394ad71a3c55",
+      "rule": "javascript/NoHardcodedPasswords/test",
+      "level": "note",
+      "file": "tests/e2e/daemon-hub.e2e.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "9644bcfd-4497-4e2a-ae21-6436e3f18a43",
+      "alt": "af49e489391771c436da0f5c581987ed39a5b26b46e7d79b22d3b92a65192b15",
+      "rule": "cpp/MemoryLeak/test",
+      "level": "note",
+      "file": "esp32/test/main_qspi_test.cpp",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "fb01764c-f165-4e4f-becd-ba2a79c470e2",
+      "alt": "d0b0da529f4fdf1a9334ffc7f6d16f9295550ba31d67e2daff86dfeebe2633f8",
+      "rule": "javascript/NoRateLimitingForExpensiveWebOperation",
+      "level": "warning",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "0ded77fe-c2ab-435a-87c0-0dde47bcd669",
+      "alt": "c109144114a1681de10a2d5e0683da912c65bd0d2911909bc59a83d23bc5ba79",
+      "rule": "javascript/NoRateLimitingForExpensiveWebOperation",
+      "level": "warning",
+      "file": "bridge/src/hook-server.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "bf66acd7-7978-46f3-bee5-77df9c479a29",
+      "alt": "8a5b0e496fa5b4e46f815dbed0683d518dec967c0594bea853ed576d3eac00ee",
+      "rule": "javascript/NoRateLimitingForExpensiveWebOperation/test",
+      "level": "note",
+      "file": "bridge/src/__tests__/daemon-checkpoint-handover.test.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "dfcc5afe-0bbf-4300-aa08-6f9843d9a0c4",
+      "alt": "02517195d4b4b2137014caf19fb7783ca912ede7d59d2273f75583d78c6f3470",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "bridge/scripts/build-fm-helper.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "aa025868-e4b1-4f32-ab9a-8775de3f7fa0",
+      "alt": "95bf0f40f6ae202c443b3a937908070f85bb5572d2d7c88df4d272b8b96ae155",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/apme-serving-normalized.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "1b4d8783-08a8-49ce-b22e-4ab9dd118cf9",
+      "alt": "53b02f3d066faf94d3ba6c598af175acd023166532b43884b41cd14de6052d50",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/apme-serving-replay.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "4c5f60df-0ee7-47dc-9ab4-78c4f7fed2ff",
+      "alt": "78f02fef10e30c99a10f0faa338b330b904d5fa7b02ddecb993e05e5276d6929",
+      "rule": "javascript/PT",
+      "level": "error",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "False positive: the path comes from trusted local hook input or a server-chosen staged firmware path, behind the auth gate."
+    },
+    {
+      "kind": "code",
+      "key": "43a343ca-9125-4cd6-834f-58fe02706ea0",
+      "alt": "ca5e8b2f1025b008b9edf0cf4907b4f06e4f40b9081917284e6fd5c41b38ecaa",
+      "rule": "javascript/PT",
+      "level": "error",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "False positive: the path comes from trusted local hook input or a server-chosen staged firmware path, behind the auth gate."
+    },
+    {
+      "kind": "code",
+      "key": "54b71644-a79d-4a1b-9482-ef933c7b88d5",
+      "alt": "bbf7a15891a8f9fb36e309c69d36b74ce9f7837f91fd0038e17314b3a940a487",
+      "rule": "javascript/PT",
+      "level": "error",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "False positive: the path comes from trusted local hook input or a server-chosen staged firmware path, behind the auth gate."
+    },
+    {
+      "kind": "code",
+      "key": "1c57dbdb-47e6-4cb3-8422-b77be9c7fafc",
+      "alt": "553f285c452de71e610b821d7d67eae81582854db30d2362e543008b6e0f5f1d",
+      "rule": "javascript/PT",
+      "level": "error",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "False positive: the path comes from trusted local hook input or a server-chosen staged firmware path, behind the auth gate."
+    },
+    {
+      "kind": "code",
+      "key": "8fb7457f-1975-4bb5-9d07-d8eaef6aec4d",
+      "alt": "205162ca7e552adb7c1a48b7c42a85c6426a4eb133989a04bef6ddf69fc97c08",
+      "rule": "javascript/PT",
+      "level": "error",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "False positive: the path comes from trusted local hook input or a server-chosen staged firmware path, behind the auth gate."
+    },
+    {
+      "kind": "code",
+      "key": "3b683991-75af-4e00-a4c0-f2cd0f85f8c0",
+      "alt": "c9ffe7e433106c9719fa2c551a9abb003c4bbd2a2252f423bce1eb2d35466727",
+      "rule": "javascript/PT",
+      "level": "error",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "False positive: the path comes from trusted local hook input or a server-chosen staged firmware path, behind the auth gate."
+    },
+    {
+      "kind": "code",
+      "key": "0e1c5fb1-3bff-459c-be61-f3e0a6eda8e5",
+      "alt": "d84df889a81394c0f0966146ebec91cfadb0b1e07343d974cf6740cb8a55f3b8",
+      "rule": "javascript/PT",
+      "level": "warning",
+      "file": "bridge/src/esp32-flash.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "31a4fad4-fdec-44ac-92ac-d7319963e276",
+      "alt": "a897edd4c2c611806461523e797139fa38458af9eb56df12a2a3021d34861b25",
+      "rule": "javascript/PT",
+      "level": "warning",
+      "file": "bridge/src/esp32-flash.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "0e67d65f-da23-4a8f-a6f2-3e04ced444f3",
+      "alt": "6d764c9ac7f3da708997ce5940c62728898583ace358a708f67c40b1beb71989",
+      "rule": "javascript/PT",
+      "level": "warning",
+      "file": "bridge/src/esp32-flash.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "4795252c-69f3-45da-bff8-65377f92dfc4",
+      "alt": "b37e8166161891043df2749ff924e9c2110be645530071fc7d5b17a81b915250",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "bridge/tools/evaluate-device-voice.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "2566dd75-7ab9-43d0-a247-a6e5f04fbbc6",
+      "alt": "056699fa721c144fae63bd2e4cf5988079ef8513c39af5958879c7bf83e5fba1",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "bridge/tools/evaluate-device-voice.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "a1a59636-98d0-4fef-8b6c-79efb46b1f42",
+      "alt": "c35ea09cb1aa964ae2e87e8a7d7623528c41b52578c1d0e81384abfe336e0b25",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/patch-quicktype-swift.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "730f723d-7c0c-4d0f-8928-d0816a129d4d",
+      "alt": "c296321c9060ffe6b435e9d23e4cef194d006f505a8c77245d265c0af720f142",
+      "rule": "cpp/PT",
+      "level": "note",
+      "file": "esp32/sim/src/sim_main.cpp",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "754479cb-39f7-40ea-b2a3-b877bda73ede",
+      "alt": "10776b35496f51d1bae42a291920c5d522fb4383b6848b0f4baab2920737ec6b",
+      "rule": "cpp/PT",
+      "level": "note",
+      "file": "esp32/sim/src/sim_main.cpp",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "6c2becb5-1e01-4eb5-9c9a-b73dbe304af6",
+      "alt": "00bdfd25269cdbcdc2c7591ffd579958628fab63148271ab3cacf0a2cb4952dd",
+      "rule": "cpp/PT",
+      "level": "note",
+      "file": "esp32/sim/src/sim_main.cpp",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "86309c4f-77fc-4347-9c4d-bdf5aa8f4807",
+      "alt": "4e05c110273047ea820138528fecdececa64db0d53e62e8b2fa283721a275a11",
+      "rule": "cpp/PT",
+      "level": "note",
+      "file": "esp32/sim/src/sim_main.cpp",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "0b88eec7-26e8-43c3-b32f-0730fd238f68",
+      "alt": "38b49b286ad4f6e59ebd4494f1bcd1a7fb228a9ca03acae64931806f07a19e14",
+      "rule": "cpp/PT",
+      "level": "note",
+      "file": "esp32/sim/src/sim_main.cpp",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "8fd72cc3-daa4-4e35-967a-8c2bf8db98cf",
+      "alt": "202f9777efb7597a192f1abfd9cb26e9340b5a4332098fe6de0bb35d7834c780",
+      "rule": "cpp/PT",
+      "level": "note",
+      "file": "esp32/sim/src/sim_main.cpp",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "4a6ad651-180f-4d4b-8458-f794e9c5a580",
+      "alt": "571a650ecc6e266605001507dc32382b3c0fe1c5c3d19c512a734b7b696f4b85",
+      "rule": "cpp/PT",
+      "level": "note",
+      "file": "esp32/sim/src/sim_main.cpp",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "57b9f6b3-67e4-4515-b4be-a9b9883be7a5",
+      "alt": "8afd05a1fc78dd6f3ecb7e303835322e29d2b4e2a15eb1a880c3c3c1408a44e0",
+      "rule": "cpp/PT",
+      "level": "note",
+      "file": "esp32/sim/src/sim_main.cpp",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "d56fd2bc-b957-412b-a30e-1227c01bc536",
+      "alt": "12238d6b4d3c0081dc6b1dd6ff13e16cdff72b276d63988a13794b3049ab7da4",
+      "rule": "cpp/PT",
+      "level": "note",
+      "file": "esp32/sim/src/sim_main.cpp",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "73893841-fae6-41a7-a394-9ad7fd3985b0",
+      "alt": "9df8d646eb7e0ccf368f815ba48abb9e9a73cbaf54cb89c58707bc0e585c3c56",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "bridge/tools/evaluate-device-voice.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "43c75d40-5f98-43c1-a641-659fbb3e2350",
+      "alt": "fde3bcdfdb8abbd0f4a2d276ae6232669639345a834ce04bf911df4aab5b2024",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/patch-quicktype-swift.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "d533827a-b0be-480f-bfa3-bca21b0cbb54",
+      "alt": "6549e6cb31ec97702c50d70756f788ed1c77f13ac7606573faa73401402ffe16",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/verify-packaged-daemon.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "e084dec0-296c-4c18-ac9c-da6a15370039",
+      "alt": "39b39bac91ea4be9d0aeda1b395381bc4ef0536bd1d2fad13ad03cc2b2f723a2",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "plugin-ulanzi/src/vendor/ulanzi-api/libs/randomPort.js",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "d9006f29-2a83-45ca-b3c1-18c8e5a388bd",
+      "alt": "93347c1c4c91fa61d0f53313de68e4c713ba0e5d9588c1c71fe21d8b21a7257c",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "plugin-ulanzi/src/vendor/ulanzi-api/libs/ulanziApi.js",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "ffa2b51e-40c7-40f3-a142-e9ded8108b76",
+      "alt": "a2ea012071a165b799163c7b4913a4caf1504c2dec2c03f3fd8928e4f8a61fe8",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/apme-serving-boundary.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "951c5a65-c033-40db-8a50-93e362cbe381",
+      "alt": "7582ac3842db574e8056ddf2480c777e5644f655829333d46ca0ea00cd84864d",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/apme-serving-boundary.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "8eb768cb-37c7-4f49-bb42-43519746e98f",
+      "alt": "2f9b2274d1e93b9887a086d5913faea76edb887174ddc7b1ab0ceee9d2e5f561",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/apme-serving-normalized.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "d44dbede-5667-413b-bb14-8910f49a2e34",
+      "alt": "f5bbb60451a47469a7a15e57c352a3dbd8e082dd6368d82966598999ccfb1542",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/apme-serving-normalized.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "370c5fb2-337a-40be-9eb3-54f61569a060",
+      "alt": "e917986408bec29e1619c193a7b958457f81f6f030878c1f1bfe54ef2f7e7a8b",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/apme-serving-replay.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "39a79ddb-4465-4683-bac1-a863ac991ef3",
+      "alt": "82fe5d49dfd9871f306987d2884193656d49e52931870504b3ddd4e27ae0d1fc",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/apme-serving-replay.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "9ea76064-421d-4e72-a841-fb2cc021aabe",
+      "alt": "e78fb56ba6e29f5c4551ef15081a7a2517573df4efd1d9cff2e8756d18c4ef74",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/assemble-store-product-previews.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "0c3b04f5-2446-4bab-9b3b-26f1072140a5",
+      "alt": "0144ab2a7e769e95c8db7a330137d04c41f8b5614aab8f0c0cba9d9ea26e7283",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/assemble-store-product-previews.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "1d9d4914-615c-48ed-bacd-eef8f4c70774",
+      "alt": "3aadc4027f153eed8515a39c8b628e1be31b2f108ec2472b80e0afda0ba095e7",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/fetch-flash-firmware.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "a9046a75-b224-47f4-9553-018ab8c15a65",
+      "alt": "e9fbbb839c42cc28e3f64b34953c5710b87caa81b40207f771ae19e8824ebf40",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/fetch-flash-firmware.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "01c749ee-510a-4818-b7f5-36bbfb63d0c6",
+      "alt": "c81610c54c98a943c1efc7e7887d552f2286ee1956a9042cc2f19fc5630c17ba",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/snyk-monthly.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "5c6f3177-4dfd-4289-bebb-f760f185519b",
+      "alt": "202f937c81d301efa43dd9397b27f03aa4e21a63f22712929989cc42739b6f42",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/apme-serving-boundary.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "1d15841b-ffa5-4553-bc0e-8bccf2f6789f",
+      "alt": "6ab6af5f836aa22959baa030004428a3f32a40edd26df6341d71c0b6e8347504",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/apme-serving-boundary.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "d72115b2-71b4-4b30-9a31-c7128d69fe89",
+      "alt": "eafffe10a38dfe7c62a95c6e3793e2e2c92ef2133b9088d8f31bf4d862854796",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/apme-serving-normalized.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "ceb9897d-b263-4d1a-886a-e708dd4f36a8",
+      "alt": "d02e27181663c0e92037e2fae35d409d679a386ec1a0ee8aca3112c99df01f7c",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/apme-serving-normalized.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "763bfaa3-283c-49f9-a83f-3b03d1ea7b2a",
+      "alt": "05cc475ad2bd7cb3cd1e02705174003c6bf9af07e07eff29cb5d6ead7519821e",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/apme-serving-normalized.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "8ea8f03b-efbd-48d9-8542-c450a368d00d",
+      "alt": "0cc79d5c31d0fbfa92a128c7b33873549d8d086100677f77d441e7c8fc094f72",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/apme-serving-normalized.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "5e95a1f8-c31a-45cd-b5de-5b160792d4c0",
+      "alt": "06d5ddc734fecf0dcdd7d9b21a2bd46bc9a4448239f64d3723157916c46eab48",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/apme-serving-replay.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "1c8478ac-5b86-4ce1-9172-86f038792a06",
+      "alt": "76c611985cb6270e2c3ee1f3ad93f4004c94c38f31a01773d64dcf0edf887af2",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/apme-serving-replay.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "7e559364-7e8f-4d4e-a06d-ecc2744b32cc",
+      "alt": "423b8a0c1e09de7238a01afd5eef9da61db01c875aee72f945c83197ec65a3ee",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/apme-serving-replay.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "7efb5ed2-823b-487d-9cf8-e171da1e527a",
+      "alt": "51c74bed16a53b1211529d882d874517b7a07225019c582e68db55bba86d4119",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/assemble-product-tour.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "8e43c2fa-5bbb-4409-b331-473e0556eea3",
+      "alt": "000ccfae0af285f843eed96bfad7865cf3de325657e04063a92a004c5abe3a0e",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/assemble-product-tour.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "afebaf02-af78-4365-aa44-82a369573924",
+      "alt": "2813ba21d6f36facc01d9f296a509892a29381a2d55dfcf06538d08ccbd5e420",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/assemble-store-product-previews.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "adf3a92c-4ea3-4d20-9b02-6777345fc460",
+      "alt": "a46d1188621c665584eb046eac93f4117896cc78e46079d784f1495603378104",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/assemble-store-product-previews.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "d6d1757b-7e65-41a4-820b-d20d4dc48dc6",
+      "alt": "bed1d9fb0c212183d4c7d5bcc71e6d11354fc43aa302bdadbd70b555c420f4ff",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/audit-android-runtime.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "bd04eff0-2c11-464f-a4dd-74bd6427e536",
+      "alt": "acce095ddb4d1e6612e150ad8bf4e53f0b024bc7a973a7e28c6da2e4ea202e69",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/fetch-flash-firmware.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "5d271c50-81aa-4e69-98bb-9e8c8c7d1221",
+      "alt": "a8ecb562fd1859993f468739922617eda6cab86346cc0a0db366b12932b592e8",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/fetch-workflow-status.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "7ce1e353-3480-4443-b307-bf23fc4c6eda",
+      "alt": "ed1b7df52c556034dc12053b51390e9218e1f6a5f17b313665744a7ecf103e9a",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/generate-flash-third-party.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "436e8e49-a90e-4862-a332-50febca3940b",
+      "alt": "47efbc93fdac23452db15e3a28f5dc4f68d8e096eb5a30b9fd07367aac34466e",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/render-product-tour-keys.mts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "884b5170-be4a-4158-87c4-577678cdfd3c",
+      "alt": "7e6e1bb21aa8398a2e7e878e75877e057856c477216765a3bb11b71cd2eb5307",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/scan-agentdeck-tokens.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "8ac8be9b-292f-4246-846e-2a90b73000c6",
+      "alt": "ef1c512d0b0a7a6aca802059c829d3080489f0ad6c8e5d598491fe17a67b2350",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/security-audit.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "a5ee8884-8170-4809-9299-fc2450ef0614",
+      "alt": "9e634d34c41ab8043b9d79c12263e88dfcc14c5a882bdf38a31198235a7959df",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/security-audit.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "6a6b8c81-0c8d-4e36-887a-41226c4d28dd",
+      "alt": "37cd09b5eca0fe4199ffba7d2c59351878efeaf8a7ad783a06795250c9d2b289",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/security-pipeline-health.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "8e080068-ee52-49ea-8852-05b5230e824f",
+      "alt": "c261c7e44bda4950357bd2adf2ce3add24858e076ac5111bfc9e5f69f14d982e",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/snyk-monthly.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "0e6e92ff-b06c-4994-8cb7-ed8f23779367",
+      "alt": "fdbac46c74665accd252dc1f3e7448c9fe745a86647406e34f9ebd9c9f0dde32",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/snyk-monthly.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "98312e2e-16c0-4337-9cb6-a70fba584d9a",
+      "alt": "9900a6aa4558be1748e1c38d3ed5342b32513e405bd3f8999d2099646e5b5e23",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/apme-serving-normalized.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "53a47978-b17a-436e-8fbf-d661f50205d5",
+      "alt": "63d3581d2f4c777ac3c294e83ff98cdddda86d62e10d6639275ddd01ddf14d5d",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/apme-serving-replay.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "8d394a13-73c0-4284-a1ca-6ad49d8ce6ca",
+      "alt": "a836be89bc146a7ae08d1d1c1c7c141823c59888bdd40cca4c4ee30cbb6df886",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/check-native-palette.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "43a8d067-8b19-4a52-951c-1cb8bd01732a",
+      "alt": "da56f8039a46a0b4eba4afcccd9f5bbddb23b56aaae670a4ae8bf900447a7aff",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/check-native-palette.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "0a7a1dc2-6dc9-4ff9-b945-31f97aab0f9c",
+      "alt": "32da3a07ceaeafe6d9523d90568d12d6045c95d092f171e34a3ecd345fb4ce76",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/generate-firmware-manifest.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "2a3cc5e3-ccda-41fc-84ab-f832b9551133",
+      "alt": "e55ff10e4e39665193e1960cfc43b6d2877e2540111e64752b6f2fdae93eab9d",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/render-esp32-release-notes.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "bcdd7d5f-df85-4528-b6b2-ecfb731a402e",
+      "alt": "5c18466441f7fea053a952e3d79f2d6f9c37bc05bff92643302d2014842c7df3",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/check-native-palette.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "0e68a99a-2653-4d33-9f82-73a598ff6a42",
+      "alt": "701903b437b3d955c12b275e16afe5cbb6177ab6a54a0467af51eecc2225589b",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/measure-apme-classifier-backends.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "f397e687-d1eb-46b4-941f-24b926001303",
+      "alt": "2d63a53aa396a7d592fb551421d4f74bd53d570a43325d82d426ea0dd7e4df69",
+      "rule": "javascript/PT",
+      "level": "note",
+      "file": "scripts/verify-daemon-lifecycle.mjs",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "7306c164-9aa5-45e6-b059-82288b948510",
+      "alt": "4e89fb7fe71636397efa4f7da7a6497f4934e864dad211f969f74a744fc1ada6",
+      "rule": "cpp/WeakGuard/test",
+      "level": "note",
+      "file": "esp32/sim/tests/wifi_bridge_binding_test.cpp",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "dac4ae74-134d-4dfe-b17a-0a8716c5f85d",
+      "alt": "0d8a3f833b11802d71e13df6a97ea8c04959a8c3d460b74c3de7d59774c001c8",
+      "rule": "cpp/WeakGuard/test",
+      "level": "note",
+      "file": "esp32/sim/tests/wifi_bridge_binding_test.cpp",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "b8197c7d-4c64-47e4-b0e8-798ba9f225ea",
+      "alt": "342b2893e161d4b2baa4b90ec1e183730f8f6e5646574aecc3ad0adc97f3710e",
+      "rule": "javascript/ServerLeak",
+      "level": "warning",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "d6388dd4-03b4-4c80-83e2-0cf3760b167b",
+      "alt": "21fd333e53082bd7b9185ae7aeaa4d97379686449d1ee013d826f381eea6319e",
+      "rule": "javascript/ServerLeak",
+      "level": "warning",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "0be2b050-df58-440d-aaaf-0cc40be13650",
+      "alt": "912bec4fdc3ee47c8181083d916fe0d681546d9b611118732064d53cd1248230",
+      "rule": "javascript/ServerLeak",
+      "level": "warning",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "24e884b6-ebc7-4c8f-b4a8-962c8c961941",
+      "alt": "9539fb04bbd0448270ea1d44e6dbf3cd47328683143cf1a1a9a280a2ac9fd1e5",
+      "rule": "javascript/ServerLeak",
+      "level": "warning",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "87d8efe9-5f02-4d1e-87ce-6c5ee23c5b15",
+      "alt": "8cd4f834710b6364b1c14e20b572709b5ff7a916b4ed945543c4a279858fd7c2",
+      "rule": "javascript/ServerLeak",
+      "level": "warning",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "282b1995-dedd-42fb-bd4e-8cd4c4fa929e",
+      "alt": "fa26755df50eadce3f0f359f1f10e64bcf749f17f77b3fa33661357ad9b3f1fb",
+      "rule": "javascript/ServerLeak",
+      "level": "warning",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "38ef774b-26e4-4d78-835d-ce8772488cdc",
+      "alt": "12ce1fe98b538e15258c93b2e59f9bb820804b55b574b5b81f1e114d72e39062",
+      "rule": "javascript/ServerLeak",
+      "level": "warning",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "93f3ab41-3cdb-4c10-9d27-4302ec5ccf3d",
+      "alt": "a349ac42433aae83b7f2ba51ce6bdf3076060f30e48cb0c2d9057c7f31cbc8b9",
+      "rule": "javascript/ServerLeak",
+      "level": "warning",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "e02d1daa-5b7b-4db4-b87b-2c2b675c4dca",
+      "alt": "3fcaf1aceae76f4e1148f8a7c709feb099fbed8b6fbca481f261d43de04b8707",
+      "rule": "javascript/ServerLeak",
+      "level": "warning",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "165d051e-0092-4511-8c35-e38ed2ca9d61",
+      "alt": "b4c5de17d98ffff7bcc055012a3cd626954626c0d149070cb9ac410ac1dcc82c",
+      "rule": "javascript/ServerLeak",
+      "level": "warning",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "1b5e9e90-2c80-42a2-bae7-00161b74edc3",
+      "alt": "a20492a59a8ee2ad18ff32e5375eed854b596dac145502c8f2350c6524572861",
+      "rule": "javascript/ServerLeak",
+      "level": "warning",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "447b9266-e5a4-4dbb-9263-67b5ff8d336e",
+      "alt": "24c66d4cea77e5313fc2db33e7fb3d7611904d8bc26f7ec87e329655aa24bd1e",
+      "rule": "javascript/ServerLeak",
+      "level": "warning",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "dc2ac88c-2f4f-487b-abcf-793828045135",
+      "alt": "76f240c4d5abc4d2c0da19e69ab7b276938421ce6258dc1dadf3a006575c43eb",
+      "rule": "javascript/ServerLeak",
+      "level": "warning",
+      "file": "services/dot-relay/src/oauth-http.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "ad06d3b0-47d4-44e2-ad5d-d42bfdf208f8",
+      "alt": "d3fe6ab026342427b546bc44e3e0abdee7e8985f216532f5ae2aa1e98bc0942d",
+      "rule": "javascript/Ssrf",
+      "level": "error",
+      "file": "services/dot-relay/src/oauth-http.ts",
+      "decision": "False positive: the OAuth client metadata fetch is limited to allow-listed HTTPS hosts, with no redirects, a deadline and a size cap."
+    },
+    {
+      "kind": "code",
+      "key": "3473dc32-c6e6-4c1f-b678-30a17720681c",
+      "alt": "326a33dd9243543e29c5a318b33904a1c54f3727659b374e7fd40ae6baa57338",
+      "rule": "javascript/TooPermissiveCorsPostMessage",
+      "level": "warning",
+      "file": "docs/design-mockups/deck-stage.js",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "71622dec-e586-4910-96a5-339b7dbeb4f8",
+      "alt": "2ce7222a78e3407d8fefc400c4f9e67930a1b58f513e396e6661573d76afd461",
+      "rule": "javascript/TooPermissiveCorsPostMessage",
+      "level": "warning",
+      "file": "docs/design-mockups/deck-stage.js",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "3a567070-392c-4667-91c2-3c7b363f6afb",
+      "alt": "22aff24cd0cc8c5810b32281490af5f4ca30f2205b7cd2627c5cc74f1d7dce49",
+      "rule": "javascript/XSS",
+      "level": "error",
+      "file": "bridge/src/apme/http.ts",
+      "decision": "False positive: the response is application/json or binary audio, never HTML."
+    },
+    {
+      "kind": "code",
+      "key": "48535f0a-078e-434a-badb-3be970a186fc",
+      "alt": "d4de3f95710a95d027c04380fa99c072f518ff58b186e2eb7827fab627357f22",
+      "rule": "javascript/XSS",
+      "level": "error",
+      "file": "bridge/src/apme/http.ts",
+      "decision": "False positive: the response is application/json or binary audio, never HTML."
+    },
+    {
+      "kind": "code",
+      "key": "0be04398-a775-46de-9af9-f4b670b62bde",
+      "alt": "967da0ad859a6c21f40697b8375035e76370fefb93c52097486242d41bcfc84d",
+      "rule": "javascript/XSS",
+      "level": "error",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "False positive: the response is application/json or binary audio, never HTML."
+    },
+    {
+      "kind": "code",
+      "key": "a6dd0f08-d483-4bfc-b6bb-bfa49ff9fc2c",
+      "alt": "efc08c71c14e513105d41ff58f98885aa0f9116590743480953d9a372182d992",
+      "rule": "javascript/XSS",
+      "level": "error",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "False positive: the response is application/json or binary audio, never HTML."
+    },
+    {
+      "kind": "code",
+      "key": "bc43b7e1-dff1-430d-af00-a38fe7924dde",
+      "alt": "e2099ef4f28dffacbc5c68a876d7faab71167857033d97e16695207afadde31d",
+      "rule": "javascript/XSS",
+      "level": "error",
+      "file": "scripts/product-tour-fixture.mjs",
+      "decision": "False positive: the response is application/json or binary audio, never HTML."
+    },
+    {
+      "kind": "code",
+      "key": "0d293b1c-3a59-4fc9-9c23-19bae9ab0bd2",
+      "alt": "7d15d03cd07aed486711e07efc593cd0d0cc84a021b7d9bc8ea3a0eb3a21681e",
+      "rule": "javascript/XSS",
+      "level": "warning",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "58c05d4d-2746-4e7e-b0f1-3b35648008d5",
+      "alt": "2837a9508fed750f3c86eea88abc49f8357a60fe666c4bf49012330d7d5a7e97",
+      "rule": "javascript/XSS",
+      "level": "error",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "False positive: the response is application/json or binary audio, never HTML."
+    },
+    {
+      "kind": "code",
+      "key": "625d6957-32c2-4a6c-b96d-5cf9a643d715",
+      "alt": "d7900d6125441622dfc3ae3487f749fc48b6a1af85ab1b9f73f7d929efef3f8b",
+      "rule": "javascript/XSS",
+      "level": "error",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "False positive: the response is application/json or binary audio, never HTML."
+    },
+    {
+      "kind": "code",
+      "key": "ee08c06a-091f-40fb-b48a-37ba033bd94b",
+      "alt": "3884f285544e0a430dad2aa96f959cea9d27c13363956050f5561ac1cb2274ee",
+      "rule": "javascript/XSS",
+      "level": "error",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "False positive: the response is application/json or binary audio, never HTML."
+    },
+    {
+      "kind": "code",
+      "key": "ab9ef2b1-ec52-4b37-8129-7231ceb021eb",
+      "alt": "623d4d2519c75b956b6c7586dc804e0f5ff6b6a3c2a32599fafbfb2c80932212",
+      "rule": "javascript/XSS",
+      "level": "error",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "False positive: the response is application/json or binary audio, never HTML."
+    },
+    {
+      "kind": "code",
+      "key": "47e0f51f-1fa9-4fa6-aa96-a4070ba88dcc",
+      "alt": "36699692648ec3942958c6bc01ed007687b22b527600862e0986801a4e12e283",
+      "rule": "javascript/XSS",
+      "level": "error",
+      "file": "bridge/src/daemon-server.ts",
+      "decision": "False positive: the response is application/json or binary audio, never HTML."
+    },
+    {
+      "kind": "code",
+      "key": "31e259ff-123d-46fe-942b-fe986add3a0d",
+      "alt": "fd0656f5665e04201ffea61058be63001f4731cafe039d1a10e1b86a27058a82",
+      "rule": "kotlin/InsecureHash/test",
+      "level": "note",
+      "file": "android/app/src/test/kotlin/dev/agentdeck/net/BridgeConnectionRecoveryTest.kt",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "bebaa6a1-66b1-4369-a6e3-d01285c6f4cb",
+      "alt": "446115454767f347c4f8c4e8ea72369fec8382ad6301e8463435d23b2a244b1d",
+      "rule": "kotlin/InsecureHash/test",
+      "level": "note",
+      "file": "android/app/src/test/kotlin/dev/agentdeck/net/MultiDaemonConnectionTest.kt",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "cafac02a-4ad9-4634-8e1b-b0e13dc6321e",
+      "alt": "e2872f38cabc8b108dc698f14631ee188cabe738d458bff8062959b7a5428e7d",
+      "rule": "kotlin/WebCookieMissesCallToSetHttpOnly/test",
+      "level": "note",
+      "file": "android/app/src/test/kotlin/dev/agentdeck/terrarium/renderer/EinkAnimationTimingTest.kt",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "8e621745-5ed2-43c5-a9dd-bcf9580e2e57",
+      "alt": "db52c9dac9996d4c2ce73a927424dee216e3afe2a6e2e7daf5ec16dfce0467ad",
+      "rule": "kotlin/WebCookieMissesCallToSetSecure/test",
+      "level": "note",
+      "file": "android/app/src/test/kotlin/dev/agentdeck/terrarium/renderer/EinkAnimationTimingTest.kt",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "50a5f47c-fd07-490d-af28-4f60bf45d3ed",
+      "alt": "e93a95db4f8bc0d4c449e5b8ae7de719cdc7667c263f565c69c8e3a31ae7f221",
+      "rule": "javascript/DOMXSS",
+      "level": "warning",
+      "file": "apple/AgentDeck/Resources/apme-dashboard.html",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "02b662d4-9676-485f-8a93-2358b0d98529",
+      "alt": "008ff15d6c9555258f1206fd1fef82fb6be020dec57e9082f88128498e509470",
+      "rule": "javascript/DOMXSS",
+      "level": "warning",
+      "file": "apple/AgentDeck/Resources/apme-dashboard.html",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "db9e2bac-1e6f-4ceb-a4e6-98bc2f8e6aa1",
+      "alt": "cd870e121c63534822febeca2738f39f7e79c20561003a13daa22c1ec3dcadf0",
+      "rule": "javascript/DOMXSS",
+      "level": "warning",
+      "file": "apple/AgentDeck/Resources/apme-dashboard.html",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "f2ac82ab-eef2-43b1-ad6f-9db8cebf75a4",
+      "alt": "7eb667645d040e7091e94b1c7f17fc9371d696fec0645648011991b3955f553d",
+      "rule": "javascript/DOMXSS",
+      "level": "warning",
+      "file": "apple/AgentDeck/Resources/apme-dashboard.html",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "5b3df16d-ce15-462f-ad20-2471e70f41e2",
+      "alt": "331fb5dc73d3587bfa4fb7776a85570e7d4d6662e4b0537bf11da5aeeac91a12",
+      "rule": "javascript/DOMXSS",
+      "level": "warning",
+      "file": "apple/AgentDeck/Resources/apme-dashboard.html",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "0ac79580-47b3-43ed-9252-140eb7b6f2d0",
+      "alt": "57b1bd3676cf2ef3a1bc5dccb8f693d0f8d013ca24731d648e898106a3512fd3",
+      "rule": "javascript/DOMXSS",
+      "level": "warning",
+      "file": "apple/AgentDeck/Resources/apme-dashboard.html",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "54045da8-f0b7-4fb4-a620-ca5962c70cc8",
+      "alt": "de4d03155cbd9407f708ee225345e6ebe35bb74e82e70bfde599202f1f2722e3",
+      "rule": "javascript/DOMXSS",
+      "level": "warning",
+      "file": "apple/AgentDeck/Resources/apme-dashboard.html",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "2c2c34d6-c3c9-4764-bdf2-f2a2b857d209",
+      "alt": "3f0770ed7960efd6dc1615b7da058d2d40bb07c8e4676e12719bbdc332398b85",
+      "rule": "javascript/DOMXSS",
+      "level": "warning",
+      "file": "apple/AgentDeck/Resources/apme-dashboard.html",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "d027c59d-ca3b-4da2-96c2-6b3f72638101",
+      "alt": "e40f21d372a77b60ae65630b455812c577f9734d7d42645cc4050f252b13506f",
+      "rule": "javascript/DOMXSS",
+      "level": "warning",
+      "file": "apple/AgentDeck/Resources/apme-dashboard.html",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "3ca60c4f-2013-4ed3-a3cf-83b23df5f0e4",
+      "alt": "9d88a4b99bbe0b983af0143ad1e30c8f449f131ddd9ef985cdd87403445f6ee0",
+      "rule": "javascript/DOMXSS",
+      "level": "warning",
+      "file": "apple/AgentDeck/Resources/apme-dashboard.html",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "9cbe0c04-b8cc-4699-b38c-c6bb6a385518",
+      "alt": "164f270b1da6ca6f26334c07f698de4537e1e48d688b59f1068ec778e93438a1",
+      "rule": "javascript/DOMXSS",
+      "level": "warning",
+      "file": "apple/AgentDeck/Resources/apme-dashboard.html",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "62807dad-ad69-414f-aafb-e25fc80be394",
+      "alt": "5b61a1ed2f89c89c53c4b6cf0699c1835547366e9ddfbf2be88b69e42306c1b5",
+      "rule": "javascript/DOMXSS",
+      "level": "warning",
+      "file": "apple/AgentDeck/Resources/apme-dashboard.html",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "fe162687-0362-4e88-a8bc-8c62a4b21766",
+      "alt": "f105e3d55b3134e4c32332249a4429562256d4aedec5534de0f3e2492d504e99",
+      "rule": "javascript/DOMXSS",
+      "level": "warning",
+      "file": "apple/AgentDeck/Resources/apme-dashboard.html",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "8c70377d-1e20-4478-94d2-5b8c790029f6",
+      "alt": "415458fba33b462dfaa32de1ebe74dc0d1d062a6c56028bed223ade2d22526ca",
+      "rule": "javascript/DOMXSS",
+      "level": "warning",
+      "file": "apple/AgentDeck/Resources/apme-dashboard.html",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "adc39d72-4797-427b-a585-7607bb915677",
+      "alt": "26e619730c865245f073fe4cd84494ddec06cc62c9d6b0e7ca41a8852d2e009a",
+      "rule": "javascript/DOMXSS",
+      "level": "warning",
+      "file": "apple/AgentDeck/Resources/apme-dashboard.html",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "e60ebab3-bd22-4902-a498-b0894d013a20",
+      "alt": "0fdbf69ef16f232a46964fdac92fe12debadf5f34e4bea48888aab7cf0878336",
+      "rule": "python/InsecureXmlParser",
+      "level": "warning",
+      "file": "scripts/generate-html-report.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "61c3cbb7-6a7d-4b7a-a734-50d259508030",
+      "alt": "b595060fae56ca09b0c8c87b3789beffd1cac6c11841f7c536ba573849913da0",
+      "rule": "python/InsecureXmlParser",
+      "level": "warning",
+      "file": "scripts/generate-html-report.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "34f68fb6-de9b-49d7-ae14-b7335d5517cd",
+      "alt": "61d28c5492e04dce32f9a87965da780a792257b45d485d59e850459b24abd929",
+      "rule": "python/InsecureXmlParser",
+      "level": "warning",
+      "file": "scripts/generate-html-report.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "d9c88315-705c-4554-87b6-c2fb525fbcac",
+      "alt": "19d0f9c4f71c939dc5cf8e8825a996fb2e078d151091f2adf4153eef178811d4",
+      "rule": "python/NoHardcodedPasswords",
+      "level": "warning",
+      "file": "scripts/generate-html-report.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "d8394dd8-ebe7-4dcc-a0c4-ed37f7e868d9",
+      "alt": "7f90625f83b701bb1543363da6e04286faab0452bca546732ef8efa9d9e0ac64",
+      "rule": "python/NoHardcodedPasswords",
+      "level": "warning",
+      "file": "scripts/generate-html-report.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "c2ea23ad-9066-4713-bcb9-3b73ce828715",
+      "alt": "e22e712796eb4ce74bad37925305572a45518de13e05f88b89fad9f327144419",
+      "rule": "python/NoHardcodedPasswords",
+      "level": "warning",
+      "file": "scripts/generate-html-report.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "f707fed2-decf-4a48-b779-847ec604fde1",
+      "alt": "696ef925f74d0379243c1acbe39a82bb63c2dd5b7feba818331631d08910c6a7",
+      "rule": "python/NoHardcodedPasswords",
+      "level": "warning",
+      "file": "scripts/generate-html-report.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "a2666926-74fc-47ff-ace7-cc723be1ea90",
+      "alt": "1f9bc1a674993f0751babaa20b57876f6f325ffe1b03123ab79c09caa6d400fb",
+      "rule": "python/NoHardcodedPasswords",
+      "level": "warning",
+      "file": "scripts/generate-html-report.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "dac54afe-7238-4628-8d99-1a4a35724c58",
+      "alt": "673d9fd5ddc2111cdbccde7422c96885eb315260459fda5c24431bf97f1f1bf7",
+      "rule": "python/NoHardcodedPasswords",
+      "level": "warning",
+      "file": "scripts/generate-html-report.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "4a0592f4-7d2b-425c-96b4-a4a19b39668d",
+      "alt": "924d5c8d2566ef59b48cba0330edaaa167e78fd8da66fb665aaf39bd16f91ea1",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "apple/scripts/verify-dot-build.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "e983bdc7-4a8e-40dc-a6f8-a9dc11ed1745",
+      "alt": "7506aeca97371cc7c0ea3141b4998e2196db296bdc1d6adf1cffce8bdacffecd",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "apple/scripts/verify-dot-build.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "36c34721-ff02-4ed0-803a-f2850f8a0eda",
+      "alt": "e096f31bfd0dcb03f7ff56edee07f780b0c1dd07f83ff7601cf5d4cbecafb3bc",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "apple/scripts/verify-dot-build.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "98cd160c-cdcb-400a-8ebd-660005587b67",
+      "alt": "e608c49f2bcbe261a95005798fbe32e11038a5be834fd5c756b9c9d17e91224c",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "esp32/scripts/webserver_security.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "c0657c66-ec68-4498-a7b6-bf3829a672eb",
+      "alt": "db6535aa1c23550c975341505e79b0003caddffa174b5a8c752d8fc9e5dc9439",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "assets/terrarium/build-hermes-mermaid.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "482702a3-a0f8-48b3-a5a3-1f35c263e094",
+      "alt": "cd53d4f3510ef80391d3bcaf1cf262a1e1f48dc9c41c3df6619c539b54dd6940",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "assets/terrarium/fit-hermes-views.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "ad95a45f-7c6f-4053-9e95-555d17b4f018",
+      "alt": "d17f8462491ec750917032863a990362e0b69578647b0e1c30dee64e5e95bae9",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "assets/terrarium/hermes_face.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "15bd518e-1d6b-4d3b-9602-504f23d8452e",
+      "alt": "fdd3a5fab926f9a04815a591e8e2148ed6607134722c263f44faddfefc79c346",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "scripts/inventory-esp32-dependencies.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "0d413ee0-8a85-43a2-9460-984f6e86d48b",
+      "alt": "bd069e9c473a846860a6a30a967b60a0531f0b3caa2bfe70f18b78d69c9fe6cf",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "scripts/inventory-esp32-dependencies.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "d34850ff-9dc2-4986-be53-1bac7dd4aa99",
+      "alt": "f5a067840117a8664caaf3354df082cfa763e757c9698aa3f9bfdce791cc215e",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "assets/terrarium/build-hermes-mermaid.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "61566a29-aecc-413a-a082-e251e5c78b7f",
+      "alt": "eb231fd3f4fd3308e8261c1acfb39b35455b9b359e6decd34bce80299bcd7fe6",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "assets/terrarium/build-hermes-mermaid.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "c1660f6b-8bda-40c0-bc18-3adf5ccd3bbf",
+      "alt": "c6e4fd3ed1bbfacddd51a891a4e2eddbe029351e2a425dcdd145dbf863fdc671",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "assets/terrarium/fit-hermes-views.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "27172417-21c1-45c2-bb8c-8fb9e5838086",
+      "alt": "4947540854a641ff258ac9b0d9e6e496c9759b142076773ba38ed22a09c12058",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "assets/terrarium/hermes_face.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "f19e2ba9-7d2c-4466-9c46-14954cb79a51",
+      "alt": "3bad2381e6034953a262d20d71bbae67ab95d97780a45a48a3f2718441df6361",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "assets/terrarium/hermes_face.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "217b9013-466f-476e-bffa-fbf25252d751",
+      "alt": "0308d5b464efb80cf453435545c9b693aa8fcbc533b7ec9212e579beebfe01d1",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "scripts/inventory-esp32-dependencies.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "d482636f-d70d-4b6d-9d86-618b4993d40e",
+      "alt": "3a7eb80b99f4e9d087edb986a5f64ffeddce12849b2d9ee923dbc5a2f714d231",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "scripts/inventory-esp32-dependencies.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "3a0ea150-0c23-4e24-b145-3f2c34fb44cf",
+      "alt": "b1851a4c25f05ababa95cd167a76cd7d8f8c9fc0e710965995612c80a267ee5b",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "scripts/inventory-esp32-dependencies.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "923820f6-340e-44ee-8cb8-c9baa128c754",
+      "alt": "53fa1d61b87703e88d1126b246287cb63b111293fe2513ed6e5516f3cd9afd88",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "assets/terrarium/hermes-head/face_sheet_overlay.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "c9c3beab-1c96-4e9b-b370-767f69e29a8c",
+      "alt": "05c336fdd790826f35b967a4d92a57b7d53ecabf59d76c83ae730834f0c5e230",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "assets/terrarium/hermes-head/face_sheet_overlay.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "b3631d36-7980-4359-9250-676d01bff54e",
+      "alt": "1dd067af19c1ac8ea147a83c642c60da493276d05feeb9d973613ac4bab659ba",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "docs/marketing/position-workshop-2026-10-16/scripts/assemble.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "3e681edd-e885-4701-8272-2712cd00542f",
+      "alt": "07d7f14b2626d0235502acb2c0b1bba4935d104300ad82a3079aa54660f7524c",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "assets/terrarium/hermes-head/measure_refs.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "6a31405b-ef3a-40b3-8bdb-78a62156c53e",
+      "alt": "508bfcc9b51249349e9a94dcacef5cd8828ba24e455ff78fb3a3368f921d3f28",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "docs/marketing/position-workshop-2026-10-16/scripts/analyze.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "a1a46bd9-d441-4015-b4d9-4934ccf9098a",
+      "alt": "044a0da9d01699d94a6c2b06a7321fbe49921ecd5b05f9a55dc4b4677a0d7eab",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "docs/marketing/position-workshop-2026-10-16/scripts/analyze.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "932f1409-79b7-44d4-b30e-bf1cb32056d3",
+      "alt": "c11796aec4e19d9162fffe168751f8a2c0f4917b426d4b90ad8d74b33480b39a",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "docs/marketing/position-workshop-2026-10-16/scripts/assemble.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "abb7e173-81ce-4453-bb25-7c2bc2b76259",
+      "alt": "cdf09ee2644a7c89386d9a136c7d24893d8d48dcf2c2c9ab7a367cc03d4d5433",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "docs/marketing/position-workshop-2026-10-16/scripts/assemble.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "d2a0f263-eddc-4135-a190-4925696be3bb",
+      "alt": "081befcaf260c9fb54e095aca81e7b1f4b8e6dead07b71d357ea7c24cb9edcdf",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "docs/marketing/position-workshop-2026-10-16/scripts/assemble.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "4346bffa-b7b8-47b4-9594-bccfa25bab29",
+      "alt": "484df6be8a0b619a0770351ae87c91a979078292e0b07fb9a1c9e63595e57010",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "docs/marketing/position-workshop-2026-10-16/scripts/assemble.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "ccfe41c3-c955-497c-b20b-0930f0f96245",
+      "alt": "48aad836e4ca4523de07e92815b067bf910d165e189d34fd3dd8754cefe42728",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "docs/marketing/position-workshop-2026-10-16/scripts/assemble.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "546a24ee-cca5-4fa7-aef2-ba872cb5e79c",
+      "alt": "6124ab1a62d8fc869d4779be31547b0696af1cb0f927b644dadd56d730dfde5e",
+      "rule": "javascript/DOMXSS",
+      "level": "warning",
+      "file": "docs/hardware/index.html",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "5797aa52-9be1-431b-a979-5c08b6d82c10",
+      "alt": "bbc646c010c08137c32ca6a754652755075d4cab2a5bed85365a90243791b5d4",
+      "rule": "javascript/DOMXSS",
+      "level": "warning",
+      "file": "scripts/pages-index.html",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "5d385c25-5589-423a-aabe-4d21cc1001dc",
+      "alt": "221a3c0bdce7787c12c07ea2954a71d99b4bc9a50bacd7352d03d9b51d69a748",
+      "rule": "javascript/DOMXSS",
+      "level": "warning",
+      "file": "tools/creature-simulator/index.html",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "23580530-0d7e-499a-8937-d43e95192544",
+      "alt": "af141fa5b9eb1e35a6287ce40c46b3a637c68d6acb35229cf7444bc34a6ec83d",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "esp32/scripts/epd47_driver.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "172a6b9f-26d8-4ad8-8368-e36e1e0ae6ce",
+      "alt": "9a926b35156f4a036f26fe61f5c5b4f7de80613515a584addda573b77b1855a0",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "scripts/generate-html-report.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "3a0c949d-0adb-4693-be31-6e1d7aec39a0",
+      "alt": "62bfb0773ba3ae278dfcd13ca002d2efa31f2015233298ea0ee1f7386e25c4bd",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "scripts/generate-html-report.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "784357e7-0f52-428a-83fa-9c9d5ec617df",
+      "alt": "dbd95eb2a5415598b3c1494b7b9912abaa9d3ee2e17e47af30a0b78be8fec12b",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "scripts/generate-html-report.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "de30c997-62ed-4f9f-b2b1-6ed29f342b69",
+      "alt": "e5dc9d114ba4c24a4a5640495caeb84e60e47135c9804643ca064231de6de5cd",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "scripts/generate-html-report.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "74f7bc04-8113-47b0-93bc-4fbac1dfcb47",
+      "alt": "9c3678829fd5922de8feb42734eb6451f5b25c73106ba2664b0753feef8be27a",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "scripts/generate-html-report.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "019492af-ff0d-453b-a64a-8a84e007f8a0",
+      "alt": "91097f783038d5226dbc65f463ea76c9dab28ee60761892b16ffe0e72b1ff17a",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "scripts/generate-html-report.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "5ff7504b-7bdc-47fa-a5d4-2d1ff0d9c714",
+      "alt": "b58e5b74e4cc7299d6b299388254e0a63b2358c9d8f9083831550f82a383c83e",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "scripts/generate-html-report.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "6c7fa2b8-e2cc-4d32-acde-1aa1fb5160fe",
+      "alt": "1cd8f77c9d98a79de0c74c2ac9ffb4ed7559a5c944e80189bb79d9b8f96ef24f",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "scripts/generate-html-report.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "21ab107a-1757-46c9-a818-880f54b97ba3",
+      "alt": "8c5e0f236deb87bb2b2dff9561ca3c744a331b74bdef13e1547a0bafdcc48fc3",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "scripts/generate-html-report.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "02e73e9b-15c4-41b1-9d61-470ddebcaa86",
+      "alt": "719114c5aec68985cedaf4f7cd622b83224f9772e818c52a218fba4db357901d",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "scripts/generate-html-report.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "fbee4dc9-127e-400d-9d18-9c3d4fbd6313",
+      "alt": "febcd329174550bf2f53e3aacfed47690169bb8d16c446f5979847fbbbd28b04",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "scripts/generate-html-report.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "98eee1d2-bb33-4181-b642-886e48b78ce8",
+      "alt": "55e6b6fed6ec5c6ae6b99829a28446746a437093dc3566df0080c24ea8b38ee8",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "scripts/generate-html-report.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "14a214f3-07f9-443c-b877-900cec4ab747",
+      "alt": "93941564bfc4233897f162d9b99f689d94f226c9b2cc700ee42a15704a766d02",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "scripts/generate-html-report.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "c69df783-d801-41e5-8f76-6bc3904f8767",
+      "alt": "57bf99e06e4c059b059ef48a56c3c11ce93c2162597fb8ceea1bb685d1520b9b",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "scripts/inventory-esp32-dependencies.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "10ee0aa6-92d1-4fcc-8868-6677abcf15e4",
+      "alt": "f15b90e65a555a6164bdbb8026b85f20ee698b2447611c9fb869efcd42a73135",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "scripts/inventory-esp32-dependencies.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "459b43d1-bfd6-4954-a29b-6dbeecf4e9ec",
+      "alt": "aae6e0288fc9852446a32edfe5985231d309a951749415de60a9b887675ef928",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "scripts/inventory-esp32-dependencies.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "8953e4fe-72df-4b8e-b2fc-3e34c90f358e",
+      "alt": "56bb9f26b62f7148bcdd6e409a4aa325f11e1729c470bf11084881bb049d84f6",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "scripts/inventory-esp32-dependencies.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "035fa7ed-65d3-47ae-8dfe-f8997f3616e1",
+      "alt": "6f17612aef1210b5fe53cce42b56dda083eed964540a33a182b4d43c1e4e3169",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "scripts/inventory-esp32-dependencies.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "37bf8e8d-523c-4353-a1c3-f107e8d39da8",
+      "alt": "86686e57913eb7a0c5b4762351cca15bb5e1fc181f6cc7de492c828ecc9dd933",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "scripts/inventory-esp32-dependencies.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "68a53673-ce09-4157-92fe-8751b567955d",
+      "alt": "6aa49d59e0ad8cd9de7577af6a1fa825c31bf308ed27ad3582fdf3f678554308",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "scripts/inventory-esp32-dependencies.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "450b879f-ca5b-4ebf-99fb-bf415246ecc8",
+      "alt": "b8dd2f8cac749cdf8b2f28a8db16806349d7a0d4a558eb09c466737a7e898f47",
+      "rule": "python/PT",
+      "level": "note",
+      "file": "scripts/inventory-esp32-dependencies.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "71b1f541-86ee-4973-b8ac-ddbb0b3ae5cf",
+      "alt": "9febea91f5041c3d15f80aa9d05dd2f1f922f024f8e365c6a756a34dbf9ac0e8",
+      "rule": "python/Ssrf",
+      "level": "warning",
+      "file": "bridge/src/idotmatrix/sync.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "b79dc8ae-ae7c-4f76-a91c-09c706b472f8",
+      "alt": "83a6fc57fa8bc45adce44beb3e2dd0c9025bfa97d1f4c70b6558c695e8545c12",
+      "rule": "python/Ssrf",
+      "level": "warning",
+      "file": "bridge/src/timebox/sync_ble.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "ac587f1f-a1d3-4410-bdab-7489a70af990",
+      "alt": "603417f16b92792b6f9ee8c24a4bd9d89d87d7a042699c424f22eef2040005fd",
+      "rule": "javascript/DOMXSS",
+      "level": "warning",
+      "file": "tools/web-flasher/main.ts",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "063dd0f2-e484-4860-bfdb-baa0be7c509e",
+      "alt": "fa54b2a111f353489e1da8b47d199843aaa740b14d1e0de54bd02a4db4b244b4",
+      "rule": "python/TarSlip",
+      "level": "warning",
+      "file": "assets/terrarium/build-hermes-mermaid.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "43d93ead-ffaf-4bcb-b139-9e4da146c1be",
+      "alt": "a30a9b78f3148fb106dff63ad0f7ca05d6a4aeee4ed767b115627ad62f9f6dd4",
+      "rule": "python/TarSlip",
+      "level": "warning",
+      "file": "assets/terrarium/build-hermes-mermaid.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "b42f5a11-7684-446b-a5aa-3c17dc690d54",
+      "alt": "e4697c2a5ab6d790329550fbe97bc30637ed5966dd3da1897edcb8f9bf0cde2b",
+      "rule": "python/reDOS",
+      "level": "warning",
+      "file": "scripts/inventory-esp32-dependencies.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "9109f5b8-2526-409a-853a-e97672b941a1",
+      "alt": "9c1acd4eab27685e03c430c2ef65fd0bcd9c258c2a488aaf219fd031b4d91c63",
+      "rule": "python/reDOS",
+      "level": "warning",
+      "file": "scripts/inventory-esp32-dependencies.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "42de276a-cc58-4200-938b-7e4023c05d03",
+      "alt": "e3ee471d35ad135ad89c708819be144cb826639664d36e94b45d64dc5fa79952",
+      "rule": "python/reDOS",
+      "level": "warning",
+      "file": "scripts/inventory-esp32-dependencies.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "3fc96f0d-ea11-4b47-8948-c411935052a6",
+      "alt": "29427393b75991fa337c3adfd0a99f633feac7d50bd3681318f936eb8e5071cd",
+      "rule": "python/reDOS",
+      "level": "warning",
+      "file": "scripts/inventory-esp32-dependencies.py",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "b1560b10-d8e6-4b43-a6a1-429f397c8158",
+      "alt": "82f5a546c79437b7111f3d2cc06356fec105e756294b34f48e6495fcdfe58229",
+      "rule": "swift/InsecureHash",
+      "level": "note",
+      "file": "apple/AgentDeck/Daemon/Server/ESP32WifiOta.swift",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "eba25686-7121-4afa-b0d5-2af0e4cf9d79",
+      "alt": "4664431d3b1721bca02d5264b8a0c9cb693c5bbfbd67fc7583d77dfaea6bbebd",
+      "rule": "swift/InsecureHash",
+      "level": "note",
+      "file": "apple/AgentDeck/Daemon/Server/SwiftSurfaceFirmwareStore.swift",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "d6303cf6-e5e7-40c5-9989-37e7fa79f9b2",
+      "alt": "19f8d125f6ad89974ce1f8f5e4de75a1b12ecf8039e582584c84ae091c54939c",
+      "rule": "swift/InsecureHash",
+      "level": "note",
+      "file": "apple/AgentDeck/Daemon/Server/WebSocketServer.swift",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "616f5bad-ddd4-4815-b9e3-502a9ba21ef9",
+      "alt": "7c14fb3061a11cbce787a801108877abd54aa9b4502c02cb8c9127dee9badc01",
+      "rule": "swift/InsecureHash/test",
+      "level": "note",
+      "file": "apple/AgentDeckTests/MultiDaemonConnectionTests.swift",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "904cb385-c700-4ada-bda2-cf04e15c2a48",
+      "alt": "d457f08177b433ea43a16c9cedc6d67214c22f89d80070d7726e9245d74deb30",
+      "rule": "swift/InsecureStorage",
+      "level": "note",
+      "file": "apple/AgentDeck/RemoteObservation/RemoteObservationPersistence.swift",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "b0e113f1-d738-4552-aced-06e2dbd0a1de",
+      "alt": "eabccb7d87b9d8e2a4cdb4f5d940e491474837a7fef1fac20bb4cf5803123d99",
+      "rule": "swift/InsecureStorage/test",
+      "level": "note",
+      "file": "apple/AgentDeckTests/AntigravityObservationTests.swift",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "c54cb762-61ed-46a7-851e-c0ec20077389",
+      "alt": "9c88c287ac5e5b6e4f46fb561fa6496002c32ed7131e7450b7de21aa3a3a8334",
+      "rule": "swift/InsecureStorage/test",
+      "level": "note",
+      "file": "apple/AgentDeckTests/ApmeTaskBoundaryTests.swift",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "fb9e3f8b-a29e-4096-8d81-cf14a01601c2",
+      "alt": "c048d936eeac0b092a0660522cc0982e420a9559819e50b4fbd861f7c65dbaba",
+      "rule": "swift/NoHardcodedPasswords/test",
+      "level": "note",
+      "file": "apple/AgentDeckTests/ESP32WifiProvisionRulesTests.swift",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "faae0a80-08aa-484b-b09c-2c7bfa7ca7fa",
+      "alt": "8019fa07e8daa910cffe00d58f4e6adfae2f48077fc4b6668666fd4512a3fa9b",
+      "rule": "swift/NoHardcodedPasswords/test",
+      "level": "note",
+      "file": "apple/AgentDeckTests/ESP32WifiSetupTests.swift",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "739957e9-85c7-4cc5-b1f8-8b97962815c0",
+      "alt": "07be1e9bba6a4cb5d1504657db6b0c127d2a33f178ef15b1285ae4165a6c56c6",
+      "rule": "swift/NoHardcodedPasswords/test",
+      "level": "note",
+      "file": "apple/AgentDeckTests/ESP32WifiSetupTests.swift",
+      "decision": "recorded, not individually reviewed"
+    },
+    {
+      "kind": "code",
+      "key": "7952cfe7-732f-4ac5-a88e-ad34bb36f0c7",
+      "alt": "cef5505158553511e89e9d75917de9838dee00379a3786a93a8d78e76922428e",
+      "rule": "swift/NoHardcodedPasswords/test",
+      "level": "note",
+      "file": "apple/AgentDeckTests/ESP32WifiSetupTests.swift",
+      "decision": "recorded, not individually reviewed"
+    }
+  ]
+}
