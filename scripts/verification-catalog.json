@@ -1122,15 +1122,19 @@
       "trigger": "Every PR, master push, daily schedule and manual",
       "blocking": true,
       "required": false,
-      "command": "python3 scripts/__tests__/esp32-inventory.test.py; python3 scripts/inventory-esp32-dependencies.py",
+      "command": "python3 scripts/__tests__/esp32-inventory.test.py; python3 scripts/__tests__/github-release-download.test.py; python3 scripts/inventory-esp32-dependencies.py",
       "evidence": [
         "scripts/inventory-esp32-dependencies.py",
         "scripts/__tests__/esp32-inventory.test.py",
+        "scripts/github_release_download.py",
+        "scripts/ci-download/sitecustomize.py",
+        "scripts/__tests__/github-release-download.test.py",
         "esp32/platformio.ini"
       ],
       "proves": [
         "All configured environments resolve in a fresh isolated project and package store using pinned PlatformIO; missing transitives or required packages fail collection.",
-        "Selected versions, dependency edges, full package content hashes, build-time patch inputs and SDK manifests are retained; ESP-IDF/Arduino numeric header declarations are hash-bound observations, with full release and advisory mappings explicitly unknown."
+        "Selected versions, dependency edges, full package content hashes, build-time patch inputs and SDK manifests are retained; ESP-IDF/Arduino numeric header declarations are hash-bound observations, with full release and advisory mappings explicitly unknown.",
+        "Transient public GitHub release download failures use the exact official asset API identity only after full size and SHA-256 verification; unpinned missing digests and partial/corrupt transfers fail closed."
       ],
       "does_not_prove": [
         "Complete SDK/advisory coverage, deterministic version locking, applied build-time patches, firmware compilation, flashing, or installed-device acceptance."
@@ -1231,8 +1235,10 @@
       "blocking": true,
       "required": true,
       "command": "./gradlew :app:assembleDebug --no-build-cache --rerun-tasks",
+      "evidence": ["scripts/github_release_download.py", "scripts/__tests__/github-release-download.test.py"],
       "proves": [
-        "A clean manual build supplies java-kotlin sources to security-extended queries; build, extraction or analysis failure fails the job."
+        "A clean manual build supplies java-kotlin sources to security-extended queries; build, extraction or analysis failure fails the job.",
+        "Pinned CodeQL and Gradle tool archives come from exact official GitHub release asset identities and pass full size/SHA-256 verification before extraction."
       ],
       "does_not_prove": [
         "Absence of exploitable defects, physical-device behavior or release delivery; alerts require per-finding review."

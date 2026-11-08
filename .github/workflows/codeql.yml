@@ -57,8 +57,34 @@ jobs:
       - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
         with:
           cache-disabled: true
+      # GitHub's release download redirect can fail with persistent HTTP 504
+      # while its official asset API serves the identical SHA-256-bound bytes.
+      - name: Fetch verified Java tools through the release asset API
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/__tests__/github-release-download.test.py
+          python3 scripts/github_release_download.py \
+            https://github.com/github/codeql-action/releases/download/codeql-bundle-v2.27.4/codeql-bundle-java-linux64.tar.zst \
+            "$RUNNER_TEMP/codeql-java.tar.zst"
+          python3 - <<'PY'
+          import hashlib, os, shutil, sys
+          from pathlib import Path
+          sys.path.insert(0, 'scripts')
+          from github_release_download import gradle_release, verified_asset
+          properties = Path('android/gradle/wrapper/gradle-wrapper.properties')
+          version, url = gradle_release(properties.read_text())
+          archive = Path(os.environ['RUNNER_TEMP']) / f'gradle-{version}-bin.zip'
+          stream, _ = verified_asset(url)
+          with stream, archive.open('wb') as output:
+              shutil.copyfileobj(stream, output)
+          lines = [line for line in properties.read_text().splitlines() if not line.startswith(('distributionUrl=', 'distributionSha256Sum='))]
+          lines += ['distributionUrl=' + archive.as_uri(), 'distributionSha256Sum=' + hashlib.sha256(archive.read_bytes()).hexdigest()]
+          properties.write_text('\n'.join(lines) + '\n')
+          PY
       - uses: github/codeql-action/init@793b778da9c9275a0f276522b27cb5fc14bba279 # v4
         with:
+          tools: ${{ runner.temp }}/codeql-java.tar.zst
           languages: java-kotlin
           build-mode: manual
           queries: security-extended
