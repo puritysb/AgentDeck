@@ -214,7 +214,36 @@ and do not expose child-agent controls.
 
 ## Local notifications
 
-AgentDeck posts a local `UNUserNotification` when a monitored session genuinely waits for the user's response (e.g. Claude Code shows a permission prompt in the user's terminal), and clears it the moment the session moves on. Nothing is requested at launch: authorization is asked only when the user presses "Choose Notifications…" on the last setup step or in Settings → Dashboard, which shows the system dialog directly. If notifications were turned off, the same button explains that and opens AgentDeck's page in System Settings → Notifications. No push notifications, no remote notification service — everything is local.
+AgentDeck posts a local `UNUserNotification` on macOS when a monitored session genuinely waits for the user's response (e.g. Claude Code shows a permission prompt in the user's terminal), and clears it the moment the session moves on. Nothing is requested at launch: authorization is asked only when the user presses "Choose Notifications…" on the last setup step or in Settings → Dashboard, which shows the system dialog directly. If notifications were turned off, the same button explains that and opens AgentDeck's page in System Settings → Notifications. These macOS attention notifications remain local. The optional iPhone CloudKit route is described separately below.
+
+## Optional read-only remote monitoring (source implemented; Production acceptance pending)
+
+Mac Settings → Remote monitoring offers explicit sharing of encrypted aggregate
+working/waiting counts, source times and random attention IDs through the user's
+private CloudKit database. iPhone/iPad's Remote tab is reachable without local
+network discovery or pairing. Both devices use the same Apple Account. No
+question text, project name, transcript, path, credential or daemon token is
+uploaded. There is no AgentDeck-operated backend, external helper or subprocess.
+The Mac app itself must remain running and online for new observations.
+
+The iPhone separately enables receiving and chooses visible notifications;
+authorization is never requested at launch. CloudKit sends generic creation
+alerts and Apple forwards eligible iPhone alerts to the paired Watch; there is
+no Watch app. Opening an alert refreshes a read-only summary/event and reports
+resolved, expired or unconfirmed state. Cloud data cannot answer or approve any
+request. Cached observations retain their original time and become historical.
+
+Stop sharing records a disabled state, with durable retry when offline. Delete
+remote data stops sharing and removes this installation's product records and
+subscriptions; uncertain deletion stays pending. Stop receiving clears the
+phone reader and removes its subscription. Account changes revoke consent and
+isolate pending cleanup to the original account. Already delivered notifications
+and Apple's backup retention are not under the app's erasure control.
+
+Review acceptance must use the actual signed Production/TestFlight pair and
+deployed schema. Earlier Development notification/device evidence is not a
+claim of Production availability. See `docs/apple-remote-observation.md` for
+the schema, signing, privacy and device matrix required before submission.
 
 Clicking a notification opens that session in the macOS Dashboard. The request
 includes a credential-free host identity and session ID; it does not answer the

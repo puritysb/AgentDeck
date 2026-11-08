@@ -21,7 +21,9 @@ case "$PLATFORM" in
         if [ "$CONFIGURATION" = CloudKitPoCDebug ]; then
             set -- -only-testing:AgentDeckTests_macOS/CloudKitProbeTests \
                    -only-testing:AgentDeckTests_macOS/RemoteObservationProjectionTests \
-                   -only-testing:AgentDeckTests_macOS/RemoteObservationPersistenceTests
+                   -only-testing:AgentDeckTests_macOS/RemoteObservationPersistenceTests \
+                   -only-testing:AgentDeckTests_macOS/RemoteObservationProductTests \
+                   -only-testing:AgentDeckTests_macOS/RemoteObservationCloudStoreTests
         fi
         ;;
     iOS) ACTION=build; DESTINATION='generic/platform=iOS Simulator'; PRODUCTS="$CONFIGURATION-iphonesimulator" ;;
@@ -32,3 +34,5 @@ xcodebuild "$ACTION" -project "$ROOT/apple/AgentDeck.xcodeproj" \
     -scheme "$SCHEME" -configuration "$CONFIGURATION" \
     -destination "$DESTINATION" -derivedDataPath "$DERIVED" CODE_SIGNING_ALLOWED=NO "$@"
 python3 "$ROOT/apple/scripts/verify-dot-build.py" "$DERIVED/Build/Products/$PRODUCTS/AgentDeck.app" "$DOT_MODE"
+python3 "$ROOT/apple/scripts/verify-remote-observation.py" --self-test
+python3 "$ROOT/apple/scripts/verify-remote-observation.py" "$DERIVED/Build/Products/$PRODUCTS/AgentDeck.app" --unsigned

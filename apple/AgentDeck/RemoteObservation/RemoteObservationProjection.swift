@@ -1,4 +1,3 @@
-#if AGENTDECK_CLOUDKIT_POC
 import Foundation
 
 /// Local identifiers are used only for transition tracking, never encoded.
@@ -63,4 +62,3 @@ struct RemoteWaitTracker: Codable, Equatable, Sendable {
     /// Reconnection needs a fresh baseline; unknown gaps do not resolve episodes.
     mutating func invalidate() { hasBaseline = false }
 }
-#endif

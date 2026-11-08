@@ -20,7 +20,12 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
     #if os(macOS)
     /// Freshness for native session actions must come from a roster frame,
     /// never a usage/timeline update or the wake watchdog's timestamp.
-    private var latestAttentionSessionSnapshot: AttentionSessionSnapshot?
+    var onRemoteObservationInvalidated: (@Sendable () -> Void)?
+    private var latestAttentionSessionSnapshot: AttentionSessionSnapshot? {
+        didSet {
+            if oldValue != nil, latestAttentionSessionSnapshot == nil { onRemoteObservationInvalidated?() }
+        }
+    }
     var attentionSessionSnapshot: AttentionSessionSnapshot? {
         guard !isTerminating, !userStoppedConnecting, state.bridgeConnected,
               connection.status == .connected,
@@ -28,6 +33,26 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
               snapshot.endpoint == PairingCredential.endpoint(of: connection.url),
               snapshot.endpoint == PairingCredential.endpoint(of: selectedBridgeURL) else { return nil }
         return snapshot
+    }
+
+    /// Only the app's currently pinned local daemon can supply cloud observations.
+    /// A selected LAN host, capture fixture or stale roster never becomes this Mac's publisher.
+    var remoteObservationRoster: RemoteLocalRoster? {
+        #if DEBUG
+        guard !hasLaunchArgumentBridgePin else { return nil }
+        #endif
+        guard !isInertHost,
+              let preferredLocalBridgeUrl,
+              let host = URL(string: preferredLocalBridgeUrl)?.host?.lowercased(),
+              ["localhost", "127.0.0.1", "::1", "[::1]"].contains(host),
+              let snapshot = attentionSessionSnapshot, snapshot.isFresh(),
+              snapshot.endpoint == PairingCredential.endpoint(of: preferredLocalBridgeUrl) else { return nil }
+        return RemoteLocalRoster(sessions: snapshot.sessions.map { row in
+            RemoteSessionEvidence(localID: row.id, alive: row.alive,
+                working: row.state == AgentConnectionState.processing.rawValue,
+                waitingForResponse: AgentConnectionState(rawValue: row.state ?? "")?.isAwaiting == true
+                    && !(row.question?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true))
+        }, observedAt: snapshot.receivedAt)
     }
     #endif
     private var lastKnownState: DashboardState?

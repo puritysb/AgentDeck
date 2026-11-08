@@ -12,6 +12,8 @@ struct AgentDeckApp: App {
     @StateObject private var stateHolder = AgentDeckApp.makeStateHolder()
     #if AGENTDECK_CLOUDKIT_POC && os(iOS)
     @UIApplicationDelegateAdaptor(CloudKitProbeDelegate.self) private var cloudKitDelegate
+    #elseif os(iOS)
+    @UIApplicationDelegateAdaptor(RemoteObservationAppDelegate.self) private var remoteObservationDelegate
     #endif
     @StateObject private var preferences = AppPreferences.shared
 
@@ -151,13 +153,7 @@ struct AgentDeckApp: App {
             // takes over once `hasSeenOnboarding` flips. Preserves the
             // environment objects so the onboarding pane 3 can reference
             // the shared `stateHolder` for live mDNS feedback if needed.
-            Group {
-                if preferences.hasSeenOnboarding {
-                    ContentView()
-                } else {
-                    OnboardingScreen()
-                }
-            }
+            CompanionRootView()
             .environmentObject(stateHolder)
             .environmentObject(preferences)
         }
@@ -229,6 +225,10 @@ struct AgentDeckApp: App {
         // Wire AppDelegate to daemon service for clean shutdown
         appDelegate.daemonService = daemonService
         appDelegate.stateHolder = stateHolder
+        RemoteObservationController.shared.bindLocalSource { [weak stateHolder] in stateHolder?.remoteObservationRoster }
+        stateHolder.onRemoteObservationInvalidated = {
+            Task { @MainActor in await RemoteObservationController.shared.sourceWasInvalidated() }
+        }
         AttentionSessionAccess.shared.configure(
             snapshot: { [weak stateHolder] in stateHolder?.attentionSessionSnapshot },
             openDashboard: {
@@ -360,6 +360,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // the in-process server has already closed, producing connection
         // refused spam during Quit.
         stateHolder?.prepareForTermination()
+        RemoteObservationController.shared.shutdown()
 
         // Remove daemon.json FIRST — fast, idempotent, and prevents stale-guard
         // deadlocks on the next launch even if the async shutdown below hangs.

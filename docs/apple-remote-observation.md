@@ -1,4 +1,140 @@
-# Apple remote observation — CloudKit PoC design
+# Apple remote observation — read-only monitoring
+
+**Product implementation: 2026-11-09, unreleased.** Standard macOS/iOS targets now
+include the read-only product path. The checkpoints below describe the earlier
+development experiment; they do not attest this new implementation or Production.
+
+## Product contract and operation
+
+Mac Settings → Remote monitoring explicitly enables publication from the app's
+currently pinned local daemon, whether Swift-owned or a Node client. It follows
+that daemon's actual endpoint; a selected LAN host, capture fixture or stale
+roster cannot become this Mac's publisher. The app owns the scheduler outside
+Dashboard window lifetime. Closing the window leaves sharing enabled; quitting
+or sleeping the Mac stops new observations. An unavailable source publishes
+unknown counts, never a fabricated empty roster or task-success claim.
+
+iPhone/iPad has independent Local and Remote tabs, including before local
+onboarding or pairing is completed. Remote reads only encrypted working/waiting
+counts, source time and opaque attention IDs. It never populates DashboardState,
+exposes approval controls, or sends a command. No quota, session titles, paths,
+questions, transcripts, provider credentials, widgets or Watch target are added.
+Both devices use the same Apple Account. Remote receiving and visible alerts
+each require explicit user actions. Normal active refresh is coalesced to 60
+seconds; foreground return, pull/button refresh and notification hints can refresh
+sooner. Background execution and push delivery are not guaranteed.
+
+Product storage is isolated from PoC consent/data in local
+`remote-observation-v1-Development` / `remote-observation-v1-Production` files and
+the private custom zone `RemoteObservationV1`. Build identity and signed CloudKit
+environment must agree. Consent, caches and pending cleanup never move between
+Development and Production, even on the same Apple Account; both environments
+require separate enrollment. Account binding hashes include the environment.
+It uses new record types
+`ObservationSnapshot` and `AttentionEvent`; existing probe records/subscriptions
+are not imported or deleted. Snapshot `latest` has one installation owner and
+increasing revisions with compare-and-save. Counts and event content use a new
+encrypted `payload` field; routing, version, revision and retention dates are
+clear. JSON dates are UTC integer milliseconds; CloudKit date fields are Dates.
+The schema and indexes are defined by the additive
+[schema fragment](../apple/CloudKit/remote-observation-v1.ckdb).
+
+An initial roster establishes a baseline without notifying existing waits.
+Subsequent episodes use stable random IDs persisted before upload. Snapshot and
+event mutations commit atomically. An uncertain save is reconciled by fetching
+the same event ID; resolved, expired or source-unconfirmed episodes may update
+an existing record but may not create a catch-up alert. Explicit non-waiting
+evidence resolves an event. Disappearance after a disconnect alone does not.
+Only event creation matches the visible subscription; resolution updates do not
+create another alert. Subscription IDs include installation and reader IDs, so
+stopping one receiver does not delete another receiver's subscription.
+
+On alert tap, the Remote tab refreshes the event and current snapshot. It shows
+waiting, resolved, expired, sharing stopped or unconfirmed. An unavailable/deleted
+record stays unconfirmed. Alerts already queued by Apple may arrive after their
+event resolved; no banner cancellation or exactly-once delivery is promised.
+
+Stop sharing persists disabled consent and a durable stop intent before network
+work, cancels old operations, waits for them to settle, then publishes a disabled
+snapshot. Delete additionally removes the installation's subscriptions and the
+product zone (all its summary/events), then checks absence. Offline/uncertain
+outcomes retain the original-account intent across restarts; they are never
+reported as confirmed deletion. An independent small revocation marker prevents
+an older enabled journal being restored if a larger journal write fails.
+Stop receiving clears the local reader immediately and retains any failed
+subscription deletion for retry. Account-change notifications revoke consent,
+clear local episode mappings/cache and keep disabled installation binding and
+cleanup scoped to the original account. Unknown account status withholds cache
+without treating it as logout. Pending cleanup must finish under its original
+account before enabling another account in this first single-account product.
+
+Readers hide counts after seven days, preserve original source time, and mark
+observations historical after three minutes. Attention expires after five minutes;
+event records are eligible for deletion after 24 hours. Both active clients run
+bounded, indexed event cleanup. CloudKit does not provide field-based TTL. The
+single latest snapshot remains until replaced or explicitly deleted, even after
+the reader hides its expired content; expiry is not a physical-erasure promise.
+Apple backup retention is outside the app's deletion guarantee.
+
+## Production preparation and acceptance
+
+Source preparation is not schema deployment, provisioning, upload or delivery.
+No container/schema/profile/account mutations are performed by local verification.
+
+1. Export the existing Development and Production schemas with `xcrun cktool
+   export-schema --team-id QF36NDHYHD --container-id
+   iCloud.bound.serendipity.agent.deck --environment development --output-file
+   <private-working-path>` (repeat with `production`). Preserve all existing
+   definitions. Merge the additive fragment into that export; **do not import
+   the fragment alone or reset the shared container**. Validate with `xcrun
+   cktool validate-schema --team-id QF36NDHYHD --container-id
+   iCloud.bound.serendipity.agent.deck --environment development --file
+   <merged-schema-path>` before an authorized Development import. Authentication
+   uses the developer's normal management-token flow; never put tokens in this
+   repository, command-line examples, logs or app UI.
+2. Verify encrypted Bytes `payload` on both new types from creation. Verify
+   queryable `AttentionEvent.installationID` for subscriptions and
+   `AttentionEvent.deleteAfter` for cleanup. Merge/promotion must preserve probe
+   and unrelated container schema. Promote schema/indexes in CloudKit Console;
+   export Production again and compare the actual result. Development records
+   and account subscriptions do not migrate to Production.
+3. Attach the existing container to both bundle IDs and renew the distribution
+   profiles. `Release` selects CloudKit Production and iOS APNs production;
+   Debug selects Development. Inspect actual signed entitlements, not source
+   plist text. The existing archive gate now runs
+   `python3 apple/scripts/verify-remote-observation.py <app> --environment
+   Production`; it fails on missing/wrong container, service, environment,
+   macOS Sandbox, iOS APNs environment or development-debug entitlement.
+   Unsigned build identity checks explicitly do not attest signing readiness.
+4. Run `pnpm verify:quick` and native changed suites for source changes. Before
+   delivery run `pnpm verify:full --record`, the Apple release workflow and the
+   Release archive guard. Select a version/build under the existing release
+   decision process; this implementation does not allocate a delivery version.
+5. With the signed TestFlight pair, verify explicit enrollment on the same
+   account, one actual wait, its resolution, expiration, and opening each alert
+   on cellular without LAN. Verify foreground/locked/force-quit, Focus/denial,
+   Mac sleep/quit, Swift/Node handover and non-default local port, both offline
+   stop/delete retries after relaunch, account switching, full iCloud storage,
+   and cached cold start with/without local identity. Never use real request
+   approvals to test this read-only cloud route.
+6. Record 20 spaced eligible events: observation, save acknowledgement,
+   manually observed iPhone/Watch presentation, tap and fetch; report median/p95,
+   missing/duplicate and resolved-before-delivery counts. The experiment target
+   remains 19/20 within 30 seconds under normal eligible conditions, not an SLA.
+7. Review App Privacy against the actual signed feature: private iCloud counts,
+   opaque installation/event IDs and dates for app functionality; no analytics,
+   provider credentials or session text. The existing manifest already declares
+   Other User Content and Product Interaction for functionality; confirm the
+   portal's identifier/linkage answers and privacy-policy wording before submit.
+   Updated [reviewer notes](../apple/APP_REVIEW_NOTES.md) and the
+   [TestFlight checklist](testflight-qa-checklist.md) describe this scope.
+
+Apple references: [schema management and cktool](https://developer.apple.com/icloud/ck-tool/),
+[encrypted fields](https://developer.apple.com/documentation/cloudkit/ckrecord/encryptedvalues),
+[zone-scoped query subscriptions](https://developer.apple.com/documentation/cloudkit/ckquerysubscription/zoneid),
+[schema language](https://developer.apple.com/documentation/cloudkit/integrating-a-text-based-schema-into-your-workflow).
+
+## Earlier development experiment
 
 **Decision date: 2026-11-01. Status: development-only transport, automatic
 publication and durable storage implemented. The user-assisted iPhone/Watch
