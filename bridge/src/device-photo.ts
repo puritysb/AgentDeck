@@ -60,6 +60,18 @@ export function defaultPhotoDir(): string {
   return join(process.env.AGENTDECK_DATA_DIR || join(homedir(), '.agentdeck'), 'photos');
 }
 
+/**
+ * File path for a saved photo. The board id arrives from the device (WS frame
+ * or `?board=` on POST /esp32/photo), so only `[A-Za-z0-9_-]` reaches the file
+ * name: a `/` or `..` in it would otherwise let a token holder write the JPEG
+ * outside the photo directory.
+ */
+export function photoPath(dir: string, board: string, now: Date = new Date()): string {
+  const stamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const safe = board.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40) || 'esp32';
+  return join(dir, `${stamp}-${safe}.jpg`);
+}
+
 /** Drop the oldest files beyond the retention count. Best-effort. */
 export function prunePhotoDir(dir: string, retain = RETAIN_COUNT): void {
   try {
@@ -154,8 +166,7 @@ export class DevicePhotoCollector {
     }
     const jpeg = Buffer.concat(c.chunks);
     mkdirSync(this.photoDir, { recursive: true });
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const path = join(this.photoDir, `${stamp}-${c.board}.jpg`);
+    const path = photoPath(this.photoDir, c.board);
     writeFileSync(path, jpeg);
     prunePhotoDir(this.photoDir);
     debug('photo', `capture end: ${c.bytes} bytes → ${path}`);
@@ -178,8 +189,7 @@ export class DevicePhotoCollector {
     board: string; sessionId: string; width: number; height: number;
   }): PhotoCaptureResult {
     mkdirSync(this.photoDir, { recursive: true });
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const path = join(this.photoDir, `${stamp}-${meta.board}.jpg`);
+    const path = photoPath(this.photoDir, meta.board);
     writeFileSync(path, jpeg);
     prunePhotoDir(this.photoDir);
     debug('photo', `direct upload: ${jpeg.length} bytes → ${path}`);
