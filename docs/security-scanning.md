@@ -27,7 +27,7 @@ PlatformIO/Arduino dependency inventory and inspection of every installed user
 environment still require separate checks.
 Dependabot additionally checks Gradle manifests and GitHub Actions. A configured
 workflow and a completed analysis are separate states; inspect the actual run.
-Snyk is not part of CI; see [Snyk trial](#snyk-trial--2026-11-08) for a local comparison. These checks provide a baseline without an
+Snyk is not part of CI; see [Snyk trial](#snyk-trial-2026-11-08) for a local comparison. These checks provide a baseline without an
 additional external service account.
 
 ## Action runtimes
@@ -314,7 +314,7 @@ first.
 | Deferred majors: Bleak 3 (#691), Anthropic SDK 1.x (#696), TypeScript 7 (#697), Android Kotlin/AGP 9/serialization/Robolectric (#699, #701–#703), Rust 1.120 (#708) | Treat as normal compatibility upgrades, each with its own build and device checks. They are not security fixes. | Next maintenance pass |
 | CodeQL exception review | Re-review the recorded per-alert decisions when an authentication or trust-boundary file changes. | When those files change |
 
-## Snyk trial — 2026-11-08
+## Snyk trial 2026-11-08
 
 A local, read-only comparison with the Snyk CLI 1.1308.4 (free plan, `snyk test` and
 `snyk code test`, no `snyk monitor`, no GitHub integration). Snyk is not part of CI.
