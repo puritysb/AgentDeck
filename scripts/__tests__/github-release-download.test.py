@@ -2,6 +2,7 @@
 import hashlib
 import io
 import json
+import ssl
 from pathlib import Path
 import sys
 import types
@@ -143,6 +144,60 @@ class DownloadTests(unittest.TestCase):
                 self.assertEqual((result.status_code, result.url, result.request), (200, URL, 'original-request'))
                 self.assertEqual(result.headers['Content-Length'], str(len(BODY)))
                 self.assertIs(Session().request('GET', 'https://other.test/file', stream=True), failed)
+        finally:
+            urllib.request.urlopen = before
+
+    def test_urllib_timeout_recovers_but_certificate_failure_is_preserved(self):
+        before = urllib.request.urlopen
+        try:
+            with patch.dict(sys.modules, {'requests': None}), \
+                 patch.object(download, 'verified_asset', side_effect=lambda url: (io.BytesIO(BODY), len(BODY))) as verified:
+                download.install_fallback()
+                for error in [TimeoutError('synthetic timeout'), urllib.error.URLError(TimeoutError('synthetic timeout'))]:
+                    with patch.object(download, 'OPEN', side_effect=error):
+                        with urllib.request.urlopen(URL) as response:
+                            self.assertEqual(response.read(), BODY)
+                with patch.object(download, 'OPEN', side_effect=urllib.error.URLError(ssl.SSLCertVerificationError('synthetic TLS failure'))):
+                    with self.assertRaises(urllib.error.URLError):
+                        urllib.request.urlopen(URL)
+                self.assertEqual(verified.call_count, 2)
+        finally:
+            urllib.request.urlopen = before
+
+    def test_requests_timeout_connection_and_certificate_boundaries(self):
+        class Timeout(Exception):
+            request = 'original-request'
+        class Connection(Exception):
+            request = 'original-request'
+        class Certificate(Connection):
+            pass
+        state = {'error': Timeout()}
+        class Session:
+            def request(self, *args, **kwargs):
+                self.timeout = kwargs['timeout']
+                raise state['error']
+        class Result:
+            def __init__(self):
+                self.headers = {}
+        fake = types.SimpleNamespace(Session=Session, Response=Result,
+                                     exceptions=types.SimpleNamespace(Timeout=Timeout, ConnectionError=Connection, SSLError=Certificate))
+        before = urllib.request.urlopen
+        try:
+            with patch.dict(sys.modules, {'requests': fake}), \
+                 patch.object(download, 'verified_asset', side_effect=lambda url: (io.BytesIO(BODY), len(BODY))) as verified:
+                download.install_fallback()
+                for error in [Timeout(), Connection()]:
+                    state['error'] = error
+                    session = Session()
+                    result = session.request('GET', URL, stream=True, timeout=(10, None))
+                    with result.raw:
+                        self.assertEqual(result.raw.read(), BODY)
+                    self.assertEqual(session.timeout, (10, 60))
+                for error, method, url in [(Certificate(), 'GET', URL), (Timeout(), 'POST', URL), (Timeout(), 'GET', 'https://other.test/file')]:
+                    state['error'] = error
+                    with self.assertRaises(type(error)):
+                        Session().request(method, url, stream=True)
+                self.assertEqual(verified.call_count, 2)
         finally:
             urllib.request.urlopen = before
 

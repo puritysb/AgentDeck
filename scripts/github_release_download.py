@@ -116,8 +116,8 @@ def verified_asset(url):
         raise
 
 
-def eligible(method, url, status):
-    if method.upper() != 'GET' or status not in TRANSIENT:
+def asset_get(method, url):
+    if method.upper() != 'GET':
         return False
     try:
         release_identity(url)
@@ -126,24 +126,34 @@ def eligible(method, url, status):
         return False
 
 
+def eligible(method, url, status):
+    return status in TRANSIENT and asset_get(method, url)
+
+
 def install_fallback():
     """Preserve callers' URLs/checksums; replace only failed asset transport."""
     import email.message
     import urllib.response
 
     def urlopen(request, *args, **kwargs):
+        url = request.full_url if isinstance(request, urllib.request.Request) else request
+        method = request.get_method() if isinstance(request, urllib.request.Request) else 'GET'
         try:
             return OPEN(request, *args, **kwargs)
         except urllib.error.HTTPError as error:
-            url = request.full_url if isinstance(request, urllib.request.Request) else request
-            method = request.get_method() if isinstance(request, urllib.request.Request) else 'GET'
             if not eligible(method, url, error.code):
                 raise
             error.close()
-            stream, size = verified_asset(url)
-            headers = email.message.Message()
-            headers['Content-Length'] = str(size)
-            return urllib.response.addinfourl(stream, headers, url, 200)
+        except (TimeoutError, ConnectionError):
+            if not asset_get(method, url):
+                raise
+        except urllib.error.URLError as error:
+            if not asset_get(method, url) or not isinstance(error.reason, (TimeoutError, ConnectionError)):
+                raise
+        stream, size = verified_asset(url)
+        headers = email.message.Message()
+        headers['Content-Length'] = str(size)
+        return urllib.response.addinfourl(stream, headers, url, 200)
 
     urllib.request.urlopen = urlopen
     try:
@@ -157,13 +167,20 @@ def install_fallback():
             kwargs['timeout'] = (10, 60)
         elif isinstance(kwargs['timeout'], tuple) and kwargs['timeout'][1] is None:
             kwargs['timeout'] = (kwargs['timeout'][0], 60)
-        response = original(self, method, url, *args, **kwargs)
-        if not eligible(method, url, response.status_code):
-            return response
-        response.close()
+        try:
+            response = original(self, method, url, *args, **kwargs)
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as error:
+            if isinstance(error, requests.exceptions.SSLError) or not asset_get(method, url):
+                raise
+            source_request = error.request
+        else:
+            if not eligible(method, url, response.status_code):
+                return response
+            source_request = response.request
+            response.close()
         stream, size = verified_asset(url)
         result = requests.Response()
-        result.status_code, result.url, result.request = 200, url, response.request
+        result.status_code, result.url, result.request = 200, url, source_request
         result.headers['Content-Length'] = str(size)
         result.raw = stream
         if not kwargs.get('stream'):

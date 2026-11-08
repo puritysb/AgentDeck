@@ -357,8 +357,10 @@ Gradle wrapper URL changes only its transport, retaining a checksum.
 
 Only the disposable firmware inventory job enables the Python transport hooks
 through its scoped `PYTHONPATH` and `AGENTDECK_GITHUB_ASSET_FALLBACK=1`. The hooks
-replace GETs for exact public GitHub release assets only after HTTP 502/503/504;
-other routes, methods and errors retain their original behavior. Package URLs,
+replace GETs for exact public GitHub release assets only after HTTP 502/503/504
+or connection/time-out failures. TLS certificate errors, other routes, methods
+and HTTP errors retain their original behavior. Rust's OSV Scanner uses the
+same verified API transfer and still checks its independent pinned checksum. Package URLs,
 versions, checksum checks, isolated stores and content hashing remain intact.
 This adds no installed daemon behavior or npm package content.
 

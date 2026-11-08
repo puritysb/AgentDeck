@@ -164,8 +164,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install checksum-pinned OSV Scanner
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          curl --fail --location --retry 3 https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_linux_amd64 -o "$RUNNER_TEMP/osv-scanner"
+          python3 scripts/github_release_download.py https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_linux_amd64 "$RUNNER_TEMP/osv-scanner"
           echo '160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b  '"$RUNNER_TEMP/osv-scanner" | sha256sum --check
           chmod +x "$RUNNER_TEMP/osv-scanner"
       - name: Scan Rust lockfile without executing build scripts
