@@ -45,6 +45,11 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- **Node daemon photo uploads.** Keep device-supplied board IDs inside the photo
+  directory when saving JPEGs, preventing an authenticated upload from writing
+  outside it. Covers HTTP uploads and device capture frames; requires an updated
+  npm/Node daemon ([#740](https://github.com/puritysb/AgentDeck/pull/740)).
+
 ## 2026-11-06 — npm 2.1.0, Apple 2.1.0, Android 2.1.0, ESP32 2.1.0, Stream Deck 2.1.0, Ulanzi 2.1.0
 
 ### 2.1 highlights

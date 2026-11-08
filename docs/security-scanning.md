@@ -317,8 +317,10 @@ first.
 
 ## Snyk trial 2026-11-08
 
-A local, read-only comparison with the Snyk CLI 1.1308.4 (free plan, `snyk test` and
-`snyk code test`, no `snyk monitor`, no GitHub integration). Snyk is not part of CI.
+The initial trial was a local, read-only comparison with the Snyk CLI 1.1308.4
+(free plan, `snyk test` and `snyk code test`, no `snyk monitor` or Snyk GitHub
+integration). It led to the monthly GitHub Actions comparison below; Snyk is
+not a required PR check.
 
 | Scan | Result | Reading |
 |---|---|---|
@@ -332,6 +334,11 @@ Snyk Code also found one path CodeQL had not. Its other value was the triage pra
 narrow Gradle configurations, separate the Git tree from the disk, and read the
 response content type before accepting an XSS result.
 
+The photo-path fix merged in [#740](https://github.com/puritysb/AgentDeck/pull/740)
+after the 2.1.0 release. It is not included in npm 2.1.0; its pending delivery is
+recorded under [Unreleased](../CHANGELOG.md#unreleased). The Swift daemon has no
+photo-upload route, so this fix applies to the npm/Node daemon.
+
 ### Monthly run
 
 `.github/workflows/snyk-monthly.yml` repeats the three useful scans on the 1st of
@@ -340,6 +347,13 @@ It needs a `SNYK_TOKEN` repository secret. `scripts/snyk-monthly.mjs` compares t
 results with `security/snyk-baseline.json` by Snyk's finding identity (stable
 across code motion: 280 of 289 v1.9.6 findings kept it on master) and opens one
 issue for anything new.
+
+The first post-merge run on `9c5bd71e`
+([42452393816](https://github.com/puritysb/AgentDeck/actions/runs/42452393816))
+completed successfully on 2026-11-08. This is execution evidence, not proof that
+every baseline finding has been individually reviewed: the 339-entry baseline
+contains 23 error-level code findings with reviewed reasons; warnings and notes
+are recorded without individual review.
 
 To triage an issue: fix the finding, or rerun the comparison with
 `--write-baseline` and write the reason in that entry's `decision`. Error-level
