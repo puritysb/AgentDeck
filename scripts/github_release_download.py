@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import ssl
 import tempfile
 import time
 import urllib.error
@@ -57,6 +58,31 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def api_open(request, opener=None):
+    """Bounded retry, refreshing stale API redirects without changing identity."""
+    opener = opener or OPEN
+    for attempt in range(3):
+        current = request
+        if attempt:
+            url = request.full_url + '?agentdeck_retry=' + str(time.time_ns())
+            current = urllib.request.Request(url, headers=dict(request.header_items()))
+        try:
+            return opener(current, timeout=60)
+        except urllib.error.HTTPError as error:
+            if error.code not in TRANSIENT:
+                raise
+            error.close()
+            if attempt == 2:
+                raise
+        except (TimeoutError, ConnectionError):
+            if attempt == 2:
+                raise
+        except urllib.error.URLError as error:
+            if isinstance(error.reason, ssl.SSLError) or not isinstance(error.reason, (TimeoutError, ConnectionError)) or attempt == 2:
+                raise
+        time.sleep(2 ** (attempt + 1))
+
+
 def asset_metadata(url):
     owner, repo, tag, name = release_identity(url)
     api = f'https://api.github.com/repos/{owner}/{repo}/releases/tags/{quote(tag, safe="")}'
@@ -66,7 +92,7 @@ def asset_metadata(url):
     token = os.environ.get('GITHUB_TOKEN')
     if token:
         headers['Authorization'] = 'Bearer ' + token
-    with urllib.request.build_opener(NoRedirect()).open(urllib.request.Request(api, headers=headers), timeout=60) as response:
+    with api_open(urllib.request.Request(api, headers=headers), urllib.request.build_opener(NoRedirect()).open) as response:
         if response.status != 200:
             raise ValueError('Unexpected GitHub metadata status')
         raw = response.read(8 * 1024 * 1024 + 1)
@@ -97,7 +123,7 @@ def verified_asset(url):
     try:
         total, digest, started = 0, hashlib.sha256(), time.monotonic()
         # Deliberately no Authorization header on this redirecting request.
-        with OPEN(request, timeout=60) as response:
+        with api_open(request) as response:
             if response.status != 200:
                 raise ValueError('Expected a complete release asset response')
             while chunk := response.read(1024 * 1024):

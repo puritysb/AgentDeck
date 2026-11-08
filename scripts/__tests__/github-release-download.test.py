@@ -25,6 +25,33 @@ class Response(io.BytesIO):
 
 
 class DownloadTests(unittest.TestCase):
+    def test_api_retry_refreshes_transient_redirects_and_stays_bounded(self):
+        url = 'https://api.github.com/repos/example/tool/releases/assets/123'
+        request = urllib.request.Request(url, headers={'Accept': 'application/octet-stream'})
+        calls = []
+        def opener(current, **kwargs):
+            calls.append(current)
+            if len(calls) == 1:
+                raise urllib.error.HTTPError(url, 502, 'synthetic gateway failure', {}, io.BytesIO())
+            return Response(BODY)
+        with patch.object(download.time, 'sleep') as sleep:
+            with download.api_open(request, opener) as response:
+                self.assertEqual(response.read(), BODY)
+            self.assertEqual(calls[0].full_url, url)
+            self.assertTrue(calls[1].full_url.startswith(url + '?agentdeck_retry='))
+            self.assertIsNone(calls[1].get_header('Authorization'))
+            sleep.assert_called_once_with(2)
+        with patch.object(download.time, 'sleep'), patch.object(download, 'OPEN', side_effect=TimeoutError()) as open_asset:
+            with self.assertRaises(TimeoutError):
+                download.api_open(request)
+            self.assertEqual(open_asset.call_count, 3)
+        for error in [urllib.error.HTTPError(url, 401, 'synthetic refusal', {}, io.BytesIO()), urllib.error.URLError(ssl.SSLCertVerificationError())]:
+            with patch.object(download.time, 'sleep') as sleep, patch.object(download, 'OPEN', side_effect=error) as open_asset:
+                with self.assertRaises(type(error)):
+                    download.api_open(request)
+                self.assertEqual(open_asset.call_count, 1)
+                sleep.assert_not_called()
+
     def test_gradle_api_version_follows_committed_wrapper(self):
         for version in ['8.14.5', '9.2']:
             original = 'distributionUrl=https\\://services.gradle.org/distributions/gradle-' + version + '-bin.zip\n'
