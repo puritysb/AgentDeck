@@ -78,6 +78,22 @@ final class CommunicationGraphTests: XCTestCase {
         XCTAssertEqual(network.links.first?.crossed, true)
     }
 
+    func testLegacyDeliveryNeedsUniqueReciprocalEvidence() throws {
+        let send = #"{"id":"1","sessionId":"a","ts":10000,"relation":"messaged","direction":"out","peerSessionId":"b","evidence":"send_message_tool","messageFingerprint":"abc"}"#
+        let receipt = #"{"id":"2","sessionId":"b","ts":10100,"relation":"messaged","direction":"in","peerSessionId":"a","evidence":"cross_session_message","messageFingerprint":"abc"}"#
+        let duplicate = #"{"id":"3","sessionId":"a","ts":10200,"relation":"messaged","direction":"out","peerSessionId":"b","evidence":"send_message_tool","messageFingerprint":"abc"}"#
+        let roster = try roster()
+        let corroborated = CommunicationNetwork.project(snapshot: try snapshot("[\(send),\(receipt)]"), roster: roster)
+        XCTAssertEqual(corroborated.links.count, 1)
+        XCTAssertTrue(corroborated.unidentified.isEmpty)
+        let ambiguous = CommunicationNetwork.project(snapshot: try snapshot("[\(send),\(receipt),\(duplicate)]"), roster: roster)
+        XCTAssertTrue(ambiguous.links.isEmpty)
+        XCTAssertEqual(ambiguous.unidentified.count, 3)
+        let outsideWindow = receipt.replacingOccurrences(of: "10100", with: "13000")
+        let distant = CommunicationNetwork.project(snapshot: try snapshot("[\(send),\(outsideWindow)]"), roster: roster)
+        XCTAssertTrue(distant.links.isEmpty)
+    }
+
     func testInvalidDirectionsFutureEventsAndNonMessagesDoNotCreateEdges() throws {
         let value = try snapshot("""
         [{"id":"1","sessionId":"a","ts":10000,"relation":"spawned","direction":"out","peerSessionId":"b"},

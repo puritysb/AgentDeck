@@ -138,6 +138,9 @@ checks both providers from iPhone cellular while the Mac stays on port 9120.
 The physical check exercises the signed Mac build with its in-process Swift
 daemon and the existing local Node daemon on port 9120. The message graph
 distinguishes identified sessions from observations without identity evidence.
+The existing Node installation predates explicit PID identity evidence. The Mac
+client can verify a legacy delivery when one sender record and one reciprocal
+receiver record share a message fingerprint within two seconds.
 
 ### npm 2.1.1 release decision — 2026-11-08
 

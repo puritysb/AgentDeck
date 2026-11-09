@@ -46,6 +46,7 @@ struct CommunicationObservation: Decodable, Sendable, Identifiable, Equatable {
     let peerSessionId: String?
     let peerIdentity: String?
     let peerName: String?
+    let evidence: String?
     let detail: String?
     let messageIntent: String?
     let messageFingerprint: String?
@@ -83,6 +84,44 @@ struct CommunicationNetwork: Equatable {
     let links: [CommunicationLink]
     let unidentified: [CommunicationObservation]
 
+    private struct DeliveryKey: Hashable {
+        let sender: String
+        let recipient: String
+        let fingerprint: String
+    }
+
+    /// Older daemons lack the PID evidence field. Two separately recorded
+    /// endpoints can still corroborate a delivery, without using names.
+    private static func corroboratedLegacyDeliveries(_ events: [CommunicationObservation]) -> Set<String> {
+        var sent: [DeliveryKey: [CommunicationObservation]] = [:]
+        var received: [DeliveryKey: [CommunicationObservation]] = [:]
+        for event in events {
+            guard event.peerIdentity == nil, let peerID = event.peerSessionId,
+                  let fingerprint = event.messageFingerprint, !fingerprint.isEmpty else { continue }
+            let owner = ObservedAgentRules.rawSessionId(event.sessionId)
+            let peer = ObservedAgentRules.rawSessionId(peerID)
+            guard !owner.isEmpty, !peer.isEmpty, owner != peer else { continue }
+            if event.direction == "out", event.evidence == "send_message_tool" {
+                sent[DeliveryKey(sender: owner, recipient: peer, fingerprint: fingerprint), default: []].append(event)
+            } else if event.direction == "in", event.evidence == "cross_session_message" {
+                received[DeliveryKey(sender: peer, recipient: owner, fingerprint: fingerprint), default: []].append(event)
+            }
+        }
+        let window = Double(CollaborationPresentation.networkSimultaneousWindowMs)
+        var corroborated = Set<String>()
+        for (key, outgoing) in sent {
+            guard let incoming = received[key] else { continue }
+            for send in outgoing {
+                let matches = incoming.filter { abs($0.ts - send.ts) <= window }
+                guard matches.count == 1, let receipt = matches.first,
+                      outgoing.filter({ abs($0.ts - receipt.ts) <= window }).count == 1 else { continue }
+                corroborated.insert(send.id)
+                corroborated.insert(receipt.id)
+            }
+        }
+        return corroborated
+    }
+
     static func project(snapshot: CommunicationSnapshot?, roster: [SessionInfo]) -> Self {
         guard let snapshot else { return Self(nodes: [], links: [], unidentified: []) }
         let events = snapshot.events.filter {
@@ -90,6 +129,7 @@ struct CommunicationNetwork: Equatable {
             !$0.sessionId.isEmpty && $0.ts.isFinite && $0.ts > 0 &&
             $0.ts >= snapshot.since && $0.ts <= snapshot.capturedAt
         }.sorted { $0.ts == $1.ts ? $0.id < $1.id : $0.ts < $1.ts }
+        let corroborated = corroboratedLegacyDeliveries(events)
         var live: [String: SessionInfo] = [:]
         for session in roster { live[ObservedAgentRules.rawSessionId(session.id)] = session }
         var nodes: [String: CommunicationNode] = [:]
@@ -103,9 +143,8 @@ struct CommunicationNetwork: Equatable {
         }
         for event in events {
             let owner = ObservedAgentRules.rawSessionId(event.sessionId)
-            // Legacy IDs may have come from a reused display name. Keep the
-            // observation readable without connecting it to a session.
-            guard event.peerIdentity == "pid", let recorded = event.peerSessionId else {
+            guard event.peerIdentity == "pid" || corroborated.contains(event.id),
+                  let recorded = event.peerSessionId else {
                 unidentified.append(event)
                 continue
             }

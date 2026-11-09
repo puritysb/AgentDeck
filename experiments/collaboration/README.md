@@ -110,9 +110,10 @@ observations. Process ancestry remains an observation in task data. The panel
 does not present it as a parent link or count unlinked launch requests as live
 delegates.
 
-Recent messages open separately. Session links require a unique process address
-recorded at capture. Name-only and legacy observations without that evidence are
-listed separately. Request or reply wording describes the latest observation.
+Recent messages open separately. Session links use a unique process address
+recorded at capture or reciprocal sender and receiver records that uniquely
+match by session IDs and message fingerprint within two seconds. Other
+observations are listed separately. Request or reply wording describes the latest observation.
 The graph and habitat do not estimate an outstanding wait from message wording.
 Swift and Node use the same 24-hour bounds and shared history acceptance fixture.
 

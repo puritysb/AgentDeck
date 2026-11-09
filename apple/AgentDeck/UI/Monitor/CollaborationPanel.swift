@@ -410,6 +410,10 @@ struct CollaborationPanel: View {
             Text("Delegates · \(max(0, census.active)) active · \(max(0, census.completed)) ended this wave")
                 .font(.caption).foregroundStyle(DesignTokens.Ink.s300)
         }
+        if session.alive, let count = session.backgroundTaskCount {
+            Text("Reported background tasks · \(max(0, count)) active")
+                .font(.caption).foregroundStyle(DesignTokens.Ink.s300)
+        }
         if session.alive, let coord = session.coordination {
             Text("Background jobs · \(max(0, coord.backgroundJobs)) observed")
                 .font(.caption).foregroundStyle(DesignTokens.Ink.s300)
