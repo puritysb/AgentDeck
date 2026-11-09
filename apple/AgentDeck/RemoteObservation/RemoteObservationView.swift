@@ -148,7 +148,7 @@ struct RemoteObservationView: View {
             Label(model.reader.notifications ? "Check notification setup" : "Enable notifications",
                   systemImage: model.reader.notifications ? "bell.badge" : "bell")
         }
-        .disabled(model.busy)
+        .disabled(model.busy || model.snapshot == nil || model.snapshot?.sourceState == .disabled)
     }
 
     @ViewBuilder

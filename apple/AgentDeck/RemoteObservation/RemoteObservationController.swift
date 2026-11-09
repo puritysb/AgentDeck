@@ -147,6 +147,7 @@ final class RemoteObservationController: ObservableObject {
     private func hideReader() {
         snapshot = nil; attentionEvent = nil; usingCache = false; pendingEventID = nil
         attentionStatus = ""
+        notificationStatus = ""
     }
     private func clearReader() throws {
         hideReader()
@@ -475,8 +476,11 @@ final class RemoteObservationController: ObservableObject {
                 try persistReader()
                 status = "Fetched the Mac's original observation."
             } else {
+                let inspectingAttention = pendingEventID != nil || attentionEvent != nil
                 try clearReader()
-                attentionStatus = "The shared summary was deleted or is unavailable. No current response wait is confirmed."
+                if inspectingAttention {
+                    attentionStatus = "The shared summary was deleted or is unavailable. No current response wait is confirmed."
+                }
                 status = "No shared observation. Sharing may not be set up or the remote data was deleted."
             }
             lastReadAt = now(); readerFailures = 0; readerRetryAt = nil
