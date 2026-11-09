@@ -1,4 +1,4 @@
-// Bounded 2.0 Store media delivery. Credentials never accompany binary uploads.
+// Bounded Store media delivery. Credentials never accompany binary uploads.
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { resolve, basename } from 'node:path';
@@ -10,19 +10,30 @@ const check = (ok, message) => { if (!ok) throw new Error(message); };
 const hash = (algorithm, bytes) => crypto.createHash(algorithm).update(bytes).digest('hex');
 const id = value => { check(typeof value === 'string' && /^[a-zA-Z0-9-]+$/.test(value), 'Invalid media resource ID'); return value; };
 
+export function hasSelectedMedia(version, platform) {
+  return (version === '2.0.0' && ['MAC_OS', 'IOS'].includes(platform))
+    || (version === '2.1.1' && platform === 'MAC_OS');
+}
+
 export function selectedMedia(version, platform, root = ROOT) {
-  check(version === '2.0.0' && ['MAC_OS', 'IOS'].includes(platform), 'Media delivery is scoped to 2.0.0 MAC_OS or IOS');
-  const selection = JSON.parse(fs.readFileSync(resolve(root, 'apple/appstore-submission/media-2.0.0-selection.json')));
-  const previews = JSON.parse(fs.readFileSync(resolve(root, 'docs/media/current/manifest.json'))).storePreviewCandidates.files;
-  check(selection.version === version && selection.screenshots.length === 36, 'Incomplete 2.0 media selection');
+  check(hasSelectedMedia(version, platform), 'No selected media for this version and platform');
+  const selection = JSON.parse(fs.readFileSync(resolve(root, `apple/appstore-submission/media-${version}-selection.json`)));
+  const previews = version === '2.0.0'
+    ? JSON.parse(fs.readFileSync(resolve(root, 'docs/media/current/manifest.json'))).storePreviewCandidates.files
+    : selection.previews;
+  const legacy = version === '2.0.0';
+  check(selection.version === version && Array.isArray(selection.screenshots) && Array.isArray(previews), 'Incomplete media selection');
+  if (legacy) check(selection.screenshots.length === 36, 'Incomplete 2.0 media selection');
+  else check(selection.screenshots.every(s => s.platform === 'macOS' && ['en', 'ko', 'ja'].includes(s.locale))
+    && previews.every(p => p.platform === 'macOS'), 'Unexpected Mac release media scope');
   const groups = [];
   for (const locale of ['en', 'ko', 'ja']) for (const device of platform === 'MAC_OS' ? ['macOS'] : ['iPhone', 'iPad']) {
     const display = { macOS: 'DESKTOP', iPhone: 'IPHONE_65', iPad: 'IPAD_PRO_3GEN_129' }[device];
     const rows = selection.screenshots.filter(s => s.locale === locale && s.platform === device);
-    check(rows.length === 4, 'Exactly four selected screenshots are required');
+    check(legacy ? rows.length === 4 : rows.length >= 1 && rows.length <= 10, 'Invalid selected screenshot count');
     for (const preview of [false, true]) {
       const files = preview ? previews.filter(s => s.platform === device) : rows;
-      check(files.length === (preview ? 1 : 4), 'Incomplete selected preview');
+      if (preview) check(legacy ? files.length === 1 : files.length <= 1, 'Invalid selected preview count');
       groups.push({ locale: locale === 'en' ? 'en-US' : locale, setType: preview ? 'appPreviewSets' : 'appScreenshotSets',
         assetType: preview ? 'appPreviews' : 'appScreenshots', displayField: preview ? 'previewType' : 'screenshotDisplayType',
         display: preview ? display : `APP_${display}`, preview,
@@ -74,6 +85,7 @@ async function setFor(request, localizations, group, create) {
   const sets = (await rows(request, path)).filter(s => s.attributes?.[group.displayField] === group.display);
   check(sets.length <= 1, 'Duplicate media display set');
   if (sets.length) return sets[0];
+  if (group.files.length === 0) return null;
   check(create, 'Selected media set is missing');
   return (await request(`/v1/${group.setType}`, 'POST', { data: { type: group.setType,
     attributes: { [group.displayField]: group.display }, relationships: { appStoreVersionLocalization: {
@@ -87,6 +99,7 @@ export async function prepareSelectedMedia({ request, version, platform, localiz
   for (const group of groups) {
     await editable(request, versionId, platform, version);
     const set = await setFor(request, localizations, group, true);
+    if (!set) continue;
     const path = `/v1/${group.setType}/${id(set.id)}/${group.assetType}?limit=10`;
     let assets = await rows(request, path);
     // Replace only draft associations. Released baseline media is never edited.
@@ -131,6 +144,7 @@ export async function prepareSelectedMedia({ request, version, platform, localiz
       await request(`/v1/${group.assetType}/${asset.id}`, 'PATCH', { data: { type: group.assetType, id: asset.id,
         attributes: { uploaded: true, sourceFileChecksum: file.md5 } } });
     }
+    if (!group.files.length) continue;
     const uploaded = await rows(request, path);
     const ordered = group.files.map(file => {
       const matches = uploaded.filter(a => a.attributes?.fileName === file.name);
@@ -151,6 +165,7 @@ export async function assertSelectedMedia({ request, version, platform, localiza
   const groups = selectedMedia(version, platform, root);
   for (const group of groups) {
     const set = await setFor(request, localizations, group, false);
+    if (!set) continue;
     const assets = await rows(request, `/v1/${group.setType}/${id(set.id)}/${group.assetType}?limit=10`);
     check(assets.length === group.files.length, 'Selected media count differs');
     for (const file of group.files) {
@@ -164,5 +179,6 @@ export async function assertSelectedMedia({ request, version, platform, localiza
     const ordered = group.files.map(file => assets.find(a => a.attributes.fileName === file.name).id);
     check(assets.every((asset, index) => asset.id === ordered[index]), 'Selected media order differs');
   }
-  return { platform, version, screenshots: groups.filter(g => !g.preview).length * 4, previews: groups.filter(g => g.preview).length, status: 'complete' };
+  const count = preview => groups.filter(group => group.preview === preview).reduce((total, group) => total + group.files.length, 0);
+  return { platform, version, screenshots: count(false), previews: count(true), status: 'complete' };
 }
