@@ -94,6 +94,29 @@ final class CommunicationGraphTests: XCTestCase {
         XCTAssertTrue(distant.links.isEmpty)
     }
 
+    func testTaskHandoffRequiresReceiptAndMatchingTaskEvidence() throws {
+        let value = try snapshot("""
+        [{"id":"send","sessionId":"a","ts":10000,"relation":"messaged","direction":"out","peerSessionId":"b","peerIdentity":"pid","evidence":"send_message_tool","messageFingerprint":"abc","detail":"Reproduction steps"},
+         {"id":"receipt","sessionId":"b","ts":10100,"relation":"messaged","direction":"in","peerSessionId":"a","peerIdentity":"pid","evidence":"cross_session_message","messageFingerprint":"abc"},
+         {"id":"other","sessionId":"a","ts":20000,"relation":"messaged","direction":"out","peerSessionId":"b","peerIdentity":"pid","evidence":"send_message_tool","messageFingerprint":"def"}]
+        """)
+        let messages = CommunicationNetwork.project(snapshot: value, roster: try roster()).messages
+        XCTAssertEqual(messages.map(\.id), ["other", "receipt"])
+        XCTAssertEqual(messages.last?.detail, "Reproduction steps")
+
+        func taskEvent(_ timestamp: Double, direction: String, peer: String) -> CollaborationRelation {
+            CollaborationRelation(id: "task-event", relation: "messaged", direction: direction, phase: "closed",
+                                  peerSessionId: peer, evidence: "message", observedAt: timestamp)
+        }
+        let outgoing = taskEvent(10_000, direction: "out", peer: "b")
+        let incoming = taskEvent(10_100, direction: "in", peer: "a")
+        XCTAssertEqual(messages.filter { $0.belongsToTask(sessionID: "observed:claude:a", relations: [outgoing]) }.map(\.id), ["receipt"])
+        XCTAssertEqual(messages.filter { $0.belongsToTask(sessionID: "b", relations: [incoming]) }.map(\.id), ["receipt"])
+        let unrelated = taskEvent(20_000, direction: "out", peer: "b")
+        XCTAssertTrue(messages.filter { $0.belongsToTask(sessionID: "a", relations: [unrelated]) }.isEmpty)
+        XCTAssertTrue(messages.filter { $0.belongsToTask(sessionID: "unrelated", relations: [outgoing]) }.isEmpty)
+    }
+
     func testInvalidDirectionsFutureEventsAndNonMessagesDoNotCreateEdges() throws {
         let value = try snapshot("""
         [{"id":"1","sessionId":"a","ts":10000,"relation":"spawned","direction":"out","peerSessionId":"b"},
@@ -189,7 +212,7 @@ final class CommunicationFeedTests: XCTestCase {
         let feed = CommunicationFeed(load: { _ in payload }, pause: { throw CancellationError() })
         await feed.observe(port: 1, connected: true)
         var selected: String?
-        let view = CommunicationGraphView(feed: feed, roster: roster, selectedID: "a", expanded: true,
+        let view = CommunicationGraphView(feed: feed, roster: roster, selectedID: "a",
                                           inspect: { selected = $0 })
             .padding(20).frame(width: 1000, height: 850).aquariumSurface()
         let hosting = NSHostingView(rootView: view)

@@ -46,7 +46,10 @@ struct MonitorScreen: View {
     @EnvironmentObject private var daemonService: DaemonService
     @Environment(\.openWindow) private var openWindow
     @StateObject private var communications = CommunicationFeed()
-    @AppStorage("dashboardCollaborationEnabled") private var collaborationEnabled = false
+    @State private var showsMessages = false
+    @State private var showsUsage = false
+    @State private var showsSessions = false
+    @State private var showsWork = false
     @ObservedObject private var attentionAccess = AttentionSessionAccess.shared
     @State private var sessionOpenError: String?
     @State private var aquariumRenderingEnabled = true
@@ -156,12 +159,22 @@ struct MonitorScreen: View {
             } message: {
                 Text(sessionOpenError ?? "")
             }
+            .sheet(isPresented: $showsMessages) {
+                DashboardMessageHistory(feed: communications, roster: stateHolder.state.siblingSessions,
+                                        selectedID: inspection.sessionId,
+                                        inspect: { inspection.select($0, state: stateHolder.state) })
+            }
+            .onChange(of: inspection.sessionId) { _, id in
+                showsSessions = false
+                if id != nil { showsWork = true }
+            }
             .environmentObject(communications)
             .background {
                 AquariumWindowActivityReader(renderingEnabled: $aquariumRenderingEnabled)
                     .allowsHitTesting(false)
             }
-            .task(id: "\(communicationPort)|\(stateHolder.state.bridgeConnected)|\(communications.refreshID)") {
+            .task(id: "\(communicationPort)|\(stateHolder.state.bridgeConnected)|\(communications.refreshID)|\(readsCommunications)") {
+                guard readsCommunications else { return }
                 await communications.observe(port: communicationPort, connected: stateHolder.state.bridgeConnected)
             }
             .modifier(KeyboardShortcutsModifier(stateHolder: stateHolder))
@@ -223,6 +236,16 @@ struct MonitorScreen: View {
 
                 toastLayer(geo: geo)
 
+                #if os(macOS)
+                if !hudHidden {
+                    VStack(alignment: .leading, spacing: 2) {
+                        dashboardHeader(width: geo.size.width)
+                        dashboardBrand.padding(.leading, DashboardHUDLayout.edgePadding)
+                        Spacer(minLength: 0)
+                    }
+                }
+                #endif
+
                 if shouldShowEmptyGuide {
                     MonitorEmptyGuideOverlay(
                         onPreviewDevices: emptyGuidePreviewAction,
@@ -232,6 +255,10 @@ struct MonitorScreen: View {
                 }
             }
         }
+        #if os(macOS)
+        // Put the compact controls in the transparent title-bar space.
+        .ignoresSafeArea(.container, edges: .top)
+        #endif
     }
 
     /// Show the first-run Monitor guide only when the bridge is connected
@@ -254,33 +281,81 @@ struct MonitorScreen: View {
     }
     #endif
 
-    private var waterCommunications: AquariumCommunications {
-        #if os(macOS)
-        return .project(snapshot: communications.snapshot, roster: stateHolder.state.siblingSessions,
-                        visibleIDs: Set(AquariumResident.foreground(AquariumResident.project(terrariumState),
-                            focusedID: terrariumState.focusedSessionId).map(\.id)),
-                        focusedID: inspection.sessionId, fresh: communications.state == .ready)
-        #else
-        return .empty
-        #endif
+    #if os(macOS)
+    private var readsCommunications: Bool { showsMessages || inspection.sessionId != nil }
+
+    private var dashboardBrand: some View {
+        HStack(spacing: 7) {
+            AgentDeckLogo(size: 32, color: DesignTokens.UI.cyan).accessibilityHidden(true)
+            Text("AgentDeck").font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(DesignTokens.Tide.s50)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("dashboard-brand")
     }
 
-    private func communicationLabelInsets(size: CGSize) -> EdgeInsets {
-        #if os(macOS)
-        guard !hudHidden, size.width > size.height else { return EdgeInsets() }
-        let edge = DashboardHUDLayout.edgePadding
-        let left = preferences.showSessionList ? edge + DashboardHUDLayout.sessionPanelWidth(availableWidth: size.width) : 0
-        let right = collaborationEnabled || preferences.showTankStatus || preferences.showDeviceDiagnostic
-            ? edge + min(size.width*0.32, DashboardHUDLayout.rightPanelWidth(collaboration: collaborationEnabled)) : 0
-        return EdgeInsets(top: 60, leading: left, bottom: preferences.showTimeline ? size.height*MonitorLayout.sandFraction : 0, trailing: right)
-        #else
-        return EdgeInsets()
-        #endif
+    private func dashboardHeader(width: CGFloat) -> some View {
+        HStack(spacing: 12) {
+            if stateHolder.state.bridgeConnected {
+                let sessions = stateHolder.state.siblingSessions
+                let count = sessions.filter(CollaborationProjection.needsInput).count
+                let working = sessions.filter(CollaborationProjection.isWorking).count
+                let title = count > 0 ? (count == 1 ? "1 needs input" : "\(count) need input")
+                    : working > 0 ? "\(working) in progress" : "Work"
+                Button {
+                    inspection.select(nil, state: stateHolder.state)
+                    showsWork = true
+                } label: {
+                    Label(title,
+                          systemImage: count > 0 ? "hand.raised" : "list.bullet.rectangle")
+                        .foregroundStyle(count > 0 ? DesignTokens.UI.attn : DesignTokens.Tide.s50)
+                        .modifier(DashboardHeaderLabel(compact: width < 560))
+                }
+                .help("Show work")
+                .accessibilityIdentifier("dashboard-work-home")
+            }
+            Color.clear
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+                .gesture(WindowDragGesture())
+                .accessibilityHidden(true)
+            Button { showsMessages = true } label: {
+                Label("Messages", systemImage: "bubble.left.and.bubble.right")
+                    .modifier(DashboardHeaderLabel(compact: width < 560))
+            }
+            .accessibilityIdentifier("dashboard-messages")
+            if preferences.showSessionList && !DashboardHUDLayout.showsDashboardRails(availableWidth: width) {
+                Button { showsSessions.toggle() } label: {
+                    Label("Sessions", systemImage: "list.bullet").labelStyle(.iconOnly)
+                }
+                .help("Sessions")
+                .popover(isPresented: $showsSessions) {
+                    SessionListPanel(maxHeight: 400).frame(width: 275).padding(8)
+                }
+            }
+            if !DashboardHUDLayout.showsDashboardRails(availableWidth: width)
+                || !(preferences.showTankStatus || preferences.showDeviceDiagnostic) {
+                Button { showsUsage.toggle() } label: {
+                    Label("Usage & Services", systemImage: "chart.bar").labelStyle(.iconOnly)
+                }
+                .help("Usage & Services")
+                .popover(isPresented: $showsUsage) {
+                    TopologyRail(maxHeight: 420).frame(width: 300).padding(8)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .font(.caption.weight(.medium))
+        .foregroundStyle(DesignTokens.Tide.s50)
+        .padding(.leading, 82)
+        .padding(.trailing, DashboardHUDLayout.edgePadding)
+        .frame(height: DashboardHUDLayout.headerHeight)
     }
+    #endif
 
     @available(iOS 18.0, macOS 15.0, *)
-    private func livingAquariumScene(labelInsets: EdgeInsets) -> LivingAquariumScene {
-        var scene = LivingAquariumScene(viewingMode: hudHidden, terrariumState: terrariumState, communications: waterCommunications, communicationLabelInsets: labelInsets,
+    private func livingAquariumScene() -> LivingAquariumScene {
+        var scene = LivingAquariumScene(viewingMode: hudHidden, terrariumState: terrariumState,
                                         onCreatureTapped: handleCreatureTap, onBackgroundTapped: backgroundTapHandler)
         #if os(macOS)
         scene.renderingEnabled = aquariumRenderingEnabled
@@ -296,10 +371,10 @@ struct MonitorScreen: View {
         if preferences.effectiveDashboardType == .aquarium3D {
             if #available(iOS 18.0, macOS 15.0, *) {
                 GeometryReader { geometry in
-                    let top = hudHidden || featuredAwaitingSession == nil ? 0 : attentionHeight + 24
+                    let top = hudHidden || !showsFloatingAttention || featuredAwaitingSession == nil ? 0 : attentionHeight + 24
                     ZStack(alignment: .top) {
                         TerrariumColors.deepSea
-                        livingAquariumScene(labelInsets: communicationLabelInsets(size: geometry.size))
+                        livingAquariumScene()
                             .frame(height: max(1, geometry.size.height - top))
                             .padding(.top, top)
                         // Keep the habitat continuous behind the timeline, as on macOS.
@@ -319,12 +394,9 @@ struct MonitorScreen: View {
                 .ignoresSafeArea()
             }
         } else {
-            GeometryReader { geometry in
+            GeometryReader { _ in
                 TerrariumView(
                     terrariumState: terrariumState,
-                    communications: waterCommunications,
-                    showsCommunicationLabels: !hudHidden,
-                    communicationLabelInsets: communicationLabelInsets(size: geometry.size),
                     onCreatureTapped: handleCreatureTap,
                     onBackgroundTapped: backgroundTapHandler
                 )
@@ -348,10 +420,20 @@ struct MonitorScreen: View {
     /// draws its own scrim on top) while the state survives the round trip.
     @ViewBuilder
     private func hudLayer(geo: GeometryProxy, disconnected: Bool, compactTimelineControls: Bool) -> some View {
+        #if os(macOS)
+        MonitorHUD(showsWork: showsWork || inspection.sessionId != nil, closeWork: {
+            showsWork = false
+            inspection.select(nil, state: stateHolder.state)
+        }, attention: { session in AnyView(attentionCard(for: session)) })
+            .opacity(hudHidden || disconnected ? 0 : 1)
+            .allowsHitTesting(!hudHidden && !disconnected)
+            .animation(.easeInOut(duration: 0.25), value: hudHidden)
+        #else
         MonitorHUD()
             .opacity(hudHidden || disconnected ? 0 : 1)
             .allowsHitTesting(!hudHidden && !disconnected)
             .animation(.easeInOut(duration: 0.25), value: hudHidden)
+        #endif
 
         if preferences.showTimeline {
             VStack {
@@ -403,37 +485,47 @@ struct MonitorScreen: View {
     /// answer without opening the menubar or digging through the session
     /// list. Respects the bridge-disconnected case: if the overlay is
     /// showing we suppress it (ConnectionOverlay owns the screen).
+    private var showsFloatingAttention: Bool {
+        #if os(macOS)
+        return false
+        #else
+        return true
+        #endif
+    }
+
+    private func attentionCard(for session: SessionInfo) -> some View {
+        let isFocused = session.id == effectiveFocusedSessionId
+        return AttentionTheaterHUD(
+            session: session, question: questionFor(session), queuedCount: max(0, attentionSessions.count - 1),
+            options: attentionOptions(for: session, isFocused: isFocused),
+            promptType: session.promptType ?? (isFocused ? stateHolder.state.promptType : nil),
+            cursorIndex: isFocused ? stateHolder.state.cursorIndex : 0,
+            navigable: session.controlMode == "observed" ? false
+                : (isFocused ? stateHolder.state.navigable : false),
+            respond: { index in respondToAwaiting(index, session: session) },
+            onFocus: { stateHolder.sendCommand(.focusSession(sessionId: session.id)) }
+        )
+    }
+
     @ViewBuilder
     private func attentionTheaterLayer(geo: GeometryProxy) -> some View {
-        if !hudHidden, stateHolder.state.bridgeConnected,
+        if showsFloatingAttention, !hudHidden, stateHolder.state.bridgeConnected,
            let featured = featuredAwaitingSession {
-            let awaiting = attentionSessions
-            let queued = max(0, awaiting.count - 1)
             let landscape = geo.size.width > geo.size.height
-            let isFeaturedFocused = featured.id == effectiveFocusedSessionId
             VStack {
-                AttentionTheaterHUD(
-                    session: featured,
-                    question: questionFor(featured),
-                    queuedCount: queued,
-                    options: attentionOptions(for: featured, isFocused: isFeaturedFocused),
-                    promptType: featured.promptType
-                        ?? (isFeaturedFocused ? stateHolder.state.promptType : nil),
-                    cursorIndex: isFeaturedFocused ? stateHolder.state.cursorIndex : 0,
-                    navigable: featured.controlMode == "observed"
-                        ? false
-                        : (isFeaturedFocused ? stateHolder.state.navigable : false),
-                    respond: { index in respondToAwaiting(index, session: featured) },
-                    onFocus: { stateHolder.sendCommand(.focusSession(sessionId: featured.id)) }
-                )
-                .frame(maxWidth: landscape ? 460 : .infinity)
+                attentionCard(for: featured)
+                    .frame(maxWidth: landscape ? 460 : .infinity)
                 .background(GeometryReader { size in
                     Color.clear
                         .onAppear { attentionHeight = size.size.height }
                         .onChange(of: size.size.height) { _, height in attentionHeight = height }
                 })
                 .padding(.horizontal, landscape ? 0 : 12)
+                #if os(macOS)
+                .padding(.top, DashboardHUDLayout.headerHeight + 6)
+                #else
                 .padding(.top, landscape ? 14 : 10)
+                #endif
                 Spacer()
             }
             .transition(.move(edge: .top).combined(with: .opacity))
@@ -801,6 +893,17 @@ struct MonitorScreen: View {
         return merged
     }
 }
+
+#if os(macOS)
+private struct DashboardHeaderLabel: ViewModifier {
+    let compact: Bool
+
+    func body(content: Content) -> some View {
+        if compact { content.labelStyle(.iconOnly) }
+        else { content.labelStyle(.titleAndIcon) }
+    }
+}
+#endif
 
 // MARK: - State Change Modifier
 

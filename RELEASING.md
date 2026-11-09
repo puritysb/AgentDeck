@@ -142,6 +142,16 @@ The existing Node installation predates explicit PID identity evidence. The Mac
 client can verify a legacy delivery when one sender record and one reciprocal
 receiver record share a message fingerprint within two seconds.
 
+#### Final Dashboard layout — macOS internal TestFlight
+
+| Target and route | Last verified public version | Previous internal build | Proposed version and build | Class and user-visible reason |
+| --- | --- | --- | --- | --- |
+| macOS / internal TestFlight | 2.1.0 | 2.2.0 / 11001 | 2.2.0 / next CI-assigned build | Rebuild of the unreleased milestone. The Dashboard keeps the session and usage rails, adds a compact work inspector, and opens message history and its graph on demand. |
+
+Mac acceptance checks the signed build in a narrow window against the existing
+Node daemon on port 9120 and against the in-process Swift daemon. Both modes
+must show live Codex and z.ai usage alongside task details.
+
 ### npm 2.1.1 release decision — 2026-11-08
 
 | Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |

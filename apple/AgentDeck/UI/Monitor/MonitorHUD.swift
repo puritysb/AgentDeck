@@ -73,7 +73,21 @@ enum DashboardHUDLayout {
         return max(0, visibleRegion - edgePadding - timelineClearance)
     }
 
-    static func rightPanelWidth(collaboration: Bool) -> CGFloat { collaboration ? 390 : 300 }
+    #if os(macOS)
+    static let headerHeight: CGFloat = 44
+
+    static func showsDashboardRails(availableWidth: CGFloat) -> Bool {
+        availableWidth >= 640
+    }
+
+    static func showsWorkColumn(availableWidth: CGFloat) -> Bool {
+        availableWidth >= 1_100
+    }
+
+    static func usageWidth(availableWidth: CGFloat) -> CGFloat {
+        min(300, max(216, availableWidth * 0.30))
+    }
+    #endif
 
     static func sessionPanelWidth(availableWidth: CGFloat) -> CGFloat {
         min(max(220, availableWidth * 0.25), 280)
@@ -130,31 +144,6 @@ private enum CompactDashboardHUDPage: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-#if os(macOS)
-struct DashboardPanelMenu: View {
-    @Binding var collaborationEnabled: Bool
-    var title: LocalizedStringKey
-
-    var body: some View {
-        Menu {
-            Picker("Dashboard panel", selection: $collaborationEnabled) {
-                Text("Usage & Services").tag(false)
-                Text("Collaboration").tag(true)
-            }
-            .pickerStyle(.inline)
-        } label: {
-            Text(title)
-                .font(.system(size: 12, weight: .semibold))
-                .lineLimit(1)
-        }
-        .menuStyle(.borderlessButton)
-        .accessibilityLabel("Dashboard panel")
-        .accessibilityValue(title)
-        .accessibilityIdentifier("dashboard-collaboration-switch")
-    }
-}
-#endif
-
 struct MonitorHUD: View {
     @EnvironmentObject private var stateHolder: AgentStateHolder
     @EnvironmentObject private var preferences: AppPreferences
@@ -162,7 +151,9 @@ struct MonitorHUD: View {
     #if os(macOS)
     @EnvironmentObject private var daemonService: DaemonService
     @EnvironmentObject private var communications: CommunicationFeed
-    @AppStorage("dashboardCollaborationEnabled") private var collaborationEnabled = false
+    var showsWork = false
+    var closeWork: (() -> Void)? = nil
+    var attention: ((SessionInfo) -> AnyView)? = nil
     @State private var weather: DashboardWeatherSnapshot?
     @State private var weatherDeckSig: String?
     @State private var nativeWeatherFetchedAt: Date?
@@ -170,6 +161,9 @@ struct MonitorHUD: View {
 
     var body: some View {
         GeometryReader { geo in
+            #if os(macOS)
+            macHUD(size: geo.size)
+            #else
             let isLandscape = geo.size.width > geo.size.height
             let panelMaxHeight = DashboardHUDLayout.landscapePanelMaxHeight(
                 availableHeight: geo.size.height,
@@ -215,20 +209,6 @@ struct MonitorHUD: View {
                         }
                     }
 
-                    #if os(macOS)
-                    // Quiet center-top context: outside conditions enrich the
-                    // aquarium without taking space from either information
-                    // rail. Attribution stays visible beside the forecast.
-                    if let weather {
-                        HStack {
-                            Spacer()
-                            DashboardWeatherPill(weather: weather)
-                            Spacer()
-                        }
-                        .padding(.top, DashboardHUDLayout.edgePadding)
-                    }
-                    #endif
-
                     // Stale data banner when disconnected
                     if !stateHolder.state.bridgeConnected, let lastReceived = stateHolder.lastDataReceivedAt {
                         VStack {
@@ -267,6 +247,7 @@ struct MonitorHUD: View {
                     Spacer()
                 }
             }
+            #endif
         }
         #if os(macOS)
         .task(id: daemonService.port) { await weatherRefreshLoop() }
@@ -278,56 +259,71 @@ struct MonitorHUD: View {
     }
 
     private var showsRightPanel: Bool {
-        #if os(macOS)
-        true
-        #else
-        showsUsageRail
-        #endif
-    }
-
-    private var showsUsageRail: Bool {
         preferences.showTankStatus || preferences.showDeviceDiagnostic
     }
 
-    private var rightRailWidth: CGFloat {
-        #if os(macOS)
-        DashboardHUDLayout.rightPanelWidth(collaboration: collaborationEnabled)
-        #else
-        300
-        #endif
-    }
+    private var rightRailWidth: CGFloat { 300 }
 
     #if os(macOS)
-    /// A pinned capture feed answers for itself; the local daemon must not be
-    /// asked, or a capture shows this machine's real sessions in one panel and
-    /// synthetic ones everywhere else.
     private var collaborationPort: Int {
         #if DEBUG
         if let pinned = stateHolder.captureFeedPort { return pinned }
         #endif
         return Int(daemonService.port)
     }
+
+    private func macHUD(size: CGSize) -> some View {
+        let edge = DashboardHUDLayout.edgePadding
+        let brandClearance: CGFloat = 38
+        let hasRails = DashboardHUDLayout.showsDashboardRails(availableWidth: size.width)
+        let workColumn = DashboardHUDLayout.showsWorkColumn(availableWidth: size.width)
+        let showsUsage = hasRails && showsRightPanel
+        let usageWidth = showsUsage ? DashboardHUDLayout.usageWidth(availableWidth: size.width) : 0
+        let showWorkPanel = !hasRails || workColumn || showsWork
+        let showSessions = hasRails && preferences.showSessionList && (workColumn || !showWorkPanel)
+        let maxHeight = DashboardHUDLayout.landscapePanelMaxHeight(
+            availableHeight: size.height, showsTimeline: preferences.showTimeline
+        ) - DashboardHUDLayout.headerHeight
+
+        return ZStack(alignment: .top) {
+            if maxHeight >= DashboardHUDLayout.minimumPanelHeight {
+                HStack(alignment: .top, spacing: 0) {
+                    if showSessions {
+                        SessionListPanel(maxHeight: maxHeight - brandClearance)
+                            .frame(width: DashboardHUDLayout.sessionPanelWidth(availableWidth: size.width))
+                            .padding(.top, brandClearance)
+                    }
+                    if workColumn { Spacer(minLength: edge) }
+                    if showWorkPanel {
+                        CollaborationPanel(maxHeight: workColumn ? maxHeight : maxHeight - brandClearance,
+                                           port: collaborationPort,
+                                           communications: communications, close: workColumn || !hasRails ? nil : closeWork,
+                                           attention: attention)
+                            .frame(width: workColumn ? 380 : min(440, size.width - usageWidth - 3 * edge))
+                            .padding(.top, workColumn ? 0 : brandClearance)
+                    }
+                    Spacer(minLength: edge)
+                    if showsUsage {
+                        TopologyRail(maxHeight: maxHeight).frame(width: usageWidth)
+                    }
+                }
+                .padding(.horizontal, edge)
+                .padding(.top, DashboardHUDLayout.headerHeight + 2)
+            }
+            if !showWorkPanel, size.width >= 900, let weather {
+                DashboardWeatherPill(weather: weather)
+                    .padding(.top, DashboardHUDLayout.headerHeight + 2)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+    #else
+    private func dashboardRightRail(maxHeight: CGFloat) -> some View {
+        TopologyRail(maxHeight: maxHeight)
+    }
     #endif
 
-    @ViewBuilder
-    private func dashboardRightRail(maxHeight: CGFloat) -> some View {
-        #if os(macOS)
-        if collaborationEnabled {
-            CollaborationPanel(maxHeight: maxHeight, port: collaborationPort, communications: communications,
-                               panelSelection: $collaborationEnabled)
-        } else if showsUsageRail {
-            TopologyRail(maxHeight: maxHeight, panelSelection: $collaborationEnabled)
-        } else {
-            DashboardPanelMenu(collaborationEnabled: $collaborationEnabled, title: "Dashboard panel")
-                .padding(8)
-                .background(TerrariumHUD.bg, in: RoundedRectangle(cornerRadius: 8))
-                .frame(maxWidth: .infinity, alignment: .trailing)
-        }
-        #else
-        TopologyRail(maxHeight: maxHeight)
-        #endif
-    }
-
+    #if !os(macOS)
     /// Compact portrait keeps the full information set but avoids squeezing
     /// Sessions and System into two ~half-width columns. The explicit switch
     /// makes the alternate rail discoverable while each page keeps readable
@@ -372,6 +368,8 @@ struct MonitorHUD: View {
         .padding(.top, 8)
         .frame(maxWidth: .infinity, alignment: .top)
     }
+
+    #endif
 
     #if os(macOS)
     @MainActor

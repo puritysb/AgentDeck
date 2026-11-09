@@ -79,10 +79,37 @@ struct CommunicationLink: Identifiable, Equatable {
     }
 }
 
+/// A message observation, with its sender-side record when the receiver and
+/// sender independently identified the same delivery.
+struct CommunicationMessage: Identifiable, Equatable {
+    let observation: CommunicationObservation
+    let sent: CommunicationObservation?
+    let sender: String
+    let recipient: String
+
+    var id: String { observation.id }
+    var detail: String? { observation.detail ?? sent?.detail }
+    var received: Bool { observation.direction == "in" }
+
+    func belongsToTask(sessionID: String, relations: [CollaborationRelation]) -> Bool {
+        guard received, observation.evidence == "cross_session_message" else { return false }
+        let owner = ObservedAgentRules.rawSessionId(sessionID)
+        return relations.contains { relation in
+            guard relation.relation == "messaged", let peerID = relation.peerSessionId else { return false }
+            let peer = ObservedAgentRules.rawSessionId(peerID)
+            if relation.direction == "in" {
+                return owner == recipient && peer == sender && relation.observedAt == observation.ts
+            }
+            return owner == sender && peer == recipient && relation.observedAt == sent?.ts
+        }
+    }
+}
+
 struct CommunicationNetwork: Equatable {
     let nodes: [CommunicationNode]
     let links: [CommunicationLink]
     let unidentified: [CommunicationObservation]
+    var messages: [CommunicationMessage] = []
 
     private struct DeliveryKey: Hashable {
         let sender: String
@@ -92,11 +119,11 @@ struct CommunicationNetwork: Equatable {
 
     /// Older daemons lack the PID evidence field. Two separately recorded
     /// endpoints can still corroborate a delivery, without using names.
-    private static func corroboratedLegacyDeliveries(_ events: [CommunicationObservation]) -> Set<String> {
+    private static func pairedDeliveries(_ events: [CommunicationObservation]) -> [String: CommunicationObservation] {
         var sent: [DeliveryKey: [CommunicationObservation]] = [:]
         var received: [DeliveryKey: [CommunicationObservation]] = [:]
         for event in events {
-            guard event.peerIdentity == nil, let peerID = event.peerSessionId,
+            guard event.peerIdentity == nil || event.peerIdentity == "pid", let peerID = event.peerSessionId,
                   let fingerprint = event.messageFingerprint, !fingerprint.isEmpty else { continue }
             let owner = ObservedAgentRules.rawSessionId(event.sessionId)
             let peer = ObservedAgentRules.rawSessionId(peerID)
@@ -108,18 +135,18 @@ struct CommunicationNetwork: Equatable {
             }
         }
         let window = Double(CollaborationPresentation.networkSimultaneousWindowMs)
-        var corroborated = Set<String>()
+        var pairs: [String: CommunicationObservation] = [:]
         for (key, outgoing) in sent {
             guard let incoming = received[key] else { continue }
             for send in outgoing {
                 let matches = incoming.filter { abs($0.ts - send.ts) <= window }
                 guard matches.count == 1, let receipt = matches.first,
                       outgoing.filter({ abs($0.ts - receipt.ts) <= window }).count == 1 else { continue }
-                corroborated.insert(send.id)
-                corroborated.insert(receipt.id)
+                pairs[send.id] = receipt
+                pairs[receipt.id] = send
             }
         }
-        return corroborated
+        return pairs
     }
 
     static func project(snapshot: CommunicationSnapshot?, roster: [SessionInfo]) -> Self {
@@ -129,11 +156,12 @@ struct CommunicationNetwork: Equatable {
             !$0.sessionId.isEmpty && $0.ts.isFinite && $0.ts > 0 &&
             $0.ts >= snapshot.since && $0.ts <= snapshot.capturedAt
         }.sorted { $0.ts == $1.ts ? $0.id < $1.id : $0.ts < $1.ts }
-        let corroborated = corroboratedLegacyDeliveries(events)
+        let pairs = pairedDeliveries(events)
         var live: [String: SessionInfo] = [:]
         for session in roster { live[ObservedAgentRules.rawSessionId(session.id)] = session }
         var nodes: [String: CommunicationNode] = [:]
         var unidentified: [CommunicationObservation] = []
+        var history: [CommunicationMessage] = []
         var observations: [String: [(sender: String, recipient: String, event: CommunicationObservation)]] = [:]
 
         func node(_ id: String, name: String?) -> CommunicationNode {
@@ -143,7 +171,7 @@ struct CommunicationNetwork: Equatable {
         }
         for event in events {
             let owner = ObservedAgentRules.rawSessionId(event.sessionId)
-            guard event.peerIdentity == "pid" || corroborated.contains(event.id),
+            guard event.peerIdentity == "pid" || pairs[event.id] != nil,
                   let recorded = event.peerSessionId else {
                 unidentified.append(event)
                 continue
@@ -157,6 +185,10 @@ struct CommunicationNetwork: Equatable {
             if nodes[peer] == nil || event.peerName != nil { nodes[peer] = node(peer, name: event.peerName) }
             let sender = event.direction == "out" ? owner : peer
             let recipient = event.direction == "out" ? peer : owner
+            if event.direction == "in" || pairs[event.id] == nil {
+                history.append(CommunicationMessage(observation: event, sent: pairs[event.id],
+                                                    sender: sender, recipient: recipient))
+            }
             let key = [sender, recipient].sorted().joined(separator: "|")
             observations[key, default: []].append((sender, recipient, event))
         }
@@ -180,6 +212,6 @@ struct CommunicationNetwork: Equatable {
             $0.lastObservedAt == $1.lastObservedAt ? $0.id < $1.id : $0.lastObservedAt > $1.lastObservedAt
         }
         return Self(nodes: nodes.values.sorted { $0.id < $1.id }, links: links,
-                    unidentified: Array(unidentified.reversed()))
+                    unidentified: Array(unidentified.reversed()), messages: Array(history.reversed()))
     }
 }

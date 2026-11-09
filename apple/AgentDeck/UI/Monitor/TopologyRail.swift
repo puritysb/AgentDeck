@@ -46,9 +46,6 @@ struct TopologyRail: View {
     /// roster scrolls instead of growing behind the timeline strip;
     /// nil (portrait) keeps the unbounded plain layout.
     var maxHeight: CGFloat? = nil
-    #if os(macOS)
-    var panelSelection: Binding<Bool>? = nil
-    #endif
     @State private var measuredContentHeight: CGFloat = 0
 
     var body: some View {
@@ -93,16 +90,7 @@ struct TopologyRail: View {
     private var railContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                #if os(macOS)
-                if let panelSelection {
-                    DashboardPanelMenu(collaborationEnabled: panelSelection, title: "Usage & Services")
-                    Spacer(minLength: 0)
-                } else {
-                    sectionHeader("USAGE & SERVICES")
-                }
-                #else
                 sectionHeader("USAGE & SERVICES")
-                #endif
                 Menu {
                     ForEach(providerOrder, id: \.self) { id in
                         Button {
@@ -140,6 +128,10 @@ struct TopologyRail: View {
                 .font(.system(size: 11, weight: .bold, design: .monospaced))
                 .kerning(1.4)
                 .foregroundStyle(TerrariumHUD.subtext)
+                #if os(macOS)
+                .lineLimit(1)
+                .layoutPriority(1)
+                #endif
             Rectangle()
                 .fill(TerrariumHUD.tetraNeon.opacity(0.25))
                 .frame(height: 0.5)

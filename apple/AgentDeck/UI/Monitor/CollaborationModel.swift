@@ -95,17 +95,27 @@ enum CollaborationProjection {
         })
     }
 
+    static func needsInput(_ session: SessionInfo) -> Bool {
+        session.alive && (AgentConnectionState(rawValue: session.state ?? "")?.isAwaiting ?? false)
+    }
+
+    static func isWorking(_ session: SessionInfo) -> Bool {
+        guard session.alive, session.state != "disconnected", session.state != "error" else { return false }
+        return session.state == "processing" || (session.subagents?.active ?? 0) > 0
+            || (session.backgroundTaskCount ?? 0) > 0 || (session.coordination?.backgroundJobs ?? 0) > 0
+    }
+
     static func prioritizedSessions(_ sessions: [SessionInfo]) -> [SessionInfo] {
-        func priority(_ s: SessionInfo) -> Int {
-            if !s.alive { return 4 }
-            if s.state?.hasPrefix("awaiting") == true { return 0 }
-            if s.state == "processing" { return 1 }
-            if (s.subagents?.active ?? 0) > 0 || (s.coordination?.backgroundJobs ?? 0) > 0 { return 2 }
-            return 3
+        func priority(_ session: SessionInfo) -> Int {
+            if needsInput(session) { return 0 }
+            if isWorking(session) { return 1 }
+            return session.alive ? 2 : 3
         }
         return sessions.sorted {
-            let a = priority($0), b = priority($1)
-            return a == b ? $0.id < $1.id : a < b
+            let lhs = priority($0), rhs = priority($1)
+            if lhs != rhs { return lhs < rhs }
+            let lhsWeight = $0.weight ?? 0, rhsWeight = $1.weight ?? 0
+            return lhsWeight == rhsWeight ? $0.id < $1.id : lhsWeight < rhsWeight
         }
     }
 

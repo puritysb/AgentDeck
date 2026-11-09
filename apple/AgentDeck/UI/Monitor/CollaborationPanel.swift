@@ -133,20 +133,21 @@ struct CollaborationPanel: View {
     @ObservedObject private var communications: CommunicationFeed
     @State private var inspectedID: String?
     @State private var selectedTaskID: String?
-    @State private var showsSystem = false
     @State private var refreshID = UUID()
-    @State private var navigationHistory: [String] = []
+    @State private var contentHeight: CGFloat?
     let maxHeight: CGFloat
     let port: Int
-    let panelSelection: Binding<Bool>?
+    let close: (() -> Void)?
+    let attention: ((SessionInfo) -> AnyView)?
 
     init(maxHeight: CGFloat, port: Int, feed: CollaborationFeed = CollaborationFeed(),
          communications: CommunicationFeed = CommunicationFeed(), inspectedID: String? = nil,
-         panelSelection: Binding<Bool>? = nil) {
+         close: (() -> Void)? = nil, attention: ((SessionInfo) -> AnyView)? = nil) {
         self.maxHeight = maxHeight
         self.port = port
         self.communications = communications
-        self.panelSelection = panelSelection
+        self.close = close
+        self.attention = attention
         _feed = StateObject(wrappedValue: feed)
         _inspectedID = State(initialValue: inspectedID)
     }
@@ -154,58 +155,45 @@ struct CollaborationPanel: View {
     private var selected: SessionInfo? {
         stateHolder.state.siblingSessions.first { $0.id == inspectedID }
     }
+    private var visibleTask: CollaborationTask? {
+        guard let selected, let task = feed.task,
+              task.sessionId == ObservedAgentRules.rawSessionId(selected.id),
+              selectedTaskID == nil || task.id == selectedTaskID else { return nil }
+        return task
+    }
+
     private var observationKey: String {
         "\(port)|\(stateHolder.state.bridgeConnected)|\(selected?.id ?? "")|\(selectedTaskID ?? "latest")|\(refreshID)"
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                if let panelSelection {
-                    DashboardPanelMenu(collaborationEnabled: panelSelection, title: "Collaboration")
+            HStack(spacing: 8) {
+                if inspectedID != nil {
+                    Button {
+                        inspection.select(nil, state: stateHolder.state)
+                    } label: {
+                        Label("Back to work", systemImage: "chevron.left")
+                    }.buttonStyle(.plain)
                 } else {
-                    Label(CollaborationPresentation.heading, systemImage: "point.3.connected.trianglepath.dotted")
-                        .font(.system(size: 17, weight: .semibold))
+                    Label("Work", systemImage: "list.bullet.rectangle")
+                        .font(.headline)
                 }
                 Spacer()
-                // Badge, not a word: the existing capsule idiom (caption-size
-                // text, 6/2 padding, 20% tinted Capsule) used by the
-                // connection overlay's `local` / agent chips.
-                Text("BETA")
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .kerning(0.8)
-                    .foregroundStyle(DesignTokens.UI.cyan)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(DesignTokens.UI.cyan.opacity(0.18), in: Capsule())
-                    .overlay(Capsule().stroke(DesignTokens.UI.cyan.opacity(0.35), lineWidth: 0.5))
-                    .accessibilityLabel("Beta feature")
-                Button { showsSystem.toggle() } label: {
-                    Image(systemName: "network")
-                }.help("Show system status").popover(isPresented: $showsSystem) {
-                    TopologyRail(maxHeight: 560).frame(width: 330).padding(12)
+                if let close {
+                    Button(action: close) {
+                        Label("Close work", systemImage: "xmark").labelStyle(.iconOnly)
+                    }.buttonStyle(.plain).help("Close work")
                 }
             }
-            Text("Sessions, delegated work and background jobs")
-                .font(.caption).foregroundStyle(DesignTokens.Ink.s300)
-            Divider().overlay(DesignTokens.Ink.s500)
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 12) {
                     if let selected {
-                        if let previous = navigationHistory.last(where: { id in stateHolder.state.siblingSessions.contains { $0.id == id } }) {
-                            Button {
-                                if let index = navigationHistory.lastIndex(of: previous) {
-                                    navigationHistory.removeSubrange(index...)
-                                }
-                                inspect(previous, remember: false)
-                            } label: {
-                                Label("Back to previous session", systemImage: "chevron.left")
-                            }.buttonStyle(.plain)
-                        }
                         sessionHeader(selected)
-                        liveWork(selected)
-                        feedStatus
-                        if let task = feed.task {
+                        if CollaborationProjection.needsInput(selected), let attention {
+                            attention(selected)
+                        }
+                        if let task = visibleTask {
                             VStack(alignment: .leading, spacing: 6) {
                                 Menu {
                                     Button("Follow latest task") { selectedTaskID = nil }
@@ -227,51 +215,36 @@ struct CollaborationPanel: View {
                             .padding(12).frame(maxWidth: .infinity, alignment: .leading)
                             .background(DesignTokens.Ink.s700.opacity(0.55), in: RoundedRectangle(cornerRadius: 12))
                         }
-                        if feed.state == .ready {
-                            let peers = CollaborationProjection.relatedSessions(feed.relations,
-                                roster: stateHolder.state.siblingSessions, excluding: selected.id)
-                            if !peers.isEmpty {
-                                CollaborationRows(title: "Related sessions · now", symbol: "person.2",
-                                    rows: peers, limit: 3, isCompleted: { _ in false }, content: sessionShortcut)
-                                    .id(inspectedID)
-                            }
+                        liveWork(selected)
+                        if feed.state != .ready {
+                            feedStatus
                         }
-                        if !feed.children.isEmpty {
+                        if visibleTask != nil && !feed.children.isEmpty {
                             CollaborationRows(title: "Delegated work", symbol: "arrow.triangle.branch",
                                               rows: feed.children, limit: 4,
                                               isCompleted: { $0.phase == "completed" }, content: childRow)
                                 .id(inspectedID)
                         }
-                        relationSections.id(inspectedID)
-                        if hasWorkHistory {
-                            Text("History records observed activity; an end does not confirm that the result was integrated.")
-                                .font(.caption2).foregroundStyle(DesignTokens.Ink.s300)
+                        if visibleTask != nil {
+                            relationSections.id(inspectedID)
                         }
-                        if feed.state == .ready && !hasWorkHistory {
-                            VStack(spacing: 8) {
-                                Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
-                                    .font(.system(size: 28)).foregroundStyle(DesignTokens.Ink.s300)
-                                Text("No collaboration recorded for this task").font(.subheadline)
-                                Text("Live session counts above may include work from earlier tasks.")
-                                    .font(.caption).foregroundStyle(DesignTokens.Ink.s300)
-                            }.frame(maxWidth: .infinity).padding(.vertical, 16)
+                        if let task = visibleTask, feed.state == .ready {
+                            handoffs(task: task)
+                        }
+                        if visibleTask != nil && feed.state == .ready && !hasWorkHistory {
+                            Text("No delegated work or background jobs recorded for this task")
+                                .font(.caption).foregroundStyle(DesignTokens.Ink.s300)
                         }
                     } else {
-                        Image(systemName: "cursorarrow.click.2").font(.largeTitle).padding(.top, 20)
-                        Text(inspectedID == nil ? "Choose a session to see its task, delegates and results" : "The selected session left the roster. Pick another one.")
-                            .font(.subheadline)
-                        CollaborationRows(title: "Sessions · needs input first", symbol: "hand.raised",
-                            rows: CollaborationProjection.prioritizedSessions(stateHolder.state.siblingSessions),
-                            limit: 4, isCompleted: { _ in false }, content: sessionShortcut)
+                        workList
                     }
-                    DisclosureGroup("Recent message history") {
-                        CommunicationGraphView(feed: communications, roster: stateHolder.state.siblingSessions,
-                        selectedID: inspectedID, inspect: { inspect($0) }, retry: { communications.refreshID = UUID() })
-                            .padding(.top, 6)
-                    }
-                    .accessibilityIdentifier("collaboration-message-history")
-                }.frame(maxWidth: .infinity, alignment: .leading)
-            }.scrollBounceBehavior(.basedOnSize).id(inspectedID)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+            }
+            .frame(maxHeight: contentHeight)
+            .scrollBounceBehavior(.basedOnSize)
+            .id(inspectedID)
         }
         .padding(16).frame(maxHeight: maxHeight)
         .background(DesignTokens.Ink.s900.opacity(0.94), in: RoundedRectangle(cornerRadius: 16))
@@ -279,7 +252,7 @@ struct CollaborationPanel: View {
         .foregroundStyle(DesignTokens.Tide.s50)
         .onAppear { inspectedID = inspection.sessionId }
         .onChange(of: inspection.sessionId) { _, id in
-            if inspectedID != id { navigationHistory = []; inspectedID = id }
+            if inspectedID != id { inspectedID = id }
         }
         .onChange(of: inspectedID) { _, _ in selectedTaskID = nil }
         .task(id: observationKey) {
@@ -320,85 +293,119 @@ struct CollaborationPanel: View {
         .accessibilityElement(children: .contain)
     }
 
-    private func inspect(_ id: String, remember: Bool = true) {
-        guard inspectedID != id, stateHolder.state.siblingSessions.contains(where: { $0.id == id }) else { return }
-        if remember, let current = inspectedID, current != id { navigationHistory.append(current) }
-        inspectedID = id
-        inspection.select(id, state: stateHolder.state)
-    }
-
-    private func sessionHeader(_ session: SessionInfo) -> some View {
-        let waiting = session.alive && session.state?.hasPrefix("awaiting") == true
-        let working = session.alive && session.state == "processing"
-        // Turn closed, but work it started is still running: the parent is
-        // idle to the harness and waiting to the user. Say both.
-        // These are separate censuses; do not add potentially overlapping
-        // worker counts into a fabricated total. Direct children matter too.
-        let hasActiveWorkers = (session.subagents?.active ?? 0) > 0
-        let pendingJobs = session.coordination?.backgroundJobs ?? 0
-        let awaitingResults = session.alive
-            && CollaborationPresentation.phase(waiting, working, session.subagents?.active ?? 0, 0, pendingJobs) == 2
-        let continuation = hasActiveWorkers ? "Session · turn closed · workers still running"
-            : "Session · turn closed · \(pendingJobs) background jobs observed"
+    private var workList: some View {
+        let sessions = CollaborationProjection.prioritizedSessions(
+            stateHolder.state.siblingSessions.filter { $0.agentType != "daemon" }
+        )
+        let attention = sessions.filter(CollaborationProjection.needsInput)
+        let working = sessions.filter { !CollaborationProjection.needsInput($0) && CollaborationProjection.isWorking($0) }
+        let others = sessions.filter { !CollaborationProjection.needsInput($0) && !CollaborationProjection.isWorking($0) }
         return VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                Image(systemName: waiting ? "person.crop.circle.badge.exclamationmark" : "circle.hexagongrid.fill")
-                    .font(.system(size: 25)).foregroundStyle(waiting ? DesignTokens.UI.attn : DesignTokens.UI.cyan)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(session.projectName ?? "Unknown project").font(.headline).lineLimit(2)
-                    Text("\(session.agentType ?? "Unknown agent") · \(ObservedAgentRules.rawSessionId(session.id).prefix(8))")
-                        .font(.caption).foregroundStyle(DesignTokens.Ink.s300)
+            if inspectedID != nil {
+                Text("The selected session is no longer available.").font(.caption)
+            }
+            if sessions.isEmpty {
+                Text("No sessions observed yet").font(.subheadline)
+            }
+            workGroup("Needs your input", sessions: attention, symbol: "hand.raised.fill", tint: DesignTokens.UI.attn)
+            workGroup("In progress", sessions: working, symbol: "waveform", tint: DesignTokens.UI.cyan)
+            if !others.isEmpty {
+                if attention.isEmpty && working.isEmpty {
+                    workGroup("Other sessions", sessions: others, symbol: "pause.circle", tint: DesignTokens.Ink.s300)
+                } else {
+                    DisclosureGroup("Other sessions · \(others.count)") {
+                        ForEach(others, content: sessionShortcut)
+                    }.font(.caption)
                 }
-            }
-            Label(!session.alive ? "Session · offline"
-                    : waiting ? "Session · needs your input"
-                    : working ? "Session · working"
-                    : awaitingResults ? continuation
-                    : "Session · \(session.state ?? "unknown")",
-                  systemImage: waiting ? "hand.raised.fill" : working ? "waveform" : awaitingResults ? "hourglass" : "pause.circle")
-                .font(.caption).foregroundStyle(waiting || awaitingResults ? DesignTokens.UI.attn : DesignTokens.UI.cyan)
-            if let activity = session.activity, !activity.isEmpty {
-                Text(activity).font(.subheadline).lineLimit(3)
-            }
-            if waiting {
-                Text(session.question ?? "See the question in the answer card")
-                    .font(.subheadline).lineLimit(4).padding(10)
-                    .background(DesignTokens.UI.attn.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-                Text("Answer from the question card or in the agent itself")
-                    .font(.caption).foregroundStyle(DesignTokens.UI.attn)
             }
         }
     }
 
+    @ViewBuilder
+    private func workGroup(_ title: String, sessions: [SessionInfo], symbol: String, tint: Color) -> some View {
+        if !sessions.isEmpty {
+            Label(title, systemImage: symbol)
+                .font(.caption.bold()).foregroundStyle(tint)
+                .accessibilityAddTraits(.isHeader)
+            ForEach(sessions, content: sessionShortcut)
+        }
+    }
+
+    private func sessionName(_ session: SessionInfo) -> String {
+        [session.displayName, session.projectName, session.agentType]
+            .compactMap { $0 }.first { !$0.isEmpty } ?? "Session"
+    }
+
+    private func sessionStatus(_ session: SessionInfo) -> String {
+        if !session.alive || session.state == "disconnected" { return "Offline" }
+        if CollaborationProjection.needsInput(session) { return "Needs your input" }
+        if session.state == "processing" { return "Working" }
+        if CollaborationProjection.isWorking(session) { return "Background work running" }
+        if session.state == "idle" { return "Idle" }
+        if session.state == "error" { return "Error" }
+        return "State unavailable"
+    }
+
+    private func sessionHeader(_ session: SessionInfo) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(sessionName(session)).font(.headline).lineLimit(2)
+            Text([session.agentType, sessionStatus(session)].compactMap { $0 }.joined(separator: " · "))
+                .font(.caption).foregroundStyle(DesignTokens.Ink.s300)
+            if let activity = session.activity, !activity.isEmpty {
+                Text(activity).font(.subheadline).lineLimit(3)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private func sessionShortcut(_ session: SessionInfo) -> some View {
-        let waiting = session.alive && session.state?.hasPrefix("awaiting") == true
-        let workers = (session.subagents?.active ?? 0) > 0
-        let status = !session.alive ? "Offline" : waiting ? "Needs your input" : session.state == "processing" ? "Working"
-            : workers ? "Workers still running" : (session.coordination?.backgroundJobs ?? 0) > 0 ? "Background jobs observed"
-            : session.state == "idle" ? "Idle" : "State unavailable"
-        return Button { inspect(session.id) } label: {
+        Button {
+            inspection.select(session.id, state: stateHolder.state)
+        } label: {
             HStack(alignment: .top, spacing: 8) {
-                Image(systemName: waiting ? "hand.raised.fill" : "arrow.up.right.circle")
-                    .foregroundStyle(waiting ? DesignTokens.UI.attn : DesignTokens.UI.cyan)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(session.projectName ?? "Session").font(.subheadline.bold()).lineLimit(2)
-                    Text("\(session.agentType ?? "Agent") · \(status)")
-                        .font(.caption).foregroundStyle(waiting ? DesignTokens.UI.attn : DesignTokens.Ink.s300)
-                    workCounts(session)
-                    if let activity = session.activity, !activity.isEmpty {
-                        Text(activity).font(.caption).foregroundStyle(DesignTokens.Ink.s300).lineLimit(2)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(sessionName(session)).font(.subheadline.bold()).lineLimit(2)
+                    Text([session.agentType, sessionStatus(session)].compactMap { $0 }.joined(separator: " · "))
+                        .font(.caption).foregroundStyle(DesignTokens.Ink.s300)
+                    let summary = CollaborationProjection.needsInput(session)
+                        ? session.question ?? session.activity : session.activity
+                    if let summary, !summary.isEmpty {
+                        Text(summary).font(.caption).lineLimit(2)
                     }
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right").font(.caption)
-            }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
-                .background(DesignTokens.Ink.s800, in: RoundedRectangle(cornerRadius: 10))
-        }.buttonStyle(.plain).help("Inspect session")
+            }
+            .padding(8).frame(maxWidth: .infinity, alignment: .leading)
+            .background(DesignTokens.Ink.s800, in: RoundedRectangle(cornerRadius: 8))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("dashboard-work-\(session.id)")
+    }
+
+    @ViewBuilder
+    private func handoffs(task: CollaborationTask) -> some View {
+        if communications.state == .ready {
+            let network = CommunicationNetwork.project(snapshot: communications.snapshot, roster: stateHolder.state.siblingSessions)
+            let deliveries = network.messages.filter { $0.belongsToTask(sessionID: task.sessionId, relations: feed.relations) }
+            if !deliveries.isEmpty {
+                CollaborationRows(title: "Confirmed deliveries", symbol: "tray.and.arrow.down",
+                                  rows: deliveries, limit: 4, isCompleted: { _ in false }) { message in
+                    let sender = network.nodes.first { $0.id == message.sender }?.name ?? message.sender
+                    let recipient = network.nodes.first { $0.id == message.recipient }?.name ?? message.recipient
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("\(sender) → \(recipient)").font(.caption.bold())
+                        if let detail = message.detail { Text(detail).font(.caption).lineLimit(3) }
+                    }
+                }
+            }
+        }
     }
 
     private func liveWork(_ session: SessionInfo) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label("Live work", systemImage: "waveform").font(.caption.bold())
+            Label("Live session work", systemImage: "waveform").font(.caption.bold())
             workCounts(session)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

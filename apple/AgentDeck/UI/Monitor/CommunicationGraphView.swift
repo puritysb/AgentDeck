@@ -52,85 +52,33 @@ struct CommunicationGraphView: View {
     @ObservedObject var feed: CommunicationFeed
     let roster: [SessionInfo]
     let selectedID: String?
-    var expanded = false
     let inspect: (String) -> Void
-    var retry: () -> Void = {}
-    @State private var expandedGraph = false
     @State private var selectedLink: String?
 
     var body: some View {
         let network = CommunicationNetwork.project(snapshot: feed.snapshot, roster: roster)
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("Recent messages", systemImage: "point.3.connected.trianglepath.dotted")
-                    .font(.headline)
-                Spacer()
-                if !expanded {
-                    Button { expandedGraph = true } label: { Image(systemName: "arrow.up.left.and.arrow.down.right") }
-                        .help("Expand all session communications")
-                }
-                Button(action: retry) { Image(systemName: "arrow.clockwise") }.help("Refresh communication graph")
-            }
-            Text(feed.snapshot == nil ? "Message history unavailable"
-                 : "\(network.links.count) session \(network.links.count == 1 ? "pair" : "pairs") · last \(CollaborationPresentation.networkHistoryWindowMs / 3_600_000) h")
+            Text("\(network.links.count) session \(network.links.count == 1 ? "pair" : "pairs") · last \(CollaborationPresentation.networkHistoryWindowMs / 3_600_000) h")
                 .font(.caption).foregroundStyle(DesignTokens.Ink.s300)
             if feed.state != .ready {
-                Text(status).font(.caption).foregroundStyle(DesignTokens.Ink.s300)
-            }
-            if feed.snapshot?.truncated == true {
-                Text("Partial history · newest \(CollaborationPresentation.networkEventLimit) message observations")
-                    .font(.caption).foregroundStyle(DesignTokens.Ink.s300)
+                Text(status).font(.caption)
             }
             if network.links.isEmpty {
                 if feed.snapshot != nil {
-                    Text("No messages with identified session peers in this window")
-                        .font(.caption).foregroundStyle(DesignTokens.Ink.s300)
+                    Text("No messages with identified session peers in this window").font(.caption)
                 }
             } else {
-                let drawn = Array(network.links.prefix(expanded ? 40 : 12))
+                let drawn = Array(network.links.prefix(40))
                 graph(network, links: drawn)
                 if drawn.count < network.links.count {
-                    Text("Diagram shows the \(drawn.count) most recent session pairs.")
-                        .font(.caption2).foregroundStyle(DesignTokens.Ink.s300)
+                    Text("Showing the \(drawn.count) most recent session pairs.").font(.caption)
                 }
-                let links = selectedLink.flatMap { id in network.links.first { $0.id == id } }.map { [$0] }
-                    ?? (expanded ? network.links : Array(network.links.prefix(3)))
-                LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(links) { link in conversation(link, network: network) }
-                }
-                if !expanded && network.links.count > 3 && selectedLink == nil {
-                    Button("Show all \(network.links.count) session pairs") { expandedGraph = true }.font(.caption)
-                }
-                if selectedLink != nil { Button("Show all pairs") { selectedLink = nil }.font(.caption) }
-            }
-            if !network.unidentified.isEmpty {
-                let count = network.unidentified.count
-                let title = "Unidentified peers · \(count) \(count == 1 ? "observation" : "observations")"
-                if expanded {
-                    Text(title).font(.caption.bold())
-                    unidentifiedList(network.unidentified)
-                } else {
-                    DisclosureGroup(title) {
-                        unidentifiedList(Array(network.unidentified.prefix(8)))
-                        if network.unidentified.count > 8 {
-                            Button("Show all observations") { expandedGraph = true }
-                        }
-                    }.font(.caption)
+                if let selectedLink, let link = drawn.first(where: { $0.id == selectedLink }) {
+                    conversation(link, network: network)
                 }
             }
         }
-        .padding(12)
-        .background(DesignTokens.Ink.s800.opacity(0.65), in: RoundedRectangle(cornerRadius: 12))
-        .sheet(isPresented: $expandedGraph) {
-            VStack {
-                HStack { Text("All session communications").font(.title2); Spacer(); Button("Done") { expandedGraph = false } }
-                ScrollView {
-                    CommunicationGraphView(feed: feed, roster: roster, selectedID: selectedID,
-                        expanded: true, inspect: { id in inspect(id); expandedGraph = false }, retry: retry)
-                }
-            }.padding(20).frame(minWidth: 850, idealWidth: 1050, minHeight: 650)
-                .aquariumSurface()
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var status: String {
@@ -147,9 +95,9 @@ struct CommunicationGraphView: View {
         let ids = Set(links.flatMap { [$0.latestSender, $0.latestRecipient] })
         let nodes = network.nodes.filter { ids.contains($0.id) }
         let singlePair = nodes.count == 2
-        let width: CGFloat = expanded ? max(760, CGFloat(nodes.count) * 62) : max(310, CGFloat(nodes.count) * 42)
-        let height: CGFloat = singlePair ? 132 : expanded ? max(390, width * 0.5) : max(230, width * 0.65)
-        let nodeWidth: CGFloat = expanded ? 130 : 98
+        let width: CGFloat = singlePair ? 310 : max(420, CGFloat(nodes.count) * 62)
+        let height: CGFloat = singlePair ? 132 : max(250, width * 0.5)
+        let nodeWidth: CGFloat = 106
         let centerX: CGFloat = width / 2
         let centerY: CGFloat = height / 2
         let radiusX: CGFloat = width / 2 - nodeWidth / 2 - 8
@@ -218,7 +166,7 @@ struct CommunicationGraphView: View {
                         if let id = node.rosterID { inspect(id) }
                     } label: {
                         VStack(spacing: 3) {
-                            Text(node.name).font(.system(size: expanded ? 12 : 10, weight: .semibold)).lineLimit(1)
+                            Text(node.name).font(.system(size: 11, weight: .semibold)).lineLimit(1)
                             Text(node.project.map { "\($0) · \(node.id.prefix(6))" } ?? "Not in live roster")
                                 .font(.system(size: 9)).lineLimit(1)
                             Text(stateLabel(node.state)).font(.system(size: 9)).lineLimit(1)
@@ -233,7 +181,7 @@ struct CommunicationGraphView: View {
                         .help(node.rosterID == nil ? "Session is outside the live roster" : "Inspect this session")
                 }
             }.frame(width: width, height: height)
-        }.frame(height: min(expanded ? 540 : 250, height + 12))
+        }.frame(height: min(330, height + 12))
     }
 
     private func stateLabel(_ state: String?) -> String {
@@ -258,7 +206,7 @@ struct CommunicationGraphView: View {
                 .font(.caption).foregroundStyle(DesignTokens.UI.cyan)
             Text(Date(timeIntervalSince1970: link.lastObservedAt / 1_000), format: .dateTime.month().day().hour().minute())
                 .font(.caption2).foregroundStyle(DesignTokens.Ink.s300)
-            if let detail = link.detail, !detail.isEmpty { Text(detail).font(.caption).lineLimit(expanded ? 3 : 2) }
+            if let detail = link.detail, !detail.isEmpty { Text(detail).font(.caption).lineLimit(3) }
             HStack {
                 if let id = sender?.rosterID { Button("Inspect sender") { inspect(id) } }
                 if let id = recipient?.rosterID { Button("Inspect recipient") { inspect(id) } }
@@ -266,23 +214,96 @@ struct CommunicationGraphView: View {
         }.padding(9).frame(maxWidth: .infinity, alignment: .leading)
             .background(DesignTokens.Ink.s900.opacity(0.7), in: RoundedRectangle(cornerRadius: 8))
     }
-    private func unidentifiedList(_ events: [CommunicationObservation]) -> some View {
-        LazyVStack(alignment: .leading, spacing: 8) {
-            ForEach(events) { unidentifiedRow($0) }
-        }.font(.caption).padding(.top, 6)
+}
+
+struct DashboardMessageHistory: View {
+    @ObservedObject var feed: CommunicationFeed
+    let roster: [SessionInfo]
+    let selectedID: String?
+    let inspect: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var showsGraph = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Recent messages").font(.headline)
+                Spacer()
+                Button { feed.refreshID = UUID() } label: {
+                    Label("Refresh messages", systemImage: "arrow.clockwise").labelStyle(.iconOnly)
+                }
+                Button("Done") { dismiss() }
+            }
+            Picker("Message view", selection: $showsGraph) {
+                Text("History").tag(false)
+                Text("Graph").tag(true)
+            }.pickerStyle(.segmented).labelsHidden()
+            ScrollView {
+                if showsGraph {
+                    CommunicationGraphView(feed: feed, roster: roster, selectedID: selectedID,
+                                           inspect: openSession)
+                } else {
+                    messageList
+                }
+            }
+            .frame(minHeight: 200, idealHeight: 390)
+            .id(showsGraph)
+        }
+        .padding(16)
+        .frame(minWidth: 340, idealWidth: 640, maxWidth: 820)
+        .aquariumSurface()
+        .accessibilityIdentifier("dashboard-message-history")
     }
 
-    private func unidentifiedRow(_ event: CommunicationObservation) -> some View {
-        let ownerID = ObservedAgentRules.rawSessionId(event.sessionId)
-        let owner = roster.first { ObservedAgentRules.rawSessionId($0.id) == ownerID }?.projectName ?? String(ownerID.prefix(8))
-        return VStack(alignment: .leading, spacing: 3) {
-            Text(event.direction == "out" ? "Sent by \(owner)" : "Received by \(owner)").font(.caption.bold())
-            Text(event.peerName ?? "Peer name unavailable")
-            Text(Date(timeIntervalSince1970: event.ts / 1_000), format: .dateTime.month().day().hour().minute())
-                .font(.caption2).foregroundStyle(DesignTokens.Ink.s300)
-            if let detail = event.detail, !detail.isEmpty { Text(detail).lineLimit(3) }
-        }.frame(maxWidth: .infinity, alignment: .leading)
+    private func openSession(_ id: String) {
+        inspect(id)
+        dismiss()
     }
 
+    private var messageList: some View {
+        let network = CommunicationNetwork.project(snapshot: feed.snapshot, roster: roster)
+        let nodes = Dictionary(uniqueKeysWithValues: network.nodes.map { ($0.id, $0) })
+        return LazyVStack(alignment: .leading, spacing: 10) {
+            if feed.state != .ready {
+                Text(feed.state.message).font(.caption)
+            }
+            if feed.snapshot?.truncated == true {
+                Text("Showing the most recent observations available.").font(.caption)
+            }
+            if feed.state == .ready && network.messages.isEmpty {
+                Text("No messages with identified peers in the last 24 hours").font(.caption)
+            }
+            ForEach(network.messages) { message in
+                let sender = nodes[message.sender]
+                let recipient = nodes[message.recipient]
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("\(sender?.name ?? message.sender) → \(recipient?.name ?? message.recipient)").font(.subheadline.bold())
+                    HStack {
+                        Text(message.received ? "Delivery observed" : "Send observed")
+                        Text(Date(timeIntervalSince1970: message.observation.ts / 1_000),
+                             format: .dateTime.month().day().hour().minute())
+                    }.font(.caption).foregroundStyle(DesignTokens.Ink.s300)
+                    if let detail = message.detail { Text(detail).font(.caption).lineLimit(4) }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(8)
+                .background(DesignTokens.Ink.s800, in: RoundedRectangle(cornerRadius: 8))
+            }
+            if !network.unidentified.isEmpty {
+                DisclosureGroup("Unidentified peers · \(network.unidentified.count)") {
+                    ForEach(network.unidentified) { event in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(event.peerName ?? "Peer name unavailable").font(.caption.bold())
+                            Text(Date(timeIntervalSince1970: event.ts / 1_000),
+                                 format: .dateTime.month().day().hour().minute()).font(.caption)
+                            if let detail = event.detail { Text(detail).font(.caption).lineLimit(3) }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 }
 #endif
