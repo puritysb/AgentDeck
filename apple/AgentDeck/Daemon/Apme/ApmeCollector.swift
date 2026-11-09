@@ -740,7 +740,8 @@ final class ApmeCollector {
     func noteRelation(
         sessionId: String, relation: String, direction: String, phase: String,
         peerSessionId: String?, peerName: String?, evidence: String, detail: String?,
-        ts: Int, key: String, messageIntent: String? = nil, messageFingerprint: String? = nil
+        ts: Int, key: String, messageIntent: String? = nil, messageFingerprint: String? = nil,
+        peerIdentity: String? = nil
     ) -> Bool {
         guard let task = sessionToTask[sessionId] else { return false }
         var payload: [String: Any] = [
@@ -751,6 +752,7 @@ final class ApmeCollector {
         if let detail, !detail.isEmpty { payload["detail"] = detail }
         if let messageIntent { payload["messageIntent"] = messageIntent }
         if let messageFingerprint { payload["messageFingerprint"] = messageFingerprint }
+        if peerIdentity == "pid" { payload["peerIdentity"] = peerIdentity }
         let turnIndex = task.lastTurnIndex ?? task.firstTurnIndex ?? 0
         return appendSampleEvent(
             taskId: task.id, runId: task.runId, turnIndex: turnIndex,
@@ -773,27 +775,39 @@ final class ApmeCollector {
             return v.isEmpty ? nil : v
         }
         var pid: Int? = nil
-        if let from = attr("from"), let sock = from.split(separator: "/").last,
-           sock.hasSuffix(".sock"), let n = Int(sock.dropLast(5)), n > 0 { pid = n }
+        if let from = attr("from") { pid = messageSocketPID(from) }
         var body = String(prompt[prompt.index(after: close)...])
         if body.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("This came from another Claude session"),
            let blank = body.range(of: "\n\\s*\n", options: .regularExpression) {
             body = String(body[blank.upperBound...])
         }
         if let closing = body.range(of: "</cross-session-message>") { body = String(body[..<closing.lowerBound]) }
-        let flat = body.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
-        return (pid, attr("from-name"), String(flat.prefix(140)), body)
+        return (pid, attr("from-name"), messageExcerpt(body) ?? "", body)
     }
 
     /// The `to` of a SendMessage tool call: a session name or a `uds:` path.
     nonisolated static func parseSendMessageTarget(_ input: [String: Any]?) -> (peerName: String?, peerPid: Int?, summary: String?)? {
         guard let to = (input?["to"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !to.isEmpty else { return nil }
-        var pid: Int? = nil
-        if to.hasPrefix("uds:"), let sock = to.split(separator: "/").last,
-           sock.hasSuffix(".sock"), let n = Int(sock.dropLast(5)), n > 0 { pid = n }
-        let summaryRaw = (input?["summary"] as? String) ?? (input?["message"] as? String)
-        let summary = summaryRaw.map { String($0.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ").prefix(140)) }
-        return (pid == nil ? to : nil, pid, (summary?.isEmpty ?? true) ? nil : summary)
+        let pid = messageSocketPID(to)
+        let summary = messageExcerpt(input?["summary"] as? String)
+            ?? messageExcerpt(input?["message"] as? String)
+        return (pid == nil ? to : nil, pid, summary)
+    }
+
+    nonisolated private static func messageSocketPID(_ address: String) -> Int? {
+        guard address.hasPrefix("uds:"),
+              let suffix = address.range(of: #"/[0-9]+\.sock$"#, options: .regularExpression),
+              let pid = Int(address[suffix].dropFirst().dropLast(5)), pid > 0 else { return nil }
+        return pid
+    }
+
+    nonisolated private static func messageExcerpt(_ text: String?) -> String? {
+        guard let text else { return nil }
+        let limit = CollaborationPresentation.networkDetailCharacters
+        let flat = CollaborationPresentation.normalizedMessageText(text)
+        guard !flat.isEmpty else { return nil }
+        guard flat.unicodeScalars.count > limit else { return flat }
+        return String(flat.unicodeScalars.prefix(limit - 1)).trimmingCharacters(in: CharacterSet(charactersIn: " ")) + "…"
     }
 
     // MARK: - Sibling session tracking

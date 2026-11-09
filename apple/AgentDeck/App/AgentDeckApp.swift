@@ -99,8 +99,9 @@ struct AgentDeckApp: App {
                         .environmentObject(daemonService)
                 }
         }
+        .windowStyle(.hiddenTitleBar)
         .defaultPosition(.center)
-        .defaultSize(width: 1280, height: 840)
+        .defaultSize(width: dashboardInitialSize.width, height: dashboardInitialSize.height)
 
         // APME evaluation dashboard — embedded WKWebView pointing at the
         // in-process daemon's /apme HTTP endpoint. Opens from the menu bar
@@ -216,6 +217,20 @@ struct AgentDeckApp: App {
     }
 
     #if os(macOS)
+    private var dashboardInitialSize: CGSize {
+        #if DEBUG
+        // Capture builds can exercise the real window at a repeatable size.
+        if stateHolder.isCaptureFeedPinned,
+           let size = ProcessInfo.processInfo.environment["AGENTDECK_SCREENSHOT_SIZE"] {
+            let dimensions = size.split(separator: "x").compactMap { Double($0) }
+            if dimensions.count == 2, (420...2560).contains(dimensions[0]), (360...1440).contains(dimensions[1]) {
+                return CGSize(width: dimensions[0], height: dimensions[1])
+            }
+        }
+        #endif
+        return CGSize(width: 1280, height: 840)
+    }
+
     /// `configureDaemonConnection()` used to ride the Dashboard's `.task`, so it
     /// ran exactly once because the window opened exactly once. Its new host is
     /// the MenuBarExtra label's `.onAppear`, which SwiftUI may call again when

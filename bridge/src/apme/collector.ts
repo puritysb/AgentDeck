@@ -1337,6 +1337,7 @@ export class ApmeCollector {
     direction: 'in' | 'out';
     phase: 'open' | 'closed';
     peerSessionId?: string | null;
+    peerIdentity?: 'pid';
     peerName?: string | null;
     evidence: string;
     detail?: string | null;
@@ -1361,6 +1362,7 @@ export class ApmeCollector {
         direction: event.direction,
         phase: event.phase,
         ...(event.peerSessionId ? { peerSessionId: event.peerSessionId } : {}),
+        ...(event.peerIdentity === 'pid' ? { peerIdentity: event.peerIdentity } : {}),
         ...(event.peerName ? { peerName: event.peerName } : {}),
         evidence: event.evidence,
         ...(event.detail ? { detail: event.detail } : {}),

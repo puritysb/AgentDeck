@@ -73,7 +73,17 @@ enum DashboardHUDLayout {
         return max(0, visibleRegion - edgePadding - timelineClearance)
     }
 
-    static func rightPanelWidth(collaboration: Bool) -> CGFloat { collaboration ? 390 : 300 }
+    #if os(macOS)
+    static let headerHeight: CGFloat = 44
+
+    static func showsDashboardRails(availableWidth: CGFloat) -> Bool {
+        availableWidth >= 640
+    }
+
+    static func usageWidth(availableWidth: CGFloat) -> CGFloat {
+        min(300, max(216, availableWidth * 0.30))
+    }
+    #endif
 
     static func sessionPanelWidth(availableWidth: CGFloat) -> CGFloat {
         min(max(220, availableWidth * 0.25), 280)
@@ -121,7 +131,11 @@ enum DashboardHUDLayout {
 
 private enum CompactDashboardHUDPage: String, CaseIterable, Identifiable {
     case sessions = "Sessions"
+    #if os(macOS)
+    case system = "Panel"
+    #else
     case system = "System"
+    #endif
 
     var id: String { rawValue }
 }
@@ -132,8 +146,6 @@ struct MonitorHUD: View {
     @State private var compactPage: CompactDashboardHUDPage = .sessions
     #if os(macOS)
     @EnvironmentObject private var daemonService: DaemonService
-    @EnvironmentObject private var communications: CommunicationFeed
-    @AppStorage("dashboardCollaborationEnabled") private var collaborationEnabled = false
     @State private var weather: DashboardWeatherSnapshot?
     @State private var weatherDeckSig: String?
     @State private var nativeWeatherFetchedAt: Date?
@@ -141,6 +153,9 @@ struct MonitorHUD: View {
 
     var body: some View {
         GeometryReader { geo in
+            #if os(macOS)
+            macHUD(size: geo.size)
+            #else
             let isLandscape = geo.size.width > geo.size.height
             let panelMaxHeight = DashboardHUDLayout.landscapePanelMaxHeight(
                 availableHeight: geo.size.height,
@@ -152,7 +167,7 @@ struct MonitorHUD: View {
             )
 
             if usesSingleRail {
-                compactPhoneHUD(geo: geo)
+                compactHUD(geo: geo)
             } else if isLandscape {
                 // iPad landscape: matches Android Box layout
                 ZStack(alignment: .topLeading) {
@@ -174,7 +189,7 @@ struct MonitorHUD: View {
                     // Visible if either of the legacy preferences is on; the
                     // rail is a single unified view so we don't try to hide
                     // upstream or downstream independently anymore.
-                    if showsRightRail {
+                    if showsRightPanel {
                         if panelMaxHeight >= DashboardHUDLayout.minimumPanelHeight {
                             HStack {
                                 Spacer()
@@ -185,20 +200,6 @@ struct MonitorHUD: View {
                             }
                         }
                     }
-
-                    #if os(macOS)
-                    // Quiet center-top context: outside conditions enrich the
-                    // aquarium without taking space from either information
-                    // rail. Attribution stays visible beside the forecast.
-                    if let weather {
-                        HStack {
-                            Spacer()
-                            DashboardWeatherPill(weather: weather)
-                            Spacer()
-                        }
-                        .padding(.top, DashboardHUDLayout.edgePadding)
-                    }
-                    #endif
 
                     // Stale data banner when disconnected
                     if !stateHolder.state.bridgeConnected, let lastReceived = stateHolder.lastDataReceivedAt {
@@ -227,7 +228,7 @@ struct MonitorHUD: View {
                             SessionListPanel(maxHeight: panelMaxHeight)
                                 .frame(maxWidth: .infinity)
                         }
-                        if showsRightRail {
+                        if showsRightPanel {
                             dashboardRightRail(maxHeight: panelMaxHeight)
                                 .frame(maxWidth: .infinity)
                         }
@@ -238,6 +239,7 @@ struct MonitorHUD: View {
                     Spacer()
                 }
             }
+            #endif
         }
         #if os(macOS)
         .task(id: daemonService.port) { await weatherRefreshLoop() }
@@ -248,58 +250,64 @@ struct MonitorHUD: View {
         #endif
     }
 
-    private var showsRightRail: Bool {
-        #if os(macOS)
-        collaborationEnabled || preferences.showTankStatus || preferences.showDeviceDiagnostic
-        #else
+    private var showsRightPanel: Bool {
         preferences.showTankStatus || preferences.showDeviceDiagnostic
-        #endif
     }
 
-    private var rightRailWidth: CGFloat {
-        #if os(macOS)
-        DashboardHUDLayout.rightPanelWidth(collaboration: collaborationEnabled)
-        #else
-        300
-        #endif
-    }
+    private var rightRailWidth: CGFloat { 300 }
 
     #if os(macOS)
-    /// A pinned capture feed answers for itself; the local daemon must not be
-    /// asked, or a capture shows this machine's real sessions in one panel and
-    /// synthetic ones everywhere else.
-    private var collaborationPort: Int {
-        #if DEBUG
-        if let pinned = stateHolder.captureFeedPort { return pinned }
-        #endif
-        return Int(daemonService.port)
+    private func macHUD(size: CGSize) -> some View {
+        let edge = DashboardHUDLayout.edgePadding
+        let brandClearance: CGFloat = 38
+        let hasRails = DashboardHUDLayout.showsDashboardRails(availableWidth: size.width)
+        let showsUsage = hasRails && showsRightPanel
+        let showSessions = hasRails && preferences.showSessionList
+        let maxHeight = DashboardHUDLayout.landscapePanelMaxHeight(
+            availableHeight: size.height, showsTimeline: preferences.showTimeline
+        ) - DashboardHUDLayout.headerHeight
+
+        return ZStack(alignment: .top) {
+            if maxHeight >= DashboardHUDLayout.minimumPanelHeight {
+                HStack(alignment: .top, spacing: 0) {
+                    if showSessions {
+                        SessionListPanel(maxHeight: maxHeight - brandClearance)
+                            .frame(width: DashboardHUDLayout.sessionPanelWidth(availableWidth: size.width))
+                            .padding(.top, brandClearance)
+                    }
+                    Spacer(minLength: edge)
+                    if showsUsage {
+                        TopologyRail(maxHeight: maxHeight)
+                            .frame(width: DashboardHUDLayout.usageWidth(availableWidth: size.width))
+                    }
+                }
+                .padding(.horizontal, edge)
+                .padding(.top, DashboardHUDLayout.headerHeight + 2)
+            }
+            if size.width >= 900, let weather {
+                DashboardWeatherPill(weather: weather)
+                    .padding(.top, DashboardHUDLayout.headerHeight + 2)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+    #else
+    private func dashboardRightRail(maxHeight: CGFloat) -> some View {
+        TopologyRail(maxHeight: maxHeight)
     }
     #endif
 
-    @ViewBuilder
-    private func dashboardRightRail(maxHeight: CGFloat) -> some View {
-        #if os(macOS)
-        if collaborationEnabled {
-            CollaborationPanel(maxHeight: maxHeight, port: collaborationPort, communications: communications)
-        } else {
-            TopologyRail(maxHeight: maxHeight)
-        }
-        #else
-        TopologyRail(maxHeight: maxHeight)
-        #endif
-    }
-
+    #if !os(macOS)
     /// Compact portrait keeps the full information set but avoids squeezing
     /// Sessions and System into two ~half-width columns. The explicit switch
     /// makes the alternate rail discoverable while each page keeps readable
     /// line lengths and its own bounded scroll position.
     @ViewBuilder
-    private func compactPhoneHUD(geo: GeometryProxy) -> some View {
+    private func compactHUD(geo: GeometryProxy) -> some View {
         let showsSessions = preferences.showSessionList
-        let showsSystem = preferences.showTankStatus || preferences.showDeviceDiagnostic
         let pages: [CompactDashboardHUDPage] = [
             showsSessions ? .sessions : nil,
-            showsSystem ? .system : nil,
+            showsRightPanel ? .system : nil,
         ].compactMap { $0 }
         let resolvedPage: CompactDashboardHUDPage? = pages.contains(compactPage)
             ? compactPage
@@ -324,7 +332,7 @@ struct MonitorHUD: View {
                 case .sessions:
                     SessionListPanel(maxHeight: contentMaxHeight)
                 case .system:
-                    TopologyRail(maxHeight: contentMaxHeight)
+                    dashboardRightRail(maxHeight: contentMaxHeight)
                 case nil:
                     EmptyView()
                 }
@@ -334,6 +342,8 @@ struct MonitorHUD: View {
         .padding(.top, 8)
         .frame(maxWidth: .infinity, alignment: .top)
     }
+
+    #endif
 
     #if os(macOS)
     @MainActor

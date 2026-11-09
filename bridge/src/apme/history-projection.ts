@@ -13,7 +13,7 @@ export function historyProjection(store: ApmeStore, kind: HistoryKind, params: U
     const policy = COLLABORATION_PRESENTATION.network;
     const capturedAt = Date.now();
     const since = capturedAt - policy.historyWindowMs;
-    const events = store.listCommunicationEvents(since, policy.eventLimit + 1);
+    const events = store.listCommunicationEvents(since, policy.eventLimit + 1, capturedAt);
     return { schema: 'agentdeck-communications/v1', capturedAt, since,
       truncated: events.length > policy.eventLimit,
       events: events.slice(0, policy.eventLimit).map(e => ({ ...e,

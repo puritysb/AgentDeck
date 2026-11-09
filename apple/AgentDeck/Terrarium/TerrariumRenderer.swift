@@ -313,7 +313,7 @@ final class TerrariumRenderer {
 
     // MARK: - Draw (layer order matching Android ColorRenderer)
 
-    func draw(context: inout GraphicsContext, size: CGSize, includeHabitat: Bool = true,
+    func draw(context: inout GraphicsContext, size: CGSize, includeHabitat: Bool = true, residentLabels: Bool = true,
               communications: AquariumCommunications = .empty, communicationDate: Date = Date(),
               communicationMotion: Bool = true, communicationLabels: Bool = true,
               communicationLabelInsets: EdgeInsets = EdgeInsets()) {
@@ -407,7 +407,9 @@ final class TerrariumRenderer {
 
         // Layer 9.46: name tags, resolved together so none hides a resident.
         TerrariumNameTagLayer.active = nil
-        nameTags.flush(context: &context)
+        if residentLabels {
+            nameTags.flush(context: &context)
+        }
         ciPoints.removeAll()
         if let state = lastState {
             for (id,motion) in ciMotions {

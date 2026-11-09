@@ -1,8 +1,7 @@
 import SwiftUI
 
-/// The graph and habitat share identity resolution and reply-gap semantics.
-/// A current needs two live roster identities; historical/unknown peers remain
-/// in the Collaboration graph rather than acquiring invented habitat positions.
+/// The graph and habitat share observed message identities.
+/// A current needs two live roster identities.
 struct AquariumCommunications {
     struct Current: Identifiable, Equatable {
         let id: String
@@ -11,21 +10,9 @@ struct AquariumCommunications {
         let senderName: String
         let recipientName: String
         let observedAt: Double
-        let waits: [CommunicationWait]
         let status: String
-        let waitingNames: [String]
-        var noReplySince: Double? { waits.first?.since }
         let crossed: Bool
 
-        func caption(now: Double) -> String {
-            guard !waits.isEmpty else { return status }
-            return zip(waits, waitingNames).map { wait, name in
-                let seconds = max(0, Int((now - wait.since) / 1_000))
-                let age = seconds >= 3600 ? "\(seconds / 3600)h \(seconds % 3600 / 60)m"
-                    : seconds >= 60 ? "\(seconds / 60)m \(seconds % 60)s" : "\(seconds)s"
-                return "Awaiting \(name.prefix(14)) · \(age)"
-            }.joined(separator: " / ")
-        }
     }
 
     let currents: [Current]
@@ -51,8 +38,7 @@ struct AquariumCommunications {
                   focusedID == nil || focusedID == from || focusedID == to else { return nil }
             return Current(id: link.id, senderID: from, recipientID: to,
                            senderName: sender.name, recipientName: recipient.name,
-                           observedAt: link.lastObservedAt, waits: link.waits, status: link.status,
-                           waitingNames: link.waits.map { wait in network.nodes.first { $0.id == wait.recipient }?.name ?? "Unknown" }, crossed: link.crossed)
+                           observedAt: link.lastObservedAt, status: link.status, crossed: link.crossed)
         }
         return Self(currents: Array(currents.prefix(CollaborationPresentation.aquariumLinkLimit)),
                     capturedAt: snapshot?.capturedAt ?? 0, fresh: fresh, truncated: snapshot?.truncated ?? false)
@@ -110,7 +96,7 @@ enum AquariumCommunicationDrawing {
             if labels {
                 let middle = point(0.5)
                 let names = "\(current.senderName.prefix(18)) \(current.crossed ? "↔" : "→") \(current.recipientName.prefix(18))"
-                let caption = current.caption(now: now) + (communications.fresh ? "" : " · stale")
+                let caption = current.status + (communications.fresh ? "" : " · stale")
                 let text = context.resolve(Text(names + "\n" + caption).font(.custom("IBMPlexSans", size: 10))
                     .foregroundColor(DesignTokens.Tide.s50))
                 let measured = text.measure(in: CGSize(width: 260, height: 40))
@@ -144,7 +130,7 @@ struct AquariumCommunicationOverlay: View {
         .allowsHitTesting(false)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(communications.currents.map {
-            "\($0.senderName) to \($0.recipientName), \($0.caption(now: communications.clock(Date())))"
+            "\($0.senderName) to \($0.recipientName), \($0.status)"
         }.joined(separator: "; "))
     }
 }
