@@ -193,6 +193,18 @@ The isolated OpenCode process exited and the Mac's original port and device
 module settings were restored. Remote account limits in this build require
 the Mac app's in-process daemon.
 
+## External daemon Remote usage TestFlight
+
+On 2026-11-09, [internal TestFlight 2.2.0 (10801)](https://github.com/puritysb/AgentDeck/actions/runs/42578539812)
+was built from `8696f803` and assigned to App Review QA on macOS and iOS.
+Both signed archives and exports passed the Production entitlement checks.
+[App Store Connect](https://github.com/puritysb/AgentDeck/actions/runs/42581256125)
+reported both builds valid.
+The [pre-release receipt](../verification/receipts/2026-11-09-8696f80.json)
+covers this source. The cellular acceptance target is the installed Mac
+publisher connected to the existing Node daemon on port 9120 and an iPhone
+reader on the same TestFlight build.
+
 ## Earlier development experiment
 
 **Decision date: 2026-11-01. Status: development-only transport, automatic
