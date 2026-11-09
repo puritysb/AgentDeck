@@ -1,5 +1,6 @@
 #if os(iOS)
 import CloudKit
+import OSLog
 import UIKit
 import UserNotifications
 
@@ -24,6 +25,7 @@ final class RemoteObservationAppDelegate: NSObject, UIApplicationDelegate, UNUse
         let route = Self.route(notification.request.content.userInfo)
         if route.recognized {
             Task { @MainActor in await RemoteObservationController.shared.notificationArrived(id: route.id) }
+            return [.banner, .list, .sound]
         }
         return [.banner, .sound]
     }
@@ -36,8 +38,15 @@ final class RemoteObservationAppDelegate: NSObject, UIApplicationDelegate, UNUse
         Task { @MainActor in await RemoteObservationController.shared.notificationOpened(id: route.id) }
     }
 
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        RemoteObservationController.shared.pushRegistrationChanged(confirmed: true)
+    }
+
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
-        RemoteObservationController.shared.pushRegistrationFailed()
+        let failure = error as NSError
+        Logger(subsystem: "bound.serendipity.agent.deck", category: "RemoteObservation")
+            .error("APNs registration failed (\(failure.domain, privacy: .public), \(failure.code, privacy: .public))")
+        RemoteObservationController.shared.pushRegistrationChanged(confirmed: false)
     }
 }
 #endif

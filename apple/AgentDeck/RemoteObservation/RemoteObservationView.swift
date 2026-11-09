@@ -25,29 +25,40 @@ struct RemoteObservationView: View {
     }
 
     private var content: some View {
-            VStack(alignment: .leading, spacing: 20) {
-                Label("Remote monitoring", systemImage: "icloud")
-                    .font(.title2.bold())
-                #if os(macOS)
-                publisher
-                #else
-                reader
-                #endif
-                Text(model.status).font(.callout).foregroundStyle(.secondary)
-                    .accessibilityIdentifier("remote-observation.status")
-                if !model.attentionStatus.isEmpty {
-                    Text(model.attentionStatus).font(.callout).foregroundStyle(.secondary)
-                }
-                if !model.notificationStatus.isEmpty {
-                    Text(model.notificationStatus).font(.callout).foregroundStyle(.secondary)
-                }
-                if model.busy { ProgressView("Checking iCloud…") }
-                Text("Uses your private iCloud storage. Both devices use the same Apple Account. This Mac must be running and online to publish new observations. Apple controls notification timing and eligible Watch forwarding.")
-                    .font(.footnote).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 20) {
+            #if os(macOS)
+            Label("Remote monitoring", systemImage: "icloud")
+                .font(.title2.bold())
+            publisher
+            #else
+            reader
+            #endif
+            Text(model.status).font(.callout).foregroundStyle(.secondary)
+                .accessibilityIdentifier("remote-observation.status")
+            if !model.attentionStatus.isEmpty {
+                Text(model.attentionStatus).font(.callout).foregroundStyle(.secondary)
             }
-            .padding(24)
-            .frame(maxWidth: 640, alignment: .leading)
-            .frame(maxWidth: .infinity)
+            if !model.notificationStatus.isEmpty {
+                Text(model.notificationStatus).font(.callout).foregroundStyle(.secondary)
+            }
+            if model.busy { ProgressView("Checking iCloud…") }
+            #if os(macOS)
+            privacyDetails
+            #else
+            DisclosureGroup("About remote monitoring") {
+                privacyDetails.padding(.top, 8)
+            }
+            .font(.footnote)
+            #endif
+        }
+        .padding(24)
+        .frame(maxWidth: 640, alignment: .leading)
+        .frame(maxWidth: .infinity)
+    }
+
+    private var privacyDetails: some View {
+        Text("Uses your private iCloud storage. Both devices use the same Apple Account. Your Mac must be running and online to publish new observations. Apple controls notification timing and eligible Watch forwarding.")
+            .font(.footnote).foregroundStyle(.secondary)
     }
 
     #if os(macOS)
@@ -73,30 +84,71 @@ struct RemoteObservationView: View {
         }
     }
     #else
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     private var reader: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Work status from your Mac").font(.headline)
-            Text("Turn on sharing in AgentDeck on your Mac. This view works away from your local network and only reads the shared observation.")
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Mac activity", systemImage: "icloud")
+                    .font(.largeTitle.bold())
+                    .accessibilityAddTraits(.isHeader)
+                Label("iCloud · Read only", systemImage: "eye")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
             if model.reader.receiving {
-                HStack {
-                    Button("Refresh") { Task { await model.refresh(force: true) } }.disabled(model.busy)
-                    Button("Stop receiving") { Task { await model.stopReceiving() } }
+                TimelineView(.periodic(from: .now, by: 15)) { context in
+                    observation(at: context.date)
                 }
-                Button(model.reader.notifications ? "Check notification setup" : "Enable notifications") {
-                    Task { await model.enableNotifications() }
-                }.disabled(model.busy)
+                ViewThatFits(in: .horizontal) {
+                    HStack { refreshButton; notificationButton }
+                    VStack(alignment: .leading) { refreshButton; notificationButton }
+                }
+                .buttonStyle(.bordered)
+                Button("Stop receiving") { Task { await model.stopReceiving() } }
+                    .font(.footnote)
             } else {
-                Button("Enable remote monitoring") { Task { await model.enableReceiving() } }
+                VStack(alignment: .leading, spacing: 12) {
+                    Label("Share from your Mac", systemImage: "desktopcomputer")
+                        .font(.headline)
+                    Text("Turn on sharing in your Mac’s Remote Monitoring settings. Then see its activity here, wherever you are.")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                    Button {
+                        Task { await model.enableReceiving() }
+                    } label: {
+                        Label("Enable remote monitoring", systemImage: "icloud.and.arrow.down")
+                    }
+                    .buttonStyle(.borderedProminent)
                     .disabled(model.busy || model.reader.unsubscribePending)
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
             }
             if model.reader.unsubscribePending {
-                Text("Notification subscription cleanup is pending for the original account.")
+                Label("Notification cleanup pending for the original Apple Account", systemImage: "bell.slash")
+                    .font(.footnote).foregroundStyle(.secondary)
                 Button("Retry subscription cleanup") { Task { await model.refresh(force: true) } }.disabled(model.busy)
             }
-            TimelineView(.periodic(from: .now, by: 15)) { context in
-                observation(at: context.date)
-            }
         }
+    }
+
+    private var refreshButton: some View {
+        Button {
+            Task { await model.refresh(force: true) }
+        } label: {
+            Label("Refresh", systemImage: "arrow.clockwise")
+        }
+        .disabled(model.busy)
+    }
+
+    private var notificationButton: some View {
+        Button {
+            Task { await model.enableNotifications() }
+        } label: {
+            Label(model.reader.notifications ? "Check notification setup" : "Enable notifications",
+                  systemImage: model.reader.notifications ? "bell.badge" : "bell")
+        }
+        .disabled(model.busy)
     }
 
     @ViewBuilder
@@ -113,9 +165,14 @@ struct RemoteObservationView: View {
                     case .recent, .historical:
                         Text(model.usingCache || snapshot.freshness(at: date) == .historical ? "Last saved observation" : "Last observed on the Mac")
                             .foregroundStyle(.secondary)
-                        HStack(spacing: 24) {
-                            count(snapshot.workingCount, title: "Working", color: DesignTokens.Session.working)
-                            count(snapshot.waitingCount, title: "Waiting for response", color: DesignTokens.Session.awaiting)
+                        let layout = dynamicTypeSize.isAccessibilitySize
+                            ? AnyLayout(VStackLayout(spacing: 10))
+                            : AnyLayout(HStackLayout(alignment: .top, spacing: 10))
+                        layout {
+                            metric(snapshot.workingCount, title: "Working", symbol: "bolt.horizontal",
+                                   color: DesignTokens.Session.working)
+                            metric(snapshot.waitingCount, title: "Waiting for response", symbol: "exclamationmark.bubble",
+                                   color: DesignTokens.Session.awaiting)
                         }
                         if snapshot.freshness(at: date) == .historical {
                             Text("Historical · no recent source confirmation").foregroundStyle(.secondary)
@@ -131,7 +188,7 @@ struct RemoteObservationView: View {
                 }
                 if let event = model.attentionEvent {
                     Divider()
-                    Text("Opened attention update").font(.headline)
+                    Label("Attention update", systemImage: "bell.badge").font(.headline)
                     Text(eventText(event.presentation(snapshot: model.usingCache ? nil : snapshot, at: date)))
                         .accessibilityIdentifier("remote-observation.event-state")
                     Text(event.occurredAt, format: .dateTime.month().day().hour().minute().second()).font(.caption)
@@ -140,14 +197,31 @@ struct RemoteObservationView: View {
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        } else {
+            ContentUnavailableView(
+                "Waiting for a Mac",
+                systemImage: "desktopcomputer",
+                description: Text("When your Mac shares an observation, its work status appears here.")
+            )
         }
     }
 
-    private func count(_ count: Int?, title: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(count.map(String.init) ?? "Unknown").font(.largeTitle.monospacedDigit()).foregroundStyle(color)
+    private func metric(_ count: Int?, title: LocalizedStringKey, symbol: String, color: Color) -> some View {
+        let active = (count ?? 0) > 0
+        return VStack(alignment: .leading, spacing: 6) {
+            Image(systemName: symbol)
+                .foregroundStyle(active ? color : .secondary)
+                .accessibilityHidden(true)
+            Text(count.map(String.init) ?? "Unknown")
+                .font(.custom(DesignTokens.Font.mono, size: DesignTokens.FontSize.h3Lg, relativeTo: .largeTitle))
+                .foregroundStyle(active ? color : .primary)
             Text(title).font(.caption)
         }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(active ? color.opacity(0.12) : DesignTokens.Ink.s900.opacity(0.06),
+                    in: RoundedRectangle(cornerRadius: 10))
+        .accessibilityElement(children: .combine)
     }
 
     private func eventText(_ status: RemoteAttentionEvent.Presentation) -> String {
@@ -173,7 +247,7 @@ struct CompanionRootView: View {
                 if preferences.hasSeenOnboarding { ContentView() }
                 else { OnboardingScreen() }
             }
-            .tabItem { Label("Local", systemImage: "desktopcomputer") }.tag(RemoteObservationController.CompanionTab.local)
+            .tabItem { Label("Direct", systemImage: "desktopcomputer") }.tag(RemoteObservationController.CompanionTab.local)
             RemoteObservationView()
                 .tabItem { Label("Remote", systemImage: "icloud") }.tag(RemoteObservationController.CompanionTab.remote)
         }

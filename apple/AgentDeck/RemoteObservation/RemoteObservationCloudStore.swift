@@ -85,6 +85,8 @@ actor RemoteObservationCloudStore: RemoteObservationTransport {
         try verify(account)
         let id = UUID()
         operations[id] = operation
+        // Remote updates have a bounded freshness window even with the dashboard closed.
+        operation.configuration.qualityOfService = .userInitiated
         operation.configuration.timeoutIntervalForRequest = RemoteObservationPolicy.networkTimeout
         operation.configuration.timeoutIntervalForResource = RemoteObservationPolicy.networkTimeout
         defer {

@@ -117,6 +117,7 @@ final class RemoteObservationCloudStoreTests: XCTestCase {
         let capture = Capture()
         let store = RemoteObservationCloudStore(account: { $0(.success("a")) }, submit: { operation in
             capture.note(operation)
+            XCTAssertEqual(operation.configuration.qualityOfService, .userInitiated)
             if let zone = operation as? CKModifyRecordZonesOperation {
                 zone.perRecordZoneSaveBlock?(RemoteObservationCloudStore.zoneID, .failure(CKError(.permissionFailure)))
                 zone.modifyRecordZonesResultBlock?(.success(()))

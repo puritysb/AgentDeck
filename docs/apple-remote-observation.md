@@ -14,9 +14,10 @@ Dashboard window lifetime. Closing the window leaves sharing enabled; quitting
 or sleeping the Mac stops new observations. An unavailable source publishes
 unknown counts, never a fabricated empty roster or task-success claim.
 
-iPhone/iPad has independent Local and Remote tabs, including before local
-onboarding or pairing is completed. Remote reads only encrypted working/waiting
-counts, source time and opaque attention IDs. It never populates DashboardState,
+iPhone/iPad has independent Direct and Remote tabs, including before local
+onboarding or pairing is completed. Direct opens the paired-Mac dashboard.
+Remote shows shared Mac activity in place over iCloud. It reads only encrypted
+working/waiting counts, source time and opaque attention IDs. It never populates DashboardState,
 exposes approval controls, or sends a command. No quota, session titles, paths,
 questions, transcripts, provider credentials, widgets or Watch target are added.
 Both devices use the same Apple Account. Remote receiving and visible alerts
