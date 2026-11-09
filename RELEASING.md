@@ -152,6 +152,15 @@ Mac acceptance checks the signed build in a narrow window against the existing
 Node daemon on port 9120 and against the in-process Swift daemon. Both modes
 must show live Codex and z.ai usage alongside task details.
 
+#### Independent Work screen — macOS internal TestFlight
+
+| Target and route | Last verified public version | Previous internal build | Proposed version and build | Class and user-visible reason |
+| --- | --- | --- | --- | --- |
+| macOS / internal TestFlight | 2.1.0 | 2.2.0 / 11101 | 2.2.0 / next CI-assigned build | Rebuild of the unreleased milestone. Work opens in the same window, adapts between list navigation and two panes, and keeps Usage & Services available from its header. |
+
+Mac acceptance resizes the same window around a selected task and checks real
+Codex and z.ai usage and reset information with both daemon implementations.
+
 ### npm 2.1.1 release decision — 2026-11-08
 
 | Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |

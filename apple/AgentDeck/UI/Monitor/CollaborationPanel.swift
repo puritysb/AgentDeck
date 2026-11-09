@@ -127,30 +127,27 @@ final class CollaborationFeed: ObservableObject {
 }
 
 struct CollaborationPanel: View {
+    static let maximumWidth: CGFloat = 1_060
+    static let maximumHeight: CGFloat = 760
+
     @EnvironmentObject private var inspection: DashboardInspection
     @EnvironmentObject private var stateHolder: AgentStateHolder
     @StateObject private var feed: CollaborationFeed
     @ObservedObject private var communications: CommunicationFeed
-    @State private var inspectedID: String?
     @State private var selectedTaskID: String?
     @State private var refreshID = UUID()
-    @State private var contentHeight: CGFloat?
-    let maxHeight: CGFloat
     let port: Int
-    let close: (() -> Void)?
     let attention: ((SessionInfo) -> AnyView)?
 
-    init(maxHeight: CGFloat, port: Int, feed: CollaborationFeed = CollaborationFeed(),
-         communications: CommunicationFeed = CommunicationFeed(), inspectedID: String? = nil,
-         close: (() -> Void)? = nil, attention: ((SessionInfo) -> AnyView)? = nil) {
-        self.maxHeight = maxHeight
+    init(port: Int, feed: CollaborationFeed = CollaborationFeed(),
+         communications: CommunicationFeed = CommunicationFeed(), attention: ((SessionInfo) -> AnyView)? = nil) {
         self.port = port
         self.communications = communications
-        self.close = close
         self.attention = attention
         _feed = StateObject(wrappedValue: feed)
-        _inspectedID = State(initialValue: inspectedID)
     }
+
+    private var inspectedID: String? { inspection.sessionId }
 
     private var selected: SessionInfo? {
         stateHolder.state.siblingSessions.first { $0.id == inspectedID }
@@ -167,97 +164,149 @@ struct CollaborationPanel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                if inspectedID != nil {
-                    Button {
-                        inspection.select(nil, state: stateHolder.state)
-                    } label: {
-                        Label("Back to work", systemImage: "chevron.left")
-                    }.buttonStyle(.plain)
-                } else {
-                    Label("Work", systemImage: "list.bullet.rectangle")
-                        .font(.headline)
-                }
-                Spacer()
-                if let close {
-                    Button(action: close) {
-                        Label("Close work", systemImage: "xmark").labelStyle(.iconOnly)
-                    }.buttonStyle(.plain).help("Close work")
-                }
-            }
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    if let selected {
-                        sessionHeader(selected)
-                        if CollaborationProjection.needsInput(selected), let attention {
-                            attention(selected)
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            let split = width >= 720
+            let listWidth = split ? min(300, width * 0.36) : width
+            let detailWidth = split ? width - listWidth : width
+            let showsList = split || inspectedID == nil
+            let showsDetail = split || inspectedID != nil
+
+            // Keep both scroll views mounted. Resizing only changes their frames
+            // and visibility, so neither the task picker nor list position resets.
+            ZStack {
+                queue
+                    .frame(width: listWidth)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .opacity(showsList ? 1 : 0)
+                    .allowsHitTesting(showsList)
+                    .disabled(!showsList)
+                    .accessibilityHidden(!showsList)
+
+                detail(showBack: !split)
+                    .frame(width: detailWidth)
+                    .overlay(alignment: .leading) {
+                        if split {
+                            Rectangle().fill(DesignTokens.Ink.s500.opacity(0.38))
+                                .frame(width: 1)
+                                .accessibilityHidden(true)
                         }
-                        if let task = visibleTask {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Menu {
-                                    Button("Follow latest task") { selectedTaskID = nil }
-                                    ForEach(feed.recentTasks) { item in
-                                        Button(item.displayTitle) { selectedTaskID = item.id }
-                                    }
-                                } label: {
-                                    Label(selectedTaskID == nil ? "Latest task" : "Selected task", systemImage: "clock.arrow.circlepath")
-                                        .font(.caption).foregroundStyle(DesignTokens.UI.cyan)
-                                }.help("Choose from the latest eight tasks in this session")
-                                Text(task.displayTitle).font(.system(size: 16, weight: .medium)).lineLimit(3)
-                                if let summary = task.summary?.trimmingCharacters(in: .whitespacesAndNewlines),
-                                   !summary.isEmpty, summary != task.displayTitle {
-                                    Text(summary).font(.caption).foregroundStyle(DesignTokens.Ink.s300).lineLimit(4)
-                                }
-                                Text(task.endedAt == nil ? "No task end recorded" : "Task ended")
-                                    .font(.caption2).foregroundStyle(DesignTokens.Ink.s300)
-                            }
-                            .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-                            .background(DesignTokens.Ink.s700.opacity(0.55), in: RoundedRectangle(cornerRadius: 12))
-                        }
-                        liveWork(selected)
-                        if feed.state != .ready {
-                            feedStatus
-                        }
-                        if visibleTask != nil && !feed.children.isEmpty {
-                            CollaborationRows(title: "Delegated work", symbol: "arrow.triangle.branch",
-                                              rows: feed.children, limit: 4,
-                                              isCompleted: { $0.phase == "completed" }, content: childRow)
-                                .id(inspectedID)
-                        }
-                        if visibleTask != nil {
-                            relationSections.id(inspectedID)
-                        }
-                        if let task = visibleTask, feed.state == .ready {
-                            handoffs(task: task)
-                        }
-                        if visibleTask != nil && feed.state == .ready && !hasWorkHistory {
-                            Text("No delegated work or background jobs recorded for this task")
-                                .font(.caption).foregroundStyle(DesignTokens.Ink.s300)
-                        }
-                    } else {
-                        workList
                     }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .opacity(showsDetail ? 1 : 0)
+                    .allowsHitTesting(showsDetail)
+                    .disabled(!showsDetail)
+                    .accessibilityHidden(!showsDetail)
             }
-            .frame(maxHeight: contentHeight)
-            .scrollBounceBehavior(.basedOnSize)
-            .id(inspectedID)
         }
-        .padding(16).frame(maxHeight: maxHeight)
-        .background(DesignTokens.Ink.s900.opacity(0.94), in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(DesignTokens.Ink.s500.opacity(0.6)))
+        .background(DesignTokens.UI.popupBgDeep.opacity(0.78))
+        .clipShape(.rect(cornerRadius: 16))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(DesignTokens.Ink.s500.opacity(0.42))
+                .allowsHitTesting(false)
+        }
         .foregroundStyle(DesignTokens.Tide.s50)
-        .onAppear { inspectedID = inspection.sessionId }
-        .onChange(of: inspection.sessionId) { _, id in
-            if inspectedID != id { inspectedID = id }
-        }
         .onChange(of: inspectedID) { _, _ in selectedTaskID = nil }
         .task(id: observationKey) {
             await feed.observe(sessionId: selected?.id ?? "", port: port,
                 connected: stateHolder.state.bridgeConnected, taskId: selectedTaskID)
+        }
+    }
+
+    private var queue: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label("Work", systemImage: "list.bullet.rectangle")
+                .font(.headline)
+                .accessibilityAddTraits(.isHeader)
+            ScrollView {
+                workList.frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .accessibilityLabel("Work list")
+        }
+        .padding(16)
+        .background(DesignTokens.Ink.s800.opacity(0.23))
+    }
+
+    private func detail(showBack: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if showBack {
+                Button {
+                    inspection.select(nil, state: stateHolder.state)
+                } label: {
+                    Label("Back to work", systemImage: "chevron.left")
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("dashboard-work-back")
+            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    if let selected {
+                        sessionDetail(selected)
+                    } else {
+                        Label(inspectedID == nil ? "Select a work item" : "The selected session is no longer available",
+                              systemImage: "list.bullet.rectangle")
+                            .font(.subheadline)
+                            .foregroundStyle(DesignTokens.Ink.s300)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .id(inspectedID)
+            .accessibilityLabel("Work detail")
+        }
+        .padding(16)
+    }
+
+    @ViewBuilder
+    private func sessionDetail(_ session: SessionInfo) -> some View {
+        sessionHeader(session)
+        if CollaborationProjection.needsInput(session), let attention {
+            attention(session)
+        }
+        if let task = visibleTask {
+            VStack(alignment: .leading, spacing: 6) {
+                Menu {
+                    Button("Follow latest task") { selectedTaskID = nil }
+                    ForEach(feed.recentTasks) { item in
+                        Button(item.displayTitle) { selectedTaskID = item.id }
+                    }
+                } label: {
+                    Label(selectedTaskID == nil ? "Latest task" : "Selected task", systemImage: "clock.arrow.circlepath")
+                        .font(.caption).foregroundStyle(DesignTokens.UI.cyan)
+                }.help("Choose from the latest eight tasks in this session")
+                Text(task.displayTitle).font(.system(size: 16, weight: .medium)).lineLimit(3)
+                if let summary = task.summary?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !summary.isEmpty, summary != task.displayTitle {
+                    Text(summary).font(.caption).foregroundStyle(DesignTokens.Ink.s300).lineLimit(4)
+                }
+                Text(task.endedAt == nil ? "No task end recorded" : "Task ended")
+                    .font(.caption2).foregroundStyle(DesignTokens.Ink.s300)
+            }
+            .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+            .background(DesignTokens.Ink.s700.opacity(0.40), in: RoundedRectangle(cornerRadius: 12))
+        }
+        liveWork(session)
+        if feed.state != .ready {
+            feedStatus
+        }
+        if visibleTask != nil && !feed.children.isEmpty {
+            CollaborationRows(title: "Delegated work", symbol: "arrow.triangle.branch",
+                              rows: feed.children, limit: 4,
+                              isCompleted: { $0.phase == "completed" }, content: childRow)
+                .id(inspectedID)
+        }
+        if visibleTask != nil {
+            relationSections.id(inspectedID)
+        }
+        if let task = visibleTask, feed.state == .ready {
+            handoffs(task: task)
+            if !hasWorkHistory {
+                Text("No delegated work or background jobs recorded for this task")
+                    .font(.caption).foregroundStyle(DesignTokens.Ink.s300)
+            }
         }
     }
 
@@ -301,9 +350,6 @@ struct CollaborationPanel: View {
         let working = sessions.filter { !CollaborationProjection.needsInput($0) && CollaborationProjection.isWorking($0) }
         let others = sessions.filter { !CollaborationProjection.needsInput($0) && !CollaborationProjection.isWorking($0) }
         return VStack(alignment: .leading, spacing: 10) {
-            if inspectedID != nil {
-                Text("The selected session is no longer available.").font(.caption)
-            }
             if sessions.isEmpty {
                 Text("No sessions observed yet").font(.subheadline)
             }
@@ -377,10 +423,14 @@ struct CollaborationPanel: View {
                 Image(systemName: "chevron.right").font(.caption)
             }
             .padding(8).frame(maxWidth: .infinity, alignment: .leading)
-            .background(DesignTokens.Ink.s800, in: RoundedRectangle(cornerRadius: 8))
+            .background(
+                inspectedID == session.id ? DesignTokens.Ink.s700.opacity(0.82) : DesignTokens.Ink.s800.opacity(0.52),
+                in: RoundedRectangle(cornerRadius: 8)
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(inspectedID == session.id ? .isSelected : [])
         .accessibilityIdentifier("dashboard-work-\(session.id)")
     }
 

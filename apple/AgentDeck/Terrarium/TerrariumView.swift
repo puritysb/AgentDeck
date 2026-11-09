@@ -6,6 +6,7 @@ struct TerrariumView: View {
     let terrariumState: TerrariumState
     var animationPaused = false
     var includeHabitat: Bool = true
+    var showsResidentLabels = true
     var communications = AquariumCommunications.empty
     var showsCommunicationLabels = true
     var communicationLabelInsets = EdgeInsets()
@@ -35,6 +36,7 @@ struct TerrariumView: View {
                 renderer.animateCompanions = !reduceMotion && !animationPaused
                 renderer.update(dt: dt, state: terrariumState)
                 renderer.draw(context: &context, size: size, includeHabitat: includeHabitat,
+                              residentLabels: showsResidentLabels,
                               communications: communications, communicationDate: timeline.date,
                               communicationMotion: !reduceMotion && !animationPaused, communicationLabels: showsCommunicationLabels, communicationLabelInsets: communicationLabelInsets)
 

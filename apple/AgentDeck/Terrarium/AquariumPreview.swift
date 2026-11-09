@@ -29,6 +29,7 @@ struct AquariumPreview: View {
 struct LivingAquariumScene: View {
     var renderingEnabled = true
     var viewingMode = false
+    var showsResidentLabels = true
     var terrariumState = TerrariumState()
     var communications = AquariumCommunications.empty
     var communicationLabelInsets = EdgeInsets()
@@ -69,14 +70,15 @@ struct LivingAquariumScene: View {
                 })
                 .overlay {
                     if let failure = assets.failure {
-                        TerrariumView(terrariumState: terrariumState, includeHabitat: false,
+                        TerrariumView(terrariumState: terrariumState, includeHabitat: false, showsResidentLabels: showsResidentLabels,
                                       communications: communications, showsCommunicationLabels: !viewingMode, communicationLabelInsets: communicationLabelInsets,
                                       onCreatureTapped: onCreatureTapped, onBackgroundTapped: onBackgroundTapped)
                         Text(failure).padding().background(.regularMaterial)
                     }
                 }
             } else {
-                TerrariumView(terrariumState: terrariumState, animationPaused: !renderingEnabled || !visible, communications: communications,
+                TerrariumView(terrariumState: terrariumState, animationPaused: !renderingEnabled || !visible,
+                              showsResidentLabels: showsResidentLabels, communications: communications,
                               showsCommunicationLabels: !viewingMode, communicationLabelInsets: communicationLabelInsets, onCreatureTapped: onCreatureTapped, onBackgroundTapped: onBackgroundTapped)
                     .overlay { if let failure = assets.failure { Text(failure).padding().background(.regularMaterial) } }
             }
@@ -123,7 +125,7 @@ struct LivingAquariumScene: View {
     private func realitySurface(loaded: AquariumAssetLoader.Assets, size: CGSize) -> AquariumRealitySurface {
         var surface = AquariumRealitySurface(
             scene: scene, loaded: loaded, state: terrariumState, size: size,
-            viewingMode: viewingMode, reduceMotion: reduceMotion,
+            viewingMode: viewingMode, showsResidentLabels: showsResidentLabels, reduceMotion: reduceMotion,
             active: visible && renderingEnabled && scenePhase == .active,
             onFailure: { assets.reportSceneFailure($0, templateCount: residents.templateCount) }
         )
@@ -167,6 +169,7 @@ private struct AquariumRealitySurface: View {
     let state: TerrariumState
     let size: CGSize
     let viewingMode: Bool
+    let showsResidentLabels: Bool
     let reduceMotion: Bool
     let active: Bool
     let onFailure: (Error) -> Void
@@ -214,7 +217,7 @@ private struct AquariumRealitySurface: View {
     private func synchronize() {
         updateResidents()
         scene.synchronize(state, size: size, viewingMode: viewingMode,
-                          reduceMotion: reduceMotion, active: active)
+                          showsResidentLabels: showsResidentLabels, reduceMotion: reduceMotion, active: active)
     }
 }
 
@@ -324,13 +327,13 @@ final class AquariumSceneState {
     }
 
     func synchronize(_ state: TerrariumState, size: CGSize, viewingMode: Bool,
-                     reduceMotion: Bool, active: Bool) {
+                     showsResidentLabels: Bool = true, reduceMotion: Bool, active: Bool) {
         cameraRig.viewing = viewingMode
         cameraRig.reduceMotion = reduceMotion
         let aspect = Float(size.width / max(1, size.height))
         cameraRig.camera?.camera.fieldOfViewInDegrees = aspect > TerrariumRules.nativeCameraWideAspect
             ? TerrariumRules.nativeCameraWideFov : TerrariumRules.nativeCameraFov
-        residents.labelsVisible = !viewingMode
+        residents.labelsVisible = showsResidentLabels && !viewingMode
         updatePlayback(active: active, reduceMotion: reduceMotion)
         residents.sync(state, aspect: aspect)
     }

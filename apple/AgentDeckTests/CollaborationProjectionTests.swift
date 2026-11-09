@@ -484,7 +484,7 @@ final class CollaborationFeedTests: XCTestCase {
         XCTAssertNil(feed.task)
     }
 
-    func testRenderCollaborationHistoryAtRailWidth() async throws {
+    func testRenderCollaborationHistoryAtCompactAndSplitWidths() async throws {
         let holder = AgentStateHolder()
         holder.stopConnectionAttempts()
         defer { holder.stopConnectionAttempts() }
@@ -506,9 +506,9 @@ final class CollaborationFeedTests: XCTestCase {
         await feed.observe(sessionId: "s1", port: 1)
         let inspection = DashboardInspection()
         inspection.select("s1", state: holder.state)
-        let view = CollaborationPanel(maxHeight: 1000, port: 1, feed: feed, inspectedID: "s1")
+        let view = CollaborationPanel(port: 1, feed: feed)
             .environmentObject(inspection)
-            .environmentObject(holder).frame(width: 390, height: 1000).environment(\.colorScheme, .dark)
+            .environmentObject(holder).environment(\.colorScheme, .dark)
         // Mounting the panel starts its own async observation. Wait for that
         // refresh rather than assuming a CI runner finishes it within 100 ms.
         let refreshed = expectation(description: "Mounted collaboration feed is ready")
@@ -526,14 +526,21 @@ final class CollaborationFeedTests: XCTestCase {
         XCTAssertEqual(holder.state.focusedSessionId, "s1")
         XCTAssertEqual(feed.state, .ready)
         XCTAssertEqual(feed.relations.count, 3)
-        hosting.layoutSubtreeIfNeeded()
-        let bitmap = try XCTUnwrap(hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds))
-        hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
-        let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
-        try png.write(to: URL(fileURLWithPath: "/tmp/agentdeck-collaboration-panel.png"))
-        let attachment = XCTAttachment(image: try XCTUnwrap(NSImage(data: png)))
-        attachment.lifetime = .keepAlways
-        add(attachment)
+        for width in [390, 920, 390] {
+            let size = NSSize(width: CGFloat(width), height: 720)
+            window.setContentSize(size)
+            hosting.frame = NSRect(origin: .zero, size: size)
+            hosting.layoutSubtreeIfNeeded()
+            XCTAssertEqual(inspection.sessionId, "s1")
+            XCTAssertEqual(feed.task?.id, "t1")
+            let bitmap = try XCTUnwrap(hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds))
+            hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+            let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+            let attachment = XCTAttachment(image: try XCTUnwrap(NSImage(data: png)))
+            attachment.name = "Work at \(width)pt"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
     }
 
     func testLatePreviousSelectionCannotOverwriteNewSelection() async {

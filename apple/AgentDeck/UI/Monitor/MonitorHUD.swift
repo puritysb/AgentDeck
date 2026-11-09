@@ -80,10 +80,6 @@ enum DashboardHUDLayout {
         availableWidth >= 640
     }
 
-    static func showsWorkColumn(availableWidth: CGFloat) -> Bool {
-        availableWidth >= 1_100
-    }
-
     static func usageWidth(availableWidth: CGFloat) -> CGFloat {
         min(300, max(216, availableWidth * 0.30))
     }
@@ -150,10 +146,6 @@ struct MonitorHUD: View {
     @State private var compactPage: CompactDashboardHUDPage = .sessions
     #if os(macOS)
     @EnvironmentObject private var daemonService: DaemonService
-    @EnvironmentObject private var communications: CommunicationFeed
-    var showsWork = false
-    var closeWork: (() -> Void)? = nil
-    var attention: ((SessionInfo) -> AnyView)? = nil
     @State private var weather: DashboardWeatherSnapshot?
     @State private var weatherDeckSig: String?
     @State private var nativeWeatherFetchedAt: Date?
@@ -265,22 +257,12 @@ struct MonitorHUD: View {
     private var rightRailWidth: CGFloat { 300 }
 
     #if os(macOS)
-    private var collaborationPort: Int {
-        #if DEBUG
-        if let pinned = stateHolder.captureFeedPort { return pinned }
-        #endif
-        return Int(daemonService.port)
-    }
-
     private func macHUD(size: CGSize) -> some View {
         let edge = DashboardHUDLayout.edgePadding
         let brandClearance: CGFloat = 38
         let hasRails = DashboardHUDLayout.showsDashboardRails(availableWidth: size.width)
-        let workColumn = DashboardHUDLayout.showsWorkColumn(availableWidth: size.width)
         let showsUsage = hasRails && showsRightPanel
-        let usageWidth = showsUsage ? DashboardHUDLayout.usageWidth(availableWidth: size.width) : 0
-        let showWorkPanel = !hasRails || workColumn || showsWork
-        let showSessions = hasRails && preferences.showSessionList && (workColumn || !showWorkPanel)
+        let showSessions = hasRails && preferences.showSessionList
         let maxHeight = DashboardHUDLayout.landscapePanelMaxHeight(
             availableHeight: size.height, showsTimeline: preferences.showTimeline
         ) - DashboardHUDLayout.headerHeight
@@ -293,24 +275,16 @@ struct MonitorHUD: View {
                             .frame(width: DashboardHUDLayout.sessionPanelWidth(availableWidth: size.width))
                             .padding(.top, brandClearance)
                     }
-                    if workColumn { Spacer(minLength: edge) }
-                    if showWorkPanel {
-                        CollaborationPanel(maxHeight: workColumn ? maxHeight : maxHeight - brandClearance,
-                                           port: collaborationPort,
-                                           communications: communications, close: workColumn || !hasRails ? nil : closeWork,
-                                           attention: attention)
-                            .frame(width: workColumn ? 380 : min(440, size.width - usageWidth - 3 * edge))
-                            .padding(.top, workColumn ? 0 : brandClearance)
-                    }
                     Spacer(minLength: edge)
                     if showsUsage {
-                        TopologyRail(maxHeight: maxHeight).frame(width: usageWidth)
+                        TopologyRail(maxHeight: maxHeight)
+                            .frame(width: DashboardHUDLayout.usageWidth(availableWidth: size.width))
                     }
                 }
                 .padding(.horizontal, edge)
                 .padding(.top, DashboardHUDLayout.headerHeight + 2)
             }
-            if !showWorkPanel, size.width >= 900, let weather {
+            if size.width >= 900, let weather {
                 DashboardWeatherPill(weather: weather)
                     .padding(.top, DashboardHUDLayout.headerHeight + 2)
             }

@@ -145,6 +145,7 @@ struct MonitorScreen: View {
                 switch destination {
                 case .session(let id):
                     sessionOpenError = nil
+                    showsWork = true
                     inspection.select(id, state: stateHolder.state)
                 case .failure(let message):
                     inspection.select(nil, state: stateHolder.state)
@@ -166,9 +167,11 @@ struct MonitorScreen: View {
             }
             .onChange(of: inspection.sessionId) { _, id in
                 showsSessions = false
-                if id != nil { showsWork = true }
+                if id != nil {
+                    hudHidden = false
+                    showsWork = true
+                }
             }
-            .environmentObject(communications)
             .background {
                 AquariumWindowActivityReader(renderingEnabled: $aquariumRenderingEnabled)
                     .allowsHitTesting(false)
@@ -212,31 +215,12 @@ struct MonitorScreen: View {
                     }.allowsHitTesting(false)
                 }
 
-                hudLayer(geo: geo, disconnected: disconnected, compactTimelineControls: compactTimelineControls)
-                #if AGENTDECK_DOT_PREVIEW
-                if preferences.effectiveDashboardType != .aquarium3D && stateHolder.state.bridgeConnected,
-                   let dot = stateHolder.state.dot {
-                    DotHabitatView(snapshot: dot, labelsVisible: !hudHidden)
-                }
-                #endif
-
-                if disconnected && showsConnectionOverlay {
-                    ConnectionOverlay()
-                }
-
-                attentionTheaterLayer(geo: geo)
-
-                setupNeededLayer(geo: geo)
+                dashboardContent(geo: geo, disconnected: disconnected, compactTimelineControls: compactTimelineControls)
 
                 #if os(macOS)
-                if !compactTimelineControls {
-                    settingsLayer
+                if showsWork {
+                    workScreen
                 }
-                #endif
-
-                toastLayer(geo: geo)
-
-                #if os(macOS)
                 if !hudHidden {
                     VStack(alignment: .leading, spacing: 2) {
                         dashboardHeader(width: geo.size.width)
@@ -246,7 +230,9 @@ struct MonitorScreen: View {
                 }
                 #endif
 
-                if shouldShowEmptyGuide {
+                toastLayer(geo: geo)
+
+                if dashboardIsVisible && shouldShowEmptyGuide {
                     MonitorEmptyGuideOverlay(
                         onPreviewDevices: emptyGuidePreviewAction,
                         onDismiss: { preferences.hasSeenMonitorEmptyGuide = true }
@@ -259,6 +245,39 @@ struct MonitorScreen: View {
         // Put the compact controls in the transparent title-bar space.
         .ignoresSafeArea(.container, edges: .top)
         #endif
+    }
+
+    private var dashboardIsVisible: Bool {
+        #if os(macOS)
+        !showsWork
+        #else
+        true
+        #endif
+    }
+
+    private func dashboardContent(geo: GeometryProxy, disconnected: Bool, compactTimelineControls: Bool) -> some View {
+        ZStack {
+            hudLayer(geo: geo, disconnected: disconnected, compactTimelineControls: compactTimelineControls)
+            #if AGENTDECK_DOT_PREVIEW
+            if preferences.effectiveDashboardType != .aquarium3D && stateHolder.state.bridgeConnected,
+               let dot = stateHolder.state.dot {
+                DotHabitatView(snapshot: dot, labelsVisible: !hudHidden)
+            }
+            #endif
+            if disconnected && showsConnectionOverlay {
+                ConnectionOverlay()
+            }
+            attentionTheaterLayer(geo: geo)
+            setupNeededLayer(geo: geo)
+            #if os(macOS)
+            if !compactTimelineControls {
+                settingsLayer
+            }
+            #endif
+        }
+        .opacity(dashboardIsVisible ? 1 : 0)
+        .allowsHitTesting(dashboardIsVisible)
+        .accessibilityHidden(!dashboardIsVisible)
     }
 
     /// Show the first-run Monitor guide only when the bridge is connected
@@ -282,7 +301,22 @@ struct MonitorScreen: View {
     #endif
 
     #if os(macOS)
-    private var readsCommunications: Bool { showsMessages || inspection.sessionId != nil }
+    private var readsCommunications: Bool { showsMessages || (showsWork && inspection.sessionId != nil) }
+
+    private var workScreen: some View {
+        ZStack(alignment: .top) {
+            LinearGradient(
+                colors: [DesignTokens.UI.popupBgDeep.opacity(0.72), DesignTokens.UI.popupBgDeep.opacity(0.48)],
+                startPoint: .top, endPoint: .bottom
+            )
+            CollaborationPanel(port: communicationPort, communications: communications,
+                               attention: { session in AnyView(attentionCard(for: session)) })
+                .frame(maxWidth: CollaborationPanel.maximumWidth, maxHeight: CollaborationPanel.maximumHeight)
+                .padding(.horizontal, 20)
+                .padding(.top, DashboardHUDLayout.headerHeight + 43)
+                .padding(.bottom, 16)
+        }
+    }
 
     private var dashboardBrand: some View {
         HStack(spacing: 7) {
@@ -295,23 +329,47 @@ struct MonitorScreen: View {
     }
 
     private func dashboardHeader(width: CGFloat) -> some View {
-        HStack(spacing: 12) {
-            if stateHolder.state.bridgeConnected {
-                let sessions = stateHolder.state.siblingSessions
-                let count = sessions.filter(CollaborationProjection.needsInput).count
-                let working = sessions.filter(CollaborationProjection.isWorking).count
-                let title = count > 0 ? (count == 1 ? "1 needs input" : "\(count) need input")
-                    : working > 0 ? "\(working) in progress" : "Work"
+        let compact = width < 560
+        let pending = stateHolder.state.bridgeConnected
+            ? stateHolder.state.siblingSessions.filter(CollaborationProjection.needsInput).count : 0
+        return HStack(spacing: compact ? 7 : 12) {
+            HStack(spacing: 3) {
                 Button {
-                    inspection.select(nil, state: stateHolder.state)
+                    showsUsage = false
+                    showsWork = false
+                } label: {
+                    Label("Dashboard", systemImage: "square.grid.2x2")
+                        .modifier(DashboardHeaderLabel(compact: compact))
+                        .padding(.horizontal, 7).padding(.vertical, 5)
+                        .background(DesignTokens.Ink.s700.opacity(showsWork ? 0 : 0.75), in: .rect(cornerRadius: 6))
+                }
+                .help("Dashboard")
+                .accessibilityAddTraits(showsWork ? [] : .isSelected)
+                .accessibilityIdentifier("dashboard-home")
+
+                Button {
+                    showsSessions = false
+                    showsUsage = false
                     showsWork = true
                 } label: {
-                    Label(title,
-                          systemImage: count > 0 ? "hand.raised" : "list.bullet.rectangle")
-                        .foregroundStyle(count > 0 ? DesignTokens.UI.attn : DesignTokens.Tide.s50)
-                        .modifier(DashboardHeaderLabel(compact: width < 560))
+                    HStack(spacing: 5) {
+                        Label("Work", systemImage: "list.bullet.rectangle")
+                            .modifier(DashboardHeaderLabel(compact: compact))
+                        if pending > 0 {
+                            Text(pending.formatted())
+                                .monospacedDigit()
+                                .foregroundStyle(DesignTokens.UI.attn)
+                                .padding(.horizontal, 5).padding(.vertical, 1)
+                                .background(DesignTokens.UI.attn.opacity(0.13), in: Capsule())
+                        }
+                    }
+                    .padding(.horizontal, 7).padding(.vertical, 5)
+                    .background(DesignTokens.Ink.s700.opacity(showsWork ? 0.75 : 0), in: .rect(cornerRadius: 6))
                 }
-                .help("Show work")
+                .help("Work")
+                .accessibilityLabel("Work")
+                .accessibilityValue(pending > 0 ? "\(pending) need input" : "")
+                .accessibilityAddTraits(showsWork ? .isSelected : [])
                 .accessibilityIdentifier("dashboard-work-home")
             }
             Color.clear
@@ -324,7 +382,7 @@ struct MonitorScreen: View {
                     .modifier(DashboardHeaderLabel(compact: width < 560))
             }
             .accessibilityIdentifier("dashboard-messages")
-            if preferences.showSessionList && !DashboardHUDLayout.showsDashboardRails(availableWidth: width) {
+            if !showsWork && preferences.showSessionList && !DashboardHUDLayout.showsDashboardRails(availableWidth: width) {
                 Button { showsSessions.toggle() } label: {
                     Label("Sessions", systemImage: "list.bullet").labelStyle(.iconOnly)
                 }
@@ -333,12 +391,13 @@ struct MonitorScreen: View {
                     SessionListPanel(maxHeight: 400).frame(width: 275).padding(8)
                 }
             }
-            if !DashboardHUDLayout.showsDashboardRails(availableWidth: width)
+            if showsWork || !DashboardHUDLayout.showsDashboardRails(availableWidth: width)
                 || !(preferences.showTankStatus || preferences.showDeviceDiagnostic) {
                 Button { showsUsage.toggle() } label: {
                     Label("Usage & Services", systemImage: "chart.bar").labelStyle(.iconOnly)
                 }
                 .help("Usage & Services")
+                .accessibilityIdentifier("dashboard-usage")
                 .popover(isPresented: $showsUsage) {
                     TopologyRail(maxHeight: 420).frame(width: 300).padding(8)
                 }
@@ -359,6 +418,7 @@ struct MonitorScreen: View {
                                         onCreatureTapped: handleCreatureTap, onBackgroundTapped: backgroundTapHandler)
         #if os(macOS)
         scene.renderingEnabled = aquariumRenderingEnabled
+        scene.showsResidentLabels = dashboardIsVisible
         #endif
         #if AGENTDECK_DOT_PREVIEW
         scene.dotSnapshot = stateHolder.state.dot
@@ -397,6 +457,7 @@ struct MonitorScreen: View {
             GeometryReader { _ in
                 TerrariumView(
                     terrariumState: terrariumState,
+                    showsResidentLabels: dashboardIsVisible,
                     onCreatureTapped: handleCreatureTap,
                     onBackgroundTapped: backgroundTapHandler
                 )
@@ -420,20 +481,10 @@ struct MonitorScreen: View {
     /// draws its own scrim on top) while the state survives the round trip.
     @ViewBuilder
     private func hudLayer(geo: GeometryProxy, disconnected: Bool, compactTimelineControls: Bool) -> some View {
-        #if os(macOS)
-        MonitorHUD(showsWork: showsWork || inspection.sessionId != nil, closeWork: {
-            showsWork = false
-            inspection.select(nil, state: stateHolder.state)
-        }, attention: { session in AnyView(attentionCard(for: session)) })
-            .opacity(hudHidden || disconnected ? 0 : 1)
-            .allowsHitTesting(!hudHidden && !disconnected)
-            .animation(.easeInOut(duration: 0.25), value: hudHidden)
-        #else
         MonitorHUD()
             .opacity(hudHidden || disconnected ? 0 : 1)
             .allowsHitTesting(!hudHidden && !disconnected)
             .animation(.easeInOut(duration: 0.25), value: hudHidden)
-        #endif
 
         if preferences.showTimeline {
             VStack {
