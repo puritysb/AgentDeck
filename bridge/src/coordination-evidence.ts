@@ -30,7 +30,7 @@
  * resolved carries only the name/pid the evidence itself had.
  */
 
-import { communicationIntent, communicationFingerprint, type CommunicationIntent } from '@agentdeck/shared';
+import { COLLABORATION_PRESENTATION, communicationIntent, communicationFingerprint, type CommunicationIntent } from '@agentdeck/shared';
 
 export interface RelationObservation {
   sessionId: string;
@@ -38,6 +38,7 @@ export interface RelationObservation {
   direction: 'in' | 'out';
   phase: 'open' | 'closed';
   peerSessionId?: string | null;
+  peerIdentity?: 'pid';
   peerName?: string | null;
   evidence: string;
   detail?: string | null;
@@ -84,7 +85,7 @@ export interface CrossSessionEnvelope {
 
 const ENVELOPE_RE = /<cross-session-message\b([^>]*)>/;
 const ATTR_RE = /([a-z-]+)="([^"]*)"/g;
-const UDS_PID_RE = /\/(\d+)\.sock\b/;
+const UDS_PID_RE = /^uds:.*\/(\d+)\.sock$/;
 const MAX_DETAIL = 140;
 
 function attrs(raw: string): Record<string, string> {
@@ -98,7 +99,7 @@ function attrs(raw: string): Record<string, string> {
 
 function pidFromUds(value: string | undefined): number | null {
   if (!value) return null;
-  const m = UDS_PID_RE.exec(value);
+  const m = UDS_PID_RE.exec(value.trim());
   const pid = m ? Number(m[1]) : NaN;
   return Number.isInteger(pid) && pid > 0 ? pid : null;
 }
@@ -106,6 +107,15 @@ function pidFromUds(value: string | undefined): number | null {
 function clip(text: string, max = MAX_DETAIL): string {
   const flat = text.replace(/\s+/g, ' ').trim();
   return flat.length > max ? `${flat.slice(0, max - 1).trim()}…` : flat;
+}
+
+const MESSAGE_WHITESPACE_RE = new RegExp(COLLABORATION_PRESENTATION.messageIntent.whitespace + '+', 'g');
+
+function messageExcerpt(text: string): string {
+  const max = COLLABORATION_PRESENTATION.network.detailCharacters;
+  const flat = text.replace(MESSAGE_WHITESPACE_RE, ' ').replace(/^ +| +$/g, '');
+  const characters = Array.from(flat);
+  return characters.length > max ? `${characters.slice(0, max - 1).join('').replace(/ +$/, '')}…` : flat;
 }
 
 /** Parse a received prompt for the cross-session envelope; null when the
@@ -128,7 +138,7 @@ export function parseCrossSessionEnvelope(prompt: string): CrossSessionEnvelope 
     fromPid: pidFromUds(a.from),
     fromName: a['from-name']?.trim() || null,
     fromMode: a['from-mode']?.trim() || null,
-    body: clip(closing >= 0 ? body.slice(0, closing) : body),
+    body: messageExcerpt(fullBody),
   };
 }
 
@@ -148,9 +158,8 @@ export function parseSendMessageInput(input: unknown): SendMessageTarget | null 
   if (typeof to !== 'string' || !to.trim()) return null;
   const pid = pidFromUds(to);
   const summaryRaw = (input as { summary?: unknown; message?: unknown });
-  const summary = typeof summaryRaw.summary === 'string' && summaryRaw.summary.trim()
-    ? clip(summaryRaw.summary)
-    : (typeof summaryRaw.message === 'string' && summaryRaw.message.trim() ? clip(summaryRaw.message, 96) : null);
+  const summary = (typeof summaryRaw.summary === 'string' ? messageExcerpt(summaryRaw.summary) : '')
+    || (typeof summaryRaw.message === 'string' ? messageExcerpt(summaryRaw.message) : '') || null;
   return { peerName: pid ? null : to.trim(), peerPid: pid, summary,
     messageIntent: communicationIntent(summaryRaw.message),
     messageFingerprint: communicationFingerprint(summaryRaw.message) };
@@ -211,13 +220,22 @@ export function findAncestorSession(
   maxDepth = 8,
 ): ObservedPeer | null {
   const byPid = new Map(processes.map((p) => [p.pid, p]));
-  const peerByPid = new Map(peers.map((p) => [p.pid, p]));
+  const peerByPid = peersByUniquePid(peers);
   return ancestorSession(byPid, peerByPid, pid, maxDepth);
+}
+
+function peersByUniquePid(peers: ObservedPeer[]): Map<number, ObservedPeer | null> {
+  const byPid = new Map<number, ObservedPeer | null>();
+  for (const peer of peers) {
+    const previous = byPid.get(peer.pid);
+    byPid.set(peer.pid, previous === undefined || previous?.sessionId === peer.sessionId ? peer : null);
+  }
+  return byPid;
 }
 
 function ancestorSession(
   byPid: ReadonlyMap<number, ProcessRow>,
-  peerByPid: ReadonlyMap<number, ObservedPeer>,
+  peerByPid: ReadonlyMap<number, ObservedPeer | null>,
   pid: number,
   maxDepth = 8,
 ): ObservedPeer | null {
@@ -226,6 +244,7 @@ function ancestorSession(
     const ppid = cur.ppid;
     if (!ppid || ppid <= 1) return null;
     const peer = peerByPid.get(ppid);
+    if (peer === null) return null;
     if (peer && peer.pid !== pid) return peer;
     cur = byPid.get(ppid);
   }
@@ -258,10 +277,9 @@ const MAX_COMMAND_CHARS = 4096;
 export class CoordinationTracker {
   private readonly sessions = new Map<string, SessionCoordination>();
   /** Session names learned from envelopes: name → sender session id. */
-  private readonly nameToSession = new Map<string, string>();
   private readonly sessionToName = new Map<string, string>();
   /** Latest pid → session map from the observer, for uds resolution. */
-  private pidToSession = new Map<number, string>();
+  private readonly pidToSessions = new Map<number, Set<string>>();
   /** Session → agent pid learned from the hook header (`X-AgentDeck-Pid`),
    *  the path a sandboxed daemon has no file-based alternative to. */
   private readonly hookPids = new Map<string, number>();
@@ -297,8 +315,22 @@ export class CoordinationTracker {
       cur = parent;
       if (isAgentProcessCommand(cur.command)) chosen = cur.pid;
     }
+    const old = this.hookPids.get(sessionId);
+    if (old != null && old !== chosen) this.pidToSessions.get(old)?.delete(sessionId);
     this.hookPids.set(sessionId, chosen);
-    this.pidToSession.set(chosen, sessionId);
+    this.registerPeer(chosen, sessionId);
+  }
+
+  private registerPeer(pid: number, sessionId: string): void {
+    const sessions = this.pidToSessions.get(pid) ?? new Set<string>();
+    sessions.add(sessionId);
+    this.pidToSessions.set(pid, sessions);
+  }
+
+  private resolveMessagePeer(pid: number | null, owner: string): string | null {
+    const sessions = pid == null ? undefined : this.pidToSessions.get(pid);
+    if (sessions?.size !== 1 || sessions.has(owner)) return null;
+    return sessions.values().next().value ?? null;
   }
 
   /** Observer peers plus hook-registered pids for sessions the observer did
@@ -319,9 +351,8 @@ export class CoordinationTracker {
     const env = parseCrossSessionEnvelope(prompt);
     if (!env) return null;
     const ts = this.now();
-    const peerSessionId = env.fromPid != null ? this.pidToSession.get(env.fromPid) ?? null : null;
+    const peerSessionId = this.resolveMessagePeer(env.fromPid, sessionId);
     if (env.fromName && peerSessionId) {
-      this.nameToSession.set(env.fromName, peerSessionId);
       this.sessionToName.set(peerSessionId, env.fromName);
     }
     const e = this.entry(sessionId);
@@ -333,6 +364,7 @@ export class CoordinationTracker {
       direction: 'in',
       phase: 'closed',
       peerSessionId,
+      ...(peerSessionId ? { peerIdentity: 'pid' as const } : {}),
       peerName: env.fromName,
       evidence: 'cross_session_message',
       detail: env.body || null,
@@ -349,9 +381,7 @@ export class CoordinationTracker {
       const target = parseSendMessageInput(toolInput);
       if (!target) return null;
       const ts = this.now();
-      const peerSessionId = target.peerPid != null
-        ? this.pidToSession.get(target.peerPid) ?? null
-        : (target.peerName ? this.nameToSession.get(target.peerName) ?? null : null);
+      const peerSessionId = this.resolveMessagePeer(target.peerPid, sessionId);
       const peerName = target.peerName ?? (peerSessionId ? this.sessionToName.get(peerSessionId) ?? null : null);
       const e = this.entry(sessionId);
       e.messagesOut += 1;
@@ -362,6 +392,7 @@ export class CoordinationTracker {
         direction: 'out',
         phase: 'closed',
         peerSessionId,
+        ...(peerSessionId ? { peerIdentity: 'pid' as const } : {}),
         peerName,
         evidence: 'send_message_tool',
         detail: target.summary,
@@ -412,13 +443,14 @@ export class CoordinationTracker {
     if (processes.length === 0) return [];
     const ts = this.now();
     const out: RelationObservation[] = [];
-    this.pidToSession = new Map(peers.map((p) => [p.pid, p.sessionId]));
-    for (const [sessionId, pid] of this.hookPids) if (!this.pidToSession.has(pid)) this.pidToSession.set(pid, sessionId);
+    peers = this.mergePeers(peers);
+    this.pidToSessions.clear();
+    for (const { sessionId, pid } of peers) this.registerPeer(pid, sessionId);
     const peerPids = new Set(peers.map((p) => p.pid));
     const alivePeerIds = new Set(peers.map((p) => p.sessionId));
     const rows = processes.map((p) => ({ ...p, command: p.command.slice(0, MAX_COMMAND_CHARS) }));
     const byPid = new Map(rows.map((p) => [p.pid, p]));
-    const peerByPid = new Map(peers.map((p) => [p.pid, p]));
+    const peerByPid = peersByUniquePid(peers);
     // A scratchpad match is an exact slash-delimited session id. Index the
     // bounded argv once, instead of searching every command once per session.
     const peerIds = new Set(peers.map((p) => p.sessionId).filter((id) => id.length >= 8));
@@ -435,6 +467,7 @@ export class CoordinationTracker {
 
     // Spawned peers: ancestry.
     for (const child of peers) {
+      if (peerByPid.get(child.pid) === null) continue;
       const parent = ancestorSession(byPid, peerByPid, child.pid);
       if (!parent || parent.sessionId === child.sessionId) continue;
       const e = this.entry(parent.sessionId);
@@ -517,9 +550,9 @@ export class CoordinationTracker {
   /** The session ended: its jobs and children are no longer its concern. */
   forget(sessionId: string): void {
     this.sessions.delete(sessionId);
-    const pid = this.hookPids.get(sessionId);
     this.hookPids.delete(sessionId);
-    if (pid != null && this.pidToSession.get(pid) === sessionId) this.pidToSession.delete(pid);
+    for (const sessions of this.pidToSessions.values()) sessions.delete(sessionId);
+    this.sessionToName.delete(sessionId);
   }
 
   /** `null` when the session has never had a relation — the caller omits the

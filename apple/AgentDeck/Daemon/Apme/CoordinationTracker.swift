@@ -37,6 +37,7 @@ struct CoordinationRelation: Sendable, Equatable {
     let key: String
     var messageIntent: String? = nil
     var messageFingerprint: String? = nil
+    var peerIdentity: String? = nil
 }
 
 struct CoordinationSummaryValue: Sendable, Equatable {
@@ -127,14 +128,16 @@ enum CoordinationEvidence {
     ) -> CoordinationPeer? {
         var byPid: [Int: ProcessEnumerator.ProcessRow] = [:]
         for p in processes { byPid[p.pid] = p }
-        var peerByPid: [Int: CoordinationPeer] = [:]
-        for p in peers { peerByPid[p.pid] = p }
+        let peersByPid = Dictionary(grouping: peers, by: \.pid)
         var cur = byPid[pid]
         var depth = 0
         while let row = cur, depth < maxDepth {
             let ppid = row.ppid
             if ppid <= 1 { return nil }
-            if let peer = peerByPid[ppid], peer.pid != pid { return peer }
+            if let candidates = peersByPid[ppid], let peer = candidates.first {
+                guard candidates.allSatisfy({ $0.sessionId == peer.sessionId }) else { return nil }
+                if peer.pid != pid { return peer }
+            }
             cur = byPid[ppid]
             depth += 1
         }
@@ -158,9 +161,8 @@ final class CoordinationTracker {
     }
 
     private var sessions: [String: Entry] = [:]
-    private var nameToSession: [String: String] = [:]
     private var sessionToName: [String: String] = [:]
-    private var pidToSession: [Int: String] = [:]
+    private var pidToSessions: [Int: Set<String>] = [:]
     private var hookPids: [String: Int] = [:]
     private let now: () -> Int
 
@@ -192,8 +194,17 @@ final class CoordinationTracker {
             if CoordinationEvidence.isAgentProcessCommand(parent.command) { chosen = parent.pid }
             depth += 1
         }
+        if let old = hookPids[sessionId], old != chosen {
+            pidToSessions[old]?.remove(sessionId)
+        }
         hookPids[sessionId] = chosen
-        pidToSession[chosen] = sessionId
+        pidToSessions[chosen, default: []].insert(sessionId)
+    }
+
+    private func resolveMessagePeer(_ pid: Int?, owner: String) -> String? {
+        guard let pid, let sessions = pidToSessions[pid], sessions.count == 1,
+              let peer = sessions.first, peer != owner else { return nil }
+        return peer
     }
 
     /// Mirrors `mergePeers`: observer peers plus hook-registered pids.
@@ -210,9 +221,8 @@ final class CoordinationTracker {
     func noteMessageIn(sessionId: String, prompt: String) -> CoordinationRelation? {
         guard let env = ApmeCollector.parseCrossSessionEnvelope(prompt) else { return nil }
         let ts = now()
-        let peerSessionId = env.fromPid.flatMap { pidToSession[$0] }
+        let peerSessionId = resolveMessagePeer(env.fromPid, owner: sessionId)
         if let name = env.fromName, let peer = peerSessionId {
-            nameToSession[name] = peer
             sessionToName[peer] = name
         }
         var e = entry(sessionId)
@@ -225,15 +235,15 @@ final class CoordinationTracker {
             detail: env.body.isEmpty ? nil : env.body, ts: ts,
             key: "\(env.fromPid.map(String.init) ?? env.fromName ?? "peer"):\(ts)",
             messageIntent: CollaborationPresentation.messageIntent(env.fullBody),
-            messageFingerprint: CollaborationPresentation.messageFingerprint(env.fullBody))
+            messageFingerprint: CollaborationPresentation.messageFingerprint(env.fullBody),
+            peerIdentity: peerSessionId == nil ? nil : "pid")
     }
 
     func noteToolCall(sessionId: String, toolName: String?, toolInput: [String: Any]?) -> CoordinationRelation? {
         if toolName == "SendMessage" {
             guard let target = ApmeCollector.parseSendMessageTarget(toolInput) else { return nil }
             let ts = now()
-            let peerSessionId: String? = target.peerPid.flatMap { pidToSession[$0] }
-                ?? target.peerName.flatMap { nameToSession[$0] }
+            let peerSessionId = resolveMessagePeer(target.peerPid, owner: sessionId)
             let peerName = target.peerName ?? peerSessionId.flatMap { sessionToName[$0] }
             var e = entry(sessionId)
             e.messagesOut += 1
@@ -245,7 +255,8 @@ final class CoordinationTracker {
                 detail: target.summary, ts: ts,
                 key: "\(target.peerPid.map(String.init) ?? target.peerName ?? "peer"):\(ts)",
                 messageIntent: CollaborationPresentation.messageIntent(toolInput?["message"] as? String),
-                messageFingerprint: CollaborationPresentation.messageFingerprint(toolInput?["message"] as? String))
+                messageFingerprint: CollaborationPresentation.messageFingerprint(toolInput?["message"] as? String),
+                peerIdentity: peerSessionId == nil ? nil : "pid")
         }
         if toolName == "Bash" {
             let command = toolInput?["command"] as? String
@@ -264,7 +275,7 @@ final class CoordinationTracker {
     }
 
     /// Mirrors `observe`: reconcile against the process table.
-    func observe(_ processes: [ProcessEnumerator.ProcessRow], peers: [CoordinationPeer]) -> [CoordinationRelation] {
+    func observe(_ processes: [ProcessEnumerator.ProcessRow], peers observed: [CoordinationPeer]) -> [CoordinationRelation] {
         // An empty process table is "I could not look", never "everything
         // ended" — see the Node `observe`. `sysctl` returning nothing must not
         // close every open child and job, because the sample's dedup key makes
@@ -272,9 +283,9 @@ final class CoordinationTracker {
         if processes.isEmpty { return [] }
         let ts = now()
         var out: [CoordinationRelation] = []
-        pidToSession = [:]
-        for p in peers { pidToSession[p.pid] = p.sessionId }
-        for (sessionId, pid) in hookPids where pidToSession[pid] == nil { pidToSession[pid] = sessionId }
+        let peers = mergePeers(observed)
+        pidToSessions = [:]
+        for p in peers { pidToSessions[p.pid, default: []].insert(p.sessionId) }
         let peerPids = Set(peers.map(\.pid))
         let alivePeerIds = Set(peers.map(\.sessionId))
         let rows = processes.map { ProcessEnumerator.ProcessRow(pid: $0.pid, ppid: $0.ppid, command: String($0.command.prefix(4096))) }
@@ -283,7 +294,8 @@ final class CoordinationTracker {
 
         // Spawned peers: ancestry.
         for child in peers {
-            guard let parent = CoordinationEvidence.findAncestorSession(rows, pid: child.pid, peers: peers),
+            guard pidToSessions[child.pid]?.count == 1,
+                  let parent = CoordinationEvidence.findAncestorSession(rows, pid: child.pid, peers: peers),
                   parent.sessionId != child.sessionId else { continue }
             var e = entry(parent.sessionId)
             if e.spawned[child.sessionId] != nil { continue }
@@ -353,9 +365,9 @@ final class CoordinationTracker {
 
     func forget(sessionId: String) {
         sessions.removeValue(forKey: sessionId)
-        if let pid = hookPids.removeValue(forKey: sessionId), pidToSession[pid] == sessionId {
-            pidToSession.removeValue(forKey: pid)
-        }
+        hookPids.removeValue(forKey: sessionId)
+        for pid in Array(pidToSessions.keys) { pidToSessions[pid]?.remove(sessionId) }
+        sessionToName.removeValue(forKey: sessionId)
     }
 
     /// `nil` when the session has never had a relation (the wire field is

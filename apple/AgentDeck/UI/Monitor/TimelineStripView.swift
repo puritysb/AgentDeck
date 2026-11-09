@@ -2,12 +2,17 @@
 
 import SwiftUI
 
-/// Layout adapts to device class + orientation:
-///   - `.compact` : iPhone portrait (h=compact, v=regular). Single-column with
-///     tap-to-expand inline detail. No right-side detail pane.
-///   - `.regular` : everywhere else (iPad portrait/landscape, iPhone landscape, macOS).
-///     65/35 HStack with right-side detail pane.
-enum TimelineLayoutMode { case compact, regular }
+/// Compact shows details inline. Regular uses a 65/35 split with a detail pane.
+enum TimelineLayoutMode {
+    case compact, regular
+
+    #if os(macOS)
+    static func forDashboard(width: CGFloat) -> Self {
+        // Give the 35% detail pane roughly 320 pt before showing both columns.
+        width < 920 ? .compact : .regular
+    }
+    #endif
+}
 
 /// Per-form-factor font scale. Phone-class (compact) screens are cramped;
 /// shrink the HUD text by one step. Mirrors the Android `MonitorLayoutScale`
@@ -74,6 +79,8 @@ struct TimelineRenderSnapshot {
 
 struct TimelineStripView: View {
     var usesMetalHabitat = false
+    var availableWidth: CGFloat
+    var headerControls: AnyView? = nil
 
     private var allowsNativeSelection: Bool {
         #if os(macOS)
@@ -110,15 +117,15 @@ struct TimelineStripView: View {
         resolveTimelineLayoutMode(horizontal: hSizeClass, vertical: vSizeClass)
     }
     #else
-    private var layoutMode: TimelineLayoutMode { .regular }
+    private var layoutMode: TimelineLayoutMode { .forDashboard(width: availableWidth) }
     #endif
 
-    /// Font scale tracks layout mode 1:1: compact-layout (iPhone portrait)
-    /// → smaller fonts; regular layout (iPad / macOS / iPhone landscape) →
-    /// previous defaults. Keeps tablet/desktop look unchanged while phone
-    /// HUDs become readable at the cramped widths.
     private var fontScale: TimelineFontScale {
+        #if os(macOS)
+        .regular
+        #else
         layoutMode == .compact ? .compact : .regular
+        #endif
     }
 
     /// Accessed in body to register SwiftUI observation on timeline changes
@@ -149,9 +156,16 @@ struct TimelineStripView: View {
             focusedIndex = -1
             expandedIndex = -1
         }
+        #if os(macOS)
+        .onChange(of: layoutMode) { _, mode in
+            if mode == .compact {
+                expandedIndex = focusedIndex
+            }
+        }
+        #endif
     }
 
-    /// Regular layout: 65/35 HStack (iPad / macOS / iPhone landscape).
+    /// Regular layout: 65/35 HStack.
     private func regularBody(_ snapshot: TimelineRenderSnapshot) -> some View {
         GeometryReader { geo in
             HStack(alignment: .top, spacing: 0) {
@@ -176,8 +190,7 @@ struct TimelineStripView: View {
     }
 
     /// Compact layout: single-column with tap-to-expand inline detail.
-    /// Used on iPhone portrait where the right detail pane is too narrow to
-    /// be useful (~120 dp after split).
+    /// Used on iPhone portrait and in narrow Mac Dashboard windows.
     private func compactBody(_ snapshot: TimelineRenderSnapshot) -> some View {
         // Pin the column to the top of its allotted area so the empty-state
         // text ("TIMELINE" + "No events yet") doesn't drift to centre on
@@ -224,6 +237,7 @@ struct TimelineStripView: View {
                 .accessibilityLabel("Clear timeline filter")
             }
             Spacer(minLength: 0)
+            headerControls
         }
         .padding(.horizontal, 8)
         .padding(.top, 4)
@@ -261,21 +275,19 @@ struct TimelineStripView: View {
                                     if let dayLabel = timelineDayBreakLabel(at: index, in: grouped) {
                                         dayBreakRow(dayLabel)
                                     }
-                                    compactLogRow(group, index: index, allowMultiline: allowExpand, snapshot: snapshot)
+                                    timelineRow(group, index: index, allowExpand: allowExpand, snapshot: snapshot)
                                         .id(index)
-                                        .onTapGesture {
-                                            if allowExpand {
-                                                expandedIndex = (expandedIndex == index) ? -1 : index
-                                                focusedIndex = index
-                                            } else {
-                                                focusedIndex = index
-                                            }
-                                        }
                                     if allowExpand && expandedIndex == index {
+                                        #if os(macOS)
+                                        detailPane(group, snapshot: snapshot, inline: true)
+                                            .padding(.leading, 18)
+                                            .padding(.vertical, 4)
+                                        #else
                                         inlineDetailPane(group, snapshot: snapshot)
                                             .padding(.leading, 18)
                                             .padding(.trailing, 6)
                                             .padding(.vertical, 4)
+                                        #endif
                                     }
                                 }
                             }
@@ -326,6 +338,13 @@ struct TimelineStripView: View {
                     guard !grouped.isEmpty, stickToBottom else { return }
                     proxy.scrollTo(grouped.count - 1, anchor: .bottom)
                 }
+                #if os(macOS)
+                .onChange(of: expandedIndex, initial: true) {
+                    guard allowExpand, grouped.indices.contains(expandedIndex) else { return }
+                    stickToBottom = false
+                    proxy.scrollTo(expandedIndex, anchor: .top)
+                }
+                #endif
             }
         }
     }
@@ -363,6 +382,41 @@ struct TimelineStripView: View {
     }
 
     // MARK: - Compact Log Row
+
+    @ViewBuilder
+    private func timelineRow(_ group: GroupedEntry, index: Int, allowExpand: Bool, snapshot: TimelineRenderSnapshot) -> some View {
+        let row = compactLogRow(group, index: index, allowMultiline: allowExpand, snapshot: snapshot)
+        #if os(macOS)
+        if allowExpand {
+            Button {
+                selectTimelineRow(index, allowExpand: true)
+            } label: {
+                HStack(spacing: 6) {
+                    row
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: expandedIndex == index ? "chevron.down" : "chevron.right")
+                        .font(.caption2)
+                        .foregroundStyle(TerrariumHUD.subtext)
+                        .accessibilityHidden(true)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(expandedIndex == index ? "Collapse event details" : "Expand event details")
+        } else {
+            row.onTapGesture { selectTimelineRow(index, allowExpand: false) }
+        }
+        #else
+        row.onTapGesture { selectTimelineRow(index, allowExpand: allowExpand) }
+        #endif
+    }
+
+    private func selectTimelineRow(_ index: Int, allowExpand: Bool) {
+        focusedIndex = index
+        if allowExpand {
+            expandedIndex = expandedIndex == index ? -1 : index
+        }
+    }
 
     @ViewBuilder
     private func compactLogRow(_ group: GroupedEntry, index: Int, allowMultiline: Bool, snapshot: TimelineRenderSnapshot) -> some View {
@@ -897,7 +951,7 @@ struct TimelineStripView: View {
 
     // MARK: - Detail Pane
 
-    private func detailPane(_ group: GroupedEntry?, snapshot: TimelineRenderSnapshot) -> some View {
+    private func detailPane(_ group: GroupedEntry?, snapshot: TimelineRenderSnapshot, inline: Bool = false) -> some View {
         let grouped = snapshot.groups
         let filteredEntries = snapshot.filteredEntries
         return VStack(alignment: .leading, spacing: 0) {
@@ -1088,18 +1142,25 @@ struct TimelineStripView: View {
 
                 if shownDetail != nil || !group.toolActivity.isEmpty {
                     Spacer().frame(height: 4)
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 4) {
-                            toolActivityDetail(group)
-                            if let detail = shownDetail {
-                                TimelineMarkdownPreview(text: detail, allowsSelection: allowsNativeSelection)
-                            }
+                    let body = VStack(alignment: .leading, spacing: 4) {
+                        toolActivityDetail(group)
+                        if let detail = shownDetail {
+                            TimelineMarkdownPreview(text: detail, allowsSelection: allowsNativeSelection)
                         }
                     }
                     .padding(.horizontal, 8)
+                    if inline {
+                        body
+                    } else {
+                        ScrollView { body }
+                    }
                 }
 
-                Spacer()
+                if inline {
+                    Spacer().frame(height: 6)
+                } else {
+                    Spacer()
+                }
             } else {
                 Spacer()
                 Text("No events")

@@ -38,5 +38,48 @@
       "id": "waiting_on:out:job-b",
       "phase": "open"
     }
-  ]
+  ],
+  "historyParity": {
+    "prompt": "Review the collaboration fixture",
+    "peers": [{"sessionId": "a", "pid": 4240}, {"sessionId": "b", "pid": 4241}],
+    "messages": [
+      {"sessionId": "a", "offset": -9000, "toolInput": {"to": "uds:/tmp/4241.sock", "summary": " ", "message": "Please reply"}},
+      {"sessionId": "b", "offset": -8500, "prompt": "<cross-session-message from=\"uds:/tmp/4240.sock\" from-name=\"Builder\">Please reply</cross-session-message>"},
+      {"sessionId": "b", "offset": -7000, "toolInput": {"to": "Builder", "message": "Build summary"}},
+      {"sessionId": "b", "offset": -5000, "toolInput": {"to": "uds:/tmp/4240.sock", "message": "Build complete"}},
+      {"sessionId": "a", "offset": -3000, "duplicatePeer": {"sessionId": "collision", "pid": 4241},
+       "toolInput": {"to": "uds:/tmp/4241.sock", "message": "Status update"}}
+    ],
+    "extra": [
+      {"key": "legacy", "relation": "messaged", "direction": "out", "phase": "closed", "offset": -2000,
+       "peerSessionId": "historical", "peerName": "Legacy target", "evidence": "send_message_tool"},
+      {"key": "future", "relation": "messaged", "direction": "out", "phase": "closed", "offset": 60000, "evidence": "test"},
+      {"key": "expired", "relation": "messaged", "direction": "out", "phase": "closed", "offset": -90000000, "evidence": "test"},
+      {"key": "job", "relation": "waiting_on", "direction": "out", "phase": "open", "offset": -1000, "peerName": "build", "evidence": "background_process"},
+      {"key": "inferred-parent", "relation": "spawned", "direction": "in", "phase": "open", "offset": -900,
+       "peerSessionId": "collision", "evidence": "process_ancestry"}
+    ],
+    "delegate": {"id": "worker", "name": "Reviewer", "phase": "started", "offset": -800},
+    "ambiguousAncestry": {
+      "peers": [{"sessionId": "child", "pid": 4242}],
+      "processes": [{"pid": 4241, "ppid": 1, "command": "claude"}, {"pid": 4242, "ppid": 4241, "command": "claude"}]
+    },
+    "expectedMessages": [
+      {"sessionId": "a", "offset": -2000, "direction": "out", "peerSessionId": "historical", "peerIdentity": null,
+       "peerName": "Legacy target", "detail": null, "messageIntent": null, "evidence": "send_message_tool"},
+      {"sessionId": "a", "offset": -3000, "direction": "out", "peerSessionId": null, "peerIdentity": null,
+       "peerName": null, "detail": "Status update", "messageIntent": "notification", "evidence": "send_message_tool"},
+      {"sessionId": "b", "offset": -5000, "direction": "out", "peerSessionId": "a", "peerIdentity": "pid",
+       "peerName": "Builder", "detail": "Build complete", "messageIntent": "unknown", "evidence": "send_message_tool"},
+      {"sessionId": "b", "offset": -7000, "direction": "out", "peerSessionId": null, "peerIdentity": null,
+       "peerName": "Builder", "detail": "Build summary", "messageIntent": "unknown", "evidence": "send_message_tool"},
+      {"sessionId": "b", "offset": -8500, "direction": "in", "peerSessionId": "a", "peerIdentity": "pid",
+       "peerName": "Builder", "detail": "Please reply", "messageIntent": "request", "evidence": "cross_session_message"},
+      {"sessionId": "a", "offset": -9000, "direction": "out", "peerSessionId": "b", "peerIdentity": "pid",
+       "peerName": null, "detail": "Please reply", "messageIntent": "request", "evidence": "send_message_tool"}
+    ],
+    "expectedScreen": {"nodes": ["a", "b"], "latestSender": "b", "latestRecipient": "a",
+      "latestStatus": "Message observed", "unidentifiedOffsets": [-2000, -3000, -7000],
+      "delegates": ["worker"], "backgroundJobs": ["build"]}
+  }
 }

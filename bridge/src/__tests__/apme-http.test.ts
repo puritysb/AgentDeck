@@ -11,6 +11,8 @@ import { ApmeHwSampler } from '../apme/hw-sampler.js';
 import { ApmeRecommender } from '../apme/recommend.js';
 import { handleApmeRequest } from '../apme/http.js';
 import type { ApmeModule } from '../apme/index.js';
+import { CoordinationTracker } from '../coordination-evidence.js';
+import collaborationVectors from '../../../shared/collaboration-identity-vectors.json';
 
 async function makeApme(): Promise<{ apme: ApmeModule; tmpDir: string } | null> {
   const tmpDir = mkdtempSync(join(tmpdir(), 'apme-http-'));
@@ -143,6 +145,49 @@ describe('APME HTTP routes', () => {
     expect(value.events).toHaveLength(2000);
     expect(value.events[0].ts).toBe(now);
     expect(value.events.at(-1).ts).toBe(now - 1999);
+  });
+
+  it('serves the shared Swift/Node Collaboration history fixture', async () => {
+    const fixture = collaborationVectors.historyParity;
+    const now = Date.now();
+    let ts = now;
+    const tracker = new CoordinationTracker(() => ts);
+    for (const { sessionId, pid } of fixture.peers) {
+      tracker.registerPid(sessionId, pid);
+      apme!.collector.openRun({ sessionId, agentType: 'claude-code' });
+      apme!.collector.ingestHook(sessionId, 'UserPromptSubmit', { prompt: fixture.prompt });
+    }
+    for (const message of fixture.messages) {
+      ts = now + message.offset;
+      if (message.duplicatePeer) tracker.registerPid(message.duplicatePeer.sessionId, message.duplicatePeer.pid);
+      const event = message.prompt
+        ? tracker.noteMessageIn(message.sessionId, message.prompt)
+        : tracker.noteToolCall(message.sessionId, 'SendMessage', message.toolInput);
+      expect(event).not.toBeNull();
+      expect(apme!.collector.noteRelation(message.sessionId, event!)).toBe(true);
+    }
+    const { processes, peers } = fixture.ambiguousAncestry;
+    expect(tracker.observe(processes, peers).filter(event => event.relation === 'spawned')).toEqual([]);
+    for (const { offset, ...event } of fixture.extra) {
+      expect(apme!.collector.noteRelation('a', { ...event, ts: now + offset } as Parameters<ApmeCollector['noteRelation']>[1])).toBe(true);
+    }
+    const { id, name, offset } = fixture.delegate;
+    expect(apme!.collector.noteSubagentLifecycle('a', { id, name, kind: 'subagent', phase: 'started', ts: now + offset })).toBe(true);
+    const response = await fetch(`${base}/apme/communications`);
+    expect(response.status).toBe(200);
+    const history = await response.json();
+    expect(history).toMatchObject({ schema: 'agentdeck-communications/v1', truncated: false });
+    expect(history.events.map(({ sessionId, ts, direction, peerSessionId, peerIdentity, peerName, detail, messageIntent, evidence }: Record<string, unknown>) =>
+      ({ sessionId, offset: Number(ts) - now, direction, peerSessionId, peerIdentity, peerName, detail, messageIntent, evidence })))
+      .toEqual(fixture.expectedMessages);
+
+    const page = await (await fetch(`${base}/apme/tasks?session=a&limit=8`)).json();
+    expect(page.tasks.map((task: { sessionId: string }) => task.sessionId)).toEqual(['a']);
+    const task = await (await fetch(`${base}/apme/tasks/${page.tasks[0].id}`)).json();
+    expect(task.sample.events.filter((event: { kind: string }) => event.kind === 'subagent').map((event: { id: string }) => event.id))
+      .toEqual(fixture.expectedScreen.delegates);
+    expect(task.sample.events.filter((event: { relation?: string }) => event.relation === 'waiting_on').map((event: { peerName: string }) => event.peerName))
+      .toEqual(fixture.expectedScreen.backgroundJobs);
   });
 
   it('GET /apme/runs lists recent runs with evals and overall score', async () => {
