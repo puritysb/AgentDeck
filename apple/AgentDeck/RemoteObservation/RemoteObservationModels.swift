@@ -179,6 +179,28 @@ struct RemoteUsageWindow: Codable, Equatable, Sendable {
     let resetsAt: Date
     let validUntil: Date?
 
+    static func zaiAccount(_ quota: ZaiRateLimits, observedAt: Date?, at now: Date) -> [Self] {
+        guard quota.authFailed != true, let observedAt else { return [] }
+        let validUntil = observedAt.addingTimeInterval(10 * 60)
+        return [quota.primary, quota.secondary].compactMap { window in
+            guard let window, window.stale != true else { return nil }
+            return make(provider: .zai, quantity: window.quantity == "mcp" ? .mcp : .allowance,
+                        minutes: window.windowMinutes, used: window.usedPercent, observedAt: observedAt,
+                        resetsAt: window.resetsAt, validUntil: validUntil, at: now)
+        }
+    }
+
+    #if os(macOS)
+    static func codexAccount(_ account: CodexRateLimitsLocal?, plan: String?, at now: Date) -> [Self] {
+        guard let account, CodexPlanRules.snapshotMatchesAccountPlan(snapshot: account.planType, account: plan) else { return [] }
+        let stamp = remoteObservationDate(account.capturedAt)
+        return [account.primary, account.secondary].compactMap { window in
+            make(provider: .codex, minutes: window?.windowMinutes, used: window?.usedPercent,
+                 observedAt: stamp, resetsAt: window?.resetsAt, at: now)
+        }
+    }
+    #endif
+
     func isVisible(at now: Date) -> Bool {
         durationMinutes > 0 && (0...100).contains(remainingPercent) && observedAt <= now && now < min(resetsAt, validUntil ?? resetsAt)
     }

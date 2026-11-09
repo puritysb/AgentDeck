@@ -120,6 +120,15 @@ the iPhone on cellular with both builds updated, including sessions, a
 verified account allowance, return to counts after detail sharing is disabled,
 and removal after full stop and deletion. This delivery is internal-only.
 
+#### Remote usage with the existing local daemon — internal TestFlight
+
+The [2.2.0 (10701) inventory](https://github.com/puritysb/AgentDeck/actions/runs/42573534820)
+confirmed valid iOS and Mac builds. The follow-up keeps the unreleased Apple
+2.2.0 marketing version and uses the next CI build number. It extends the
+same Remote dashboard milestone to the Mac app attached to the existing Node
+daemon. Physical acceptance uses the signed internal TestFlight pair and
+checks both providers from iPhone cellular while the Mac stays on port 9120.
+
 ### npm 2.1.1 release decision — 2026-11-08
 
 | Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |

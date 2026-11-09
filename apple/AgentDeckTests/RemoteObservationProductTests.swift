@@ -215,6 +215,29 @@ final class RemoteObservationProductTests: XCTestCase {
             used: .nan, observedAt: stamp, resetsAt: rawReset, at: now))
     }
 
+    func testRelayedZaiProjectsProviderTimeAndRejectsRetiredWindows() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let observedAt = now.addingTimeInterval(-60)
+        let reset = now.addingTimeInterval(3600)
+        let window = ZaiWindow(usedPercent: 72.5, windowMinutes: 300, resetsAt: reset.formatted(.iso8601))
+        var quota = ZaiRateLimits(primary: window, capturedAt: observedAt.formatted(.iso8601))
+
+        let reading = try XCTUnwrap(RemoteUsageWindow.zaiAccount(quota,
+            observedAt: remoteObservationDate(quota.capturedAt), at: now).first)
+        XCTAssertEqual(reading.remainingPercent, 27.5)
+        XCTAssertEqual(reading.observedAt, observedAt)
+        XCTAssertEqual(reading.resetsAt, reset)
+        XCTAssertFalse(reading.isVisible(at: observedAt.addingTimeInterval(600)))
+        XCTAssertTrue(RemoteUsageWindow.zaiAccount(quota, observedAt: nil, at: now).isEmpty)
+        XCTAssertTrue(RemoteUsageWindow.zaiAccount(quota, observedAt: observedAt,
+            at: observedAt.addingTimeInterval(600)).isEmpty)
+        quota.primary?.stale = true
+        XCTAssertTrue(RemoteUsageWindow.zaiAccount(quota, observedAt: observedAt, at: now).isEmpty)
+        quota.primary = window
+        quota.authFailed = true
+        XCTAssertTrue(RemoteUsageWindow.zaiAccount(quota, observedAt: observedAt, at: now).isEmpty)
+    }
+
     func testAmbiguousCommittedAlertResolvesBySameIdentityWithoutDuplicateCreation() async throws {
         let fixture = Fixture(); fixture.rows([])
         let model = fixture.model(); await model.enableSharing()

@@ -1355,10 +1355,29 @@ final class DaemonService: ObservableObject {
         return false
     }
 
-    func remoteAccountUsage() async -> [RemoteUsageWindow] {
-        guard isSelfDaemon, let daemon = server as? DaemonServer else { return [] }
-        let windows = await daemon.remoteAccountUsage()
-        return isSelfDaemon && server === daemon ? windows : []
+    @DaemonActor private static let externalCodexUsage = CodexAccountUsageClient()
+
+    @DaemonActor
+    private static func readExternalCodexUsage() async -> [RemoteUsageWindow] {
+        let usageAPI = UsageAPIClient.shared
+        await externalCodexUsage.refresh(credential: usageAPI.codexUsageCredential())
+        let now = Date()
+        let account = externalCodexUsage.snapshot(passive: nil, credential: usageAPI.codexUsageCredential(), now: now)
+        return RemoteUsageWindow.codexAccount(account, plan: usageAPI.codexAuthStatus?.planType, at: now)
+    }
+
+    func remoteAccountUsage(relayedZai: (String) -> [RemoteUsageWindow]) async -> [RemoteUsageWindow] {
+        if isSelfDaemon, let daemon = server as? DaemonServer {
+            let windows = await daemon.remoteAccountUsage()
+            return isSelfDaemon && server === daemon ? windows : []
+        }
+        guard isUsingExternalDaemon, let readyUrl else { return [] }
+        let generation = externalAttachGeneration
+        // Legacy Node frames can mix account and model pools. Use the same
+        // credential-bound native account reader as the in-process daemon.
+        let codex = await Self.readExternalCodexUsage()
+        guard isUsingExternalDaemon, externalAttachGeneration == generation, self.readyUrl == readyUrl else { return [] }
+        return codex + relayedZai(readyUrl)
     }
 
     // MARK: - Device Summary Refresh

@@ -20,10 +20,11 @@ Remote shows shared Mac activity in place over iCloud. Counts, source time and
 opaque attention IDs remain the default. A separate **Share session and usage
 details** setting on the Mac adds up to 24 live session rows with agent type,
 state, start time and observed child/background counts. It also adds account
-allowance percentages with their original observation and reset times, when
-available from the Mac's in-process daemon. Codex uses the credential-matched
-native account reading and z.ai uses its provider
-reading. Claude has no native account allowance source in the current app.
+allowance percentages with their original observation and reset times. Codex
+uses the Mac app's native account reader and existing Codex folder grant in
+either daemon mode. In external mode, z.ai comes from the pinned local Node
+daemon's timestamped provider reading. In standalone mode, it comes from the
+Mac app's provider reader. Claude has no native account allowance source.
 Percentages describe each reported window. Ended windows disappear.
 Aggregate-only clients continue to read the same encrypted snapshot field.
 Turning off detailed sharing replaces that snapshot with counts only on the
