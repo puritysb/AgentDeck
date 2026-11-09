@@ -116,7 +116,7 @@ enum ApmeHttpRoutes {
             let capturedAt = Int(Date().timeIntervalSince1970 * 1000)
             let since = capturedAt - CollaborationPresentation.networkHistoryWindowMs
             let limit = CollaborationPresentation.networkEventLimit
-            guard let events = try? store.listCommunicationEvents(since: since, limit: limit + 1) else {
+            guard let events = try? store.listCommunicationEvents(since: since, limit: limit + 1, until: capturedAt) else {
                 return .json(["error": "Communication history unavailable"], status: 503)
             }
             return .json(["schema": "agentdeck-communications/v1", "capturedAt": capturedAt,

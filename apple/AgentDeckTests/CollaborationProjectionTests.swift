@@ -20,8 +20,8 @@ final class CollaborationProjectionTests: XCTestCase {
         """.utf8))
         let value = try sample("""
         [{"kind":"relation","ts":1,"relation":"spawned","direction":"out","phase":"closed","peerSessionId":"worker"},
-         {"kind":"relation","ts":2,"relation":"messaged","direction":"in","phase":"closed","peerSessionId":"waiting"},
-         {"kind":"relation","ts":3,"relation":"messaged","direction":"in","phase":"closed","peerSessionId":"worker"},
+         {"kind":"relation","ts":2,"relation":"messaged","direction":"in","phase":"closed","peerIdentity":"pid","peerSessionId":"waiting"},
+         {"kind":"relation","ts":3,"relation":"messaged","direction":"in","phase":"closed","peerIdentity":"pid","peerSessionId":"worker"},
          {"kind":"relation","ts":4,"relation":"spawned","direction":"in","phase":"open","peerSessionId":"parent"},
          {"kind":"relation","ts":5,"relation":"spawned","direction":"out","phase":"open","peerSessionId":"missing"},
          {"kind":"relation","ts":6,"relation":"spawned","direction":"out","phase":"open","peerSessionId":"unrelated","evidence":"bash_claude_p"}]

@@ -121,10 +121,39 @@ enum DashboardHUDLayout {
 
 private enum CompactDashboardHUDPage: String, CaseIterable, Identifiable {
     case sessions = "Sessions"
+    #if os(macOS)
+    case system = "Panel"
+    #else
     case system = "System"
+    #endif
 
     var id: String { rawValue }
 }
+
+#if os(macOS)
+struct DashboardPanelMenu: View {
+    @Binding var collaborationEnabled: Bool
+    var title: LocalizedStringKey
+
+    var body: some View {
+        Menu {
+            Picker("Dashboard panel", selection: $collaborationEnabled) {
+                Text("Usage & Services").tag(false)
+                Text("Collaboration").tag(true)
+            }
+            .pickerStyle(.inline)
+        } label: {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .lineLimit(1)
+        }
+        .menuStyle(.borderlessButton)
+        .accessibilityLabel("Dashboard panel")
+        .accessibilityValue(title)
+        .accessibilityIdentifier("dashboard-collaboration-switch")
+    }
+}
+#endif
 
 struct MonitorHUD: View {
     @EnvironmentObject private var stateHolder: AgentStateHolder
@@ -152,7 +181,7 @@ struct MonitorHUD: View {
             )
 
             if usesSingleRail {
-                compactPhoneHUD(geo: geo)
+                compactHUD(geo: geo)
             } else if isLandscape {
                 // iPad landscape: matches Android Box layout
                 ZStack(alignment: .topLeading) {
@@ -174,7 +203,7 @@ struct MonitorHUD: View {
                     // Visible if either of the legacy preferences is on; the
                     // rail is a single unified view so we don't try to hide
                     // upstream or downstream independently anymore.
-                    if showsRightRail {
+                    if showsRightPanel {
                         if panelMaxHeight >= DashboardHUDLayout.minimumPanelHeight {
                             HStack {
                                 Spacer()
@@ -227,7 +256,7 @@ struct MonitorHUD: View {
                             SessionListPanel(maxHeight: panelMaxHeight)
                                 .frame(maxWidth: .infinity)
                         }
-                        if showsRightRail {
+                        if showsRightPanel {
                             dashboardRightRail(maxHeight: panelMaxHeight)
                                 .frame(maxWidth: .infinity)
                         }
@@ -248,12 +277,16 @@ struct MonitorHUD: View {
         #endif
     }
 
-    private var showsRightRail: Bool {
+    private var showsRightPanel: Bool {
         #if os(macOS)
-        collaborationEnabled || preferences.showTankStatus || preferences.showDeviceDiagnostic
+        true
         #else
-        preferences.showTankStatus || preferences.showDeviceDiagnostic
+        showsUsageRail
         #endif
+    }
+
+    private var showsUsageRail: Bool {
+        preferences.showTankStatus || preferences.showDeviceDiagnostic
     }
 
     private var rightRailWidth: CGFloat {
@@ -280,9 +313,15 @@ struct MonitorHUD: View {
     private func dashboardRightRail(maxHeight: CGFloat) -> some View {
         #if os(macOS)
         if collaborationEnabled {
-            CollaborationPanel(maxHeight: maxHeight, port: collaborationPort, communications: communications)
+            CollaborationPanel(maxHeight: maxHeight, port: collaborationPort, communications: communications,
+                               panelSelection: $collaborationEnabled)
+        } else if showsUsageRail {
+            TopologyRail(maxHeight: maxHeight, panelSelection: $collaborationEnabled)
         } else {
-            TopologyRail(maxHeight: maxHeight)
+            DashboardPanelMenu(collaborationEnabled: $collaborationEnabled, title: "Dashboard panel")
+                .padding(8)
+                .background(TerrariumHUD.bg, in: RoundedRectangle(cornerRadius: 8))
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
         #else
         TopologyRail(maxHeight: maxHeight)
@@ -294,12 +333,11 @@ struct MonitorHUD: View {
     /// makes the alternate rail discoverable while each page keeps readable
     /// line lengths and its own bounded scroll position.
     @ViewBuilder
-    private func compactPhoneHUD(geo: GeometryProxy) -> some View {
+    private func compactHUD(geo: GeometryProxy) -> some View {
         let showsSessions = preferences.showSessionList
-        let showsSystem = preferences.showTankStatus || preferences.showDeviceDiagnostic
         let pages: [CompactDashboardHUDPage] = [
             showsSessions ? .sessions : nil,
-            showsSystem ? .system : nil,
+            showsRightPanel ? .system : nil,
         ].compactMap { $0 }
         let resolvedPage: CompactDashboardHUDPage? = pages.contains(compactPage)
             ? compactPage
@@ -324,7 +362,7 @@ struct MonitorHUD: View {
                 case .sessions:
                     SessionListPanel(maxHeight: contentMaxHeight)
                 case .system:
-                    TopologyRail(maxHeight: contentMaxHeight)
+                    dashboardRightRail(maxHeight: contentMaxHeight)
                 case nil:
                     EmptyView()
                 }

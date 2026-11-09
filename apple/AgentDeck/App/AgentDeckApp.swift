@@ -101,6 +101,7 @@ struct AgentDeckApp: App {
                         .environmentObject(daemonService)
                 }
         }
+        .windowStyle(.hiddenTitleBar)
         .defaultPosition(.center)
         .defaultSize(width: 1280, height: 840)
 

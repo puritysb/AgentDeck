@@ -133,17 +133,20 @@ struct CollaborationPanel: View {
     @ObservedObject private var communications: CommunicationFeed
     @State private var inspectedID: String?
     @State private var selectedTaskID: String?
-    @State private var showsLiveDetails = false
     @State private var showsSystem = false
     @State private var refreshID = UUID()
     @State private var navigationHistory: [String] = []
     let maxHeight: CGFloat
     let port: Int
+    let panelSelection: Binding<Bool>?
 
-    init(maxHeight: CGFloat, port: Int, feed: CollaborationFeed = CollaborationFeed(), communications: CommunicationFeed = CommunicationFeed(), inspectedID: String? = nil) {
+    init(maxHeight: CGFloat, port: Int, feed: CollaborationFeed = CollaborationFeed(),
+         communications: CommunicationFeed = CommunicationFeed(), inspectedID: String? = nil,
+         panelSelection: Binding<Bool>? = nil) {
         self.maxHeight = maxHeight
         self.port = port
         self.communications = communications
+        self.panelSelection = panelSelection
         _feed = StateObject(wrappedValue: feed)
         _inspectedID = State(initialValue: inspectedID)
     }
@@ -158,8 +161,12 @@ struct CollaborationPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label(CollaborationPresentation.heading, systemImage: "point.3.connected.trianglepath.dotted")
-                    .font(.system(size: 17, weight: .semibold))
+                if let panelSelection {
+                    DashboardPanelMenu(collaborationEnabled: panelSelection, title: "Collaboration")
+                } else {
+                    Label(CollaborationPresentation.heading, systemImage: "point.3.connected.trianglepath.dotted")
+                        .font(.system(size: 17, weight: .semibold))
+                }
                 Spacer()
                 // Badge, not a word: the existing capsule idiom (caption-size
                 // text, 6/2 padding, 20% tinted Capsule) used by the
@@ -179,14 +186,11 @@ struct CollaborationPanel: View {
                     TopologyRail(maxHeight: 560).frame(width: 330).padding(12)
                 }
             }
-            Text("See conversations, reply gaps and delegated work")
+            Text("Sessions, delegated work and background jobs")
                 .font(.caption).foregroundStyle(DesignTokens.Ink.s300)
             Divider().overlay(DesignTokens.Ink.s500)
-            feedStatus
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    CommunicationGraphView(feed: communications, roster: stateHolder.state.siblingSessions,
-                        selectedID: inspectedID, inspect: { inspect($0) }, retry: { communications.refreshID = UUID() })
                     if let selected {
                         if let previous = navigationHistory.last(where: { id in stateHolder.state.siblingSessions.contains { $0.id == id } }) {
                             Button {
@@ -199,6 +203,8 @@ struct CollaborationPanel: View {
                             }.buttonStyle(.plain)
                         }
                         sessionHeader(selected)
+                        liveWork(selected)
+                        feedStatus
                         if let task = feed.task {
                             VStack(alignment: .leading, spacing: 6) {
                                 Menu {
@@ -230,34 +236,18 @@ struct CollaborationPanel: View {
                                     .id(inspectedID)
                             }
                         }
-                        if selected.subagents != nil || selected.coordination != nil {
-                            DisclosureGroup("Live activity details", isExpanded: $showsLiveDetails) {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    if let census = selected.subagents {
-                                        Text("Subagents · \(max(0, census.active)) active · \(max(0, census.completed)) ended this wave")
-                                    }
-                                    if let coord = selected.coordination {
-                                        Text("Spawned sessions · \(max(0, coord.spawnedActive)) running")
-                                        Text("Background jobs · \(max(0, coord.backgroundJobs)) waited on")
-                                        Text("Messages · \(max(0, coord.messagesIn)) received · \(max(0, coord.messagesOut)) sent")
-                                    }
-                                    Text("Current session counts, separate from the selected task history.")
-                                        .foregroundStyle(DesignTokens.Ink.s300)
-                                }.font(.caption).padding(.top, 6)
-                            }.font(.caption)
-                        }
                         if !feed.children.isEmpty {
-                            CollaborationRows(title: "Child observations", symbol: "arrow.triangle.branch",
+                            CollaborationRows(title: "Delegated work", symbol: "arrow.triangle.branch",
                                               rows: feed.children, limit: 4,
                                               isCompleted: { $0.phase == "completed" }, content: childRow)
                                 .id(inspectedID)
                         }
                         relationSections.id(inspectedID)
-                        if !feed.children.isEmpty || !feed.relations.isEmpty {
+                        if hasWorkHistory {
                             Text("History records observed activity; an end does not confirm that the result was integrated.")
                                 .font(.caption2).foregroundStyle(DesignTokens.Ink.s300)
                         }
-                        if feed.state == .ready && feed.children.isEmpty && feed.relations.isEmpty {
+                        if feed.state == .ready && !hasWorkHistory {
                             VStack(spacing: 8) {
                                 Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
                                     .font(.system(size: 28)).foregroundStyle(DesignTokens.Ink.s300)
@@ -273,9 +263,13 @@ struct CollaborationPanel: View {
                         CollaborationRows(title: "Sessions · needs input first", symbol: "hand.raised",
                             rows: CollaborationProjection.prioritizedSessions(stateHolder.state.siblingSessions),
                             limit: 4, isCompleted: { _ in false }, content: sessionShortcut)
-                        Text("Links appear only when collaboration was observed. Sharing a project does not imply a team.")
-                            .font(.caption).foregroundStyle(DesignTokens.Ink.s300)
                     }
+                    DisclosureGroup("Recent message history") {
+                        CommunicationGraphView(feed: communications, roster: stateHolder.state.siblingSessions,
+                        selectedID: inspectedID, inspect: { inspect($0) }, retry: { communications.refreshID = UUID() })
+                            .padding(.top, 6)
+                    }
+                    .accessibilityIdentifier("collaboration-message-history")
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }.scrollBounceBehavior(.basedOnSize).id(inspectedID)
         }
@@ -287,7 +281,7 @@ struct CollaborationPanel: View {
         .onChange(of: inspection.sessionId) { _, id in
             if inspectedID != id { navigationHistory = []; inspectedID = id }
         }
-        .onChange(of: inspectedID) { _, _ in selectedTaskID = nil; showsLiveDetails = false }
+        .onChange(of: inspectedID) { _, _ in selectedTaskID = nil }
         .task(id: observationKey) {
             await feed.observe(sessionId: selected?.id ?? "", port: port,
                 connected: stateHolder.state.bridgeConnected, taskId: selectedTaskID)
@@ -334,17 +328,18 @@ struct CollaborationPanel: View {
     }
 
     private func sessionHeader(_ session: SessionInfo) -> some View {
-        let waiting = session.state?.hasPrefix("awaiting") == true
-        let working = session.state == "processing"
+        let waiting = session.alive && session.state?.hasPrefix("awaiting") == true
+        let working = session.alive && session.state == "processing"
         // Turn closed, but work it started is still running: the parent is
         // idle to the harness and waiting to the user. Say both.
         // These are separate censuses; do not add potentially overlapping
         // worker counts into a fabricated total. Direct children matter too.
-        let hasActiveWorkers = (session.subagents?.active ?? 0) > 0 || (session.coordination?.spawnedActive ?? 0) > 0
+        let hasActiveWorkers = (session.subagents?.active ?? 0) > 0
         let pendingJobs = session.coordination?.backgroundJobs ?? 0
-        let awaitingResults = CollaborationPresentation.phase(waiting, working, session.subagents?.active ?? 0, session.coordination?.spawnedActive ?? 0, pendingJobs) == 2
+        let awaitingResults = session.alive
+            && CollaborationPresentation.phase(waiting, working, session.subagents?.active ?? 0, 0, pendingJobs) == 2
         let continuation = hasActiveWorkers ? "Session · turn closed · workers still running"
-            : "Session · turn closed · waiting on \(pendingJobs) job\(pendingJobs == 1 ? "" : "s")"
+            : "Session · turn closed · \(pendingJobs) background jobs observed"
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
                 Image(systemName: waiting ? "person.crop.circle.badge.exclamationmark" : "circle.hexagongrid.fill")
@@ -355,7 +350,8 @@ struct CollaborationPanel: View {
                         .font(.caption).foregroundStyle(DesignTokens.Ink.s300)
                 }
             }
-            Label(waiting ? "Session · needs your input"
+            Label(!session.alive ? "Session · offline"
+                    : waiting ? "Session · needs your input"
                     : working ? "Session · working"
                     : awaitingResults ? continuation
                     : "Session · \(session.state ?? "unknown")",
@@ -375,10 +371,10 @@ struct CollaborationPanel: View {
     }
 
     private func sessionShortcut(_ session: SessionInfo) -> some View {
-        let waiting = session.state?.hasPrefix("awaiting") == true
-        let workers = (session.subagents?.active ?? 0) > 0 || (session.coordination?.spawnedActive ?? 0) > 0
-        let status = waiting ? "Needs your input" : session.state == "processing" ? "Working"
-            : workers ? "Workers still running" : (session.coordination?.backgroundJobs ?? 0) > 0 ? "Waiting on jobs"
+        let waiting = session.alive && session.state?.hasPrefix("awaiting") == true
+        let workers = (session.subagents?.active ?? 0) > 0
+        let status = !session.alive ? "Offline" : waiting ? "Needs your input" : session.state == "processing" ? "Working"
+            : workers ? "Workers still running" : (session.coordination?.backgroundJobs ?? 0) > 0 ? "Background jobs observed"
             : session.state == "idle" ? "Idle" : "State unavailable"
         return Button { inspect(session.id) } label: {
             HStack(alignment: .top, spacing: 8) {
@@ -388,6 +384,7 @@ struct CollaborationPanel: View {
                     Text(session.projectName ?? "Session").font(.subheadline.bold()).lineLimit(2)
                     Text("\(session.agentType ?? "Agent") · \(status)")
                         .font(.caption).foregroundStyle(waiting ? DesignTokens.UI.attn : DesignTokens.Ink.s300)
+                    workCounts(session)
                     if let activity = session.activity, !activity.isEmpty {
                         Text(activity).font(.caption).foregroundStyle(DesignTokens.Ink.s300).lineLimit(2)
                     }
@@ -399,99 +396,54 @@ struct CollaborationPanel: View {
         }.buttonStyle(.plain).help("Inspect session")
     }
 
+    private func liveWork(_ session: SessionInfo) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Live work", systemImage: "waveform").font(.caption.bold())
+            workCounts(session)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     @ViewBuilder
-    private var relationSections: some View {
-        let spawned = feed.relations.filter { $0.relation == "spawned" && !$0.isLaunchObservation }
-        let launches = feed.relations.filter { $0.isLaunchObservation }
-        let jobs = feed.relations.filter { $0.relation == "waiting_on" }
-        let messages = feed.relations.filter { $0.relation == "messaged" }.sorted { $0.observedAt > $1.observedAt }
-        let parents = spawned.filter { $0.direction == "in" }
-        let workers = spawned.filter { $0.direction == "out" }
-        if !parents.isEmpty {
-            CollaborationRows(title: "Spawned by", symbol: "arrow.down.left.circle", rows: parents,
-                              limit: 4, isCompleted: { !$0.isOpen }, content: relationRow)
+    private func workCounts(_ session: SessionInfo) -> some View {
+        if session.alive, let census = session.subagents {
+            Text("Delegates · \(max(0, census.active)) active · \(max(0, census.completed)) ended this wave")
+                .font(.caption).foregroundStyle(DesignTokens.Ink.s300)
         }
-        if !workers.isEmpty {
-            CollaborationRows(title: "Spawned sessions", symbol: "arrow.up.right.circle", rows: workers,
-                              limit: 12, isCompleted: { !$0.isOpen }, content: relationRow)
-        }
-        if !jobs.isEmpty {
-            CollaborationRows(title: "Background job observations", symbol: "hourglass", rows: jobs,
-                              limit: 6, isCompleted: { !$0.isOpen }, content: relationRow)
-        }
-        if !launches.isEmpty {
-            DisclosureGroup("Launch observations · \(launches.count)") {
-                Text("These requests are not linked to specific sessions and are not additional running workers.")
-                    .font(.caption).foregroundStyle(DesignTokens.Ink.s300)
-                CollaborationRows(title: "Launches", symbol: "arrow.up.right", rows: launches,
-                                  limit: 6, isCompleted: { _ in false }, content: relationRow)
-            }.font(.caption)
-        }
-        if !messages.isEmpty {
-            CollaborationRows(title: "Peer messages · newest first", symbol: "bubble.left.and.bubble.right",
-                              rows: messages, limit: 8, isCompleted: { _ in false }, content: relationRow)
+        if session.alive, let coord = session.coordination {
+            Text("Background jobs · \(max(0, coord.backgroundJobs)) observed")
+                .font(.caption).foregroundStyle(DesignTokens.Ink.s300)
         }
     }
 
-    private func relationRow(_ row: CollaborationRelation) -> some View {
-        let target = row.peerSessionId.flatMap { sid in
-            stateHolder.state.siblingSessions.first { ObservedAgentRules.rawSessionId($0.id) == sid }
-        }
-        let peer: String = {
-            if let name = row.peerName, !name.isEmpty { return name }
-            if let sid = row.peerSessionId, !sid.isEmpty {
-                let match = stateHolder.state.siblingSessions.first { ObservedAgentRules.rawSessionId($0.id) == sid }
-                let project = match?.projectName ?? "Session"
-                return "\(project) · \(sid.prefix(8))\(match == nil ? " · not in roster" : "")"
+    private var hasWorkHistory: Bool {
+        !feed.children.isEmpty || !CollaborationProjection.workRelations(feed.relations).isEmpty
+    }
+
+    private var relationSections: some View {
+        let work = CollaborationProjection.workRelations(feed.relations)
+        let launches = work.filter { $0.isLaunchObservation }
+        let jobs = work.filter { $0.relation == "waiting_on" }
+        return VStack(alignment: .leading, spacing: 8) {
+            if !jobs.isEmpty {
+                CollaborationRows(title: "Background job history", symbol: "hourglass",
+                                  rows: jobs, limit: 6, isCompleted: { !$0.isOpen }) { row in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(row.peerName ?? "Background job").font(.caption.bold())
+                        Text(row.isOpen ? "Start observed" : "End observed")
+                            .font(.caption2).foregroundStyle(DesignTokens.Ink.s300)
+                        if let detail = row.detail, !detail.isEmpty { Text(detail).font(.caption).lineLimit(3) }
+                    }
+                }
             }
-            return row.relation == "spawned" ? "Session not resolved · launch observed" : "Unknown"
-        }()
-        let symbol: String
-        let status: String
-        let color: Color
-        switch row.relation {
-        case "spawned":
-            symbol = row.direction == "in" ? "arrow.down.left" : "arrow.up.right"
-            status = row.isLaunchObservation ? "Launch requested · child not linked"
-                : row.isOpen ? "Observed running" : "End recorded"
-            color = row.isOpen ? DesignTokens.UI.cyan : DesignTokens.UI.ok
-        case "waiting_on":
-            symbol = "hourglass"
-            status = row.isOpen ? "Observed running" : "End observed"
-            color = row.isOpen ? DesignTokens.UI.attn : DesignTokens.Ink.s300
-        default:
-            symbol = row.direction == "in" ? "arrow.down.left.circle" : "arrow.up.right.circle"
-            status = (row.direction == "in" ? "Received" : "Sent") + " · " + Date(timeIntervalSince1970: row.observedAt / 1000).formatted(date: .omitted, time: .shortened)
-            color = DesignTokens.UI.cyan
-        }
-        let card = HStack(alignment: .top, spacing: 8) {
-            Image(systemName: symbol).foregroundStyle(color).padding(.top, 12)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(peer).font(.subheadline.bold()).lineLimit(2)
-                Text(status).font(.system(size: 10)).foregroundStyle(DesignTokens.Ink.s300)
-                if row.relation != "messaged" {
-                    HStack(spacing: 3) {
-                        Text("Observed")
-                        Text(Date(timeIntervalSince1970: row.observedAt / 1000), style: .relative)
-                        Text("ago")
-                    }.font(.system(size: 10)).foregroundStyle(DesignTokens.Ink.s300)
-                }
-                if target != nil {
-                    Label("Open session", systemImage: "arrow.right").font(.caption)
-                        .foregroundStyle(DesignTokens.UI.cyan)
-                }
-                if let detail = row.detail, !detail.isEmpty {
-                    Text(detail).font(.caption).lineLimit(3)
-                }
-            }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
-                .background(DesignTokens.Ink.s800, in: RoundedRectangle(cornerRadius: 10))
-        }
-        return Group {
-            if let target {
-                Button { inspect(target.id) } label: { card }
-                    .buttonStyle(.plain)
-                    .help("Open \(peer)")
-            } else { card }
+            if !launches.isEmpty {
+                DisclosureGroup("Unlinked launch observations · \(launches.count)") {
+                    CollaborationRows(title: "Launch requests", symbol: "arrow.up.right",
+                                      rows: launches, limit: 6, isCompleted: { _ in false }) { row in
+                        Text(row.detail ?? "Launch requested").font(.caption).lineLimit(3)
+                    }
+                }.font(.caption)
+            }
         }
     }
 

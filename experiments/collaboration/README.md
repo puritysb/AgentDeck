@@ -102,6 +102,20 @@ preview alongside the aquarium and dashboard-type setting. Runtime navigation to
 a peer and back was verified. This does not resolve the separate crowded-aquarium
 release follow-up.
 
+## Current macOS presentation — 2026-11-09
+
+The Collaboration panel starts with sessions, reported delegates and observed
+background jobs. Selected task details use typed child lifecycle and job
+observations. Process ancestry remains an observation in task data. The panel
+does not present it as a parent link or count unlinked launch requests as live
+delegates.
+
+Recent messages open separately. Session links require a unique process address
+recorded at capture. Name-only and legacy observations without that evidence are
+listed separately. Request or reply wording describes the latest observation.
+The graph and habitat do not estimate an outstanding wait from message wording.
+Swift and Node use the same 24-hour bounds and shared history acceptance fixture.
+
 ## Communication graph and terrarium review — 2026-10-15
 
 The macOS Collaboration rail now has a session-wide communication graph before

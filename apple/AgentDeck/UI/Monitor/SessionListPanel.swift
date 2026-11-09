@@ -74,9 +74,16 @@ struct SessionListPanel: View {
             // HUD vs the menubar's system-primary).
             HStack(spacing: 6) {
                 AgentDeckLogo(size: 20, color: TerrariumHUD.tetraNeon)
+                #if os(macOS)
+                Text("Sessions")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(TerrariumHUD.text)
+                    .lineLimit(1)
+                #else
                 Text("AgentDeck")
                     .font(.system(size: 22, weight: .bold, design: .monospaced))
                     .foregroundStyle(TerrariumHUD.text)
+                #endif
                 Spacer(minLength: 4)
                 Text("\(entries.count) \(entries.count == 1 ? "session" : "sessions")")
                     .font(.system(size: 9, weight: .medium, design: .monospaced))

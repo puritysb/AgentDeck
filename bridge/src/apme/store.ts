@@ -2323,15 +2323,15 @@ export class ApmeStore {
 
   /** Relation-only graph feed. Uses the existing (kind, ts) index, never
    * scans tool payloads or loads every task's trajectory. */
-  listCommunicationEvents(since: number, limit: number): Record<string, unknown>[] {
+  listCommunicationEvents(since: number, limit: number, until = Number.MAX_SAFE_INTEGER): Record<string, unknown>[] {
     if (!this.db) return [];
     const rows = this.db.prepare(`
       SELECT se.*, r.session_id FROM sample_events se
       JOIN runs r ON r.id = se.run_id
-      WHERE se.kind = 'relation' AND se.ts >= ?
+      WHERE se.kind = 'relation' AND se.ts BETWEEN ? AND ?
         AND json_extract(se.payload, '$.relation') = 'messaged'
       ORDER BY se.ts DESC, se.id DESC LIMIT ?
-    `).all(since, limit) as Record<string, unknown>[];
+    `).all(since, until, limit) as Record<string, unknown>[];
     return rows.flatMap(row => {
       const event = sampleEventRowToTrajectory(rowToSampleEvent(row));
       return event?.kind === 'relation'
@@ -2620,6 +2620,7 @@ function sampleEventRowToTrajectory(r: ApmeSampleEventRow): TrajectoryEvent | nu
         direction: p.direction === 'in' ? 'in' : 'out',
         phase: p.phase === 'closed' ? 'closed' : 'open',
         peerSessionId: (p.peerSessionId as string | null) ?? null,
+        peerIdentity: p.peerIdentity === 'pid' ? 'pid' : null,
         peerName: (p.peerName as string | null) ?? null,
         evidence: (p.evidence as string) ?? 'unknown',
         detail: (p.detail as string | null) ?? null,

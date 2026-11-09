@@ -129,6 +129,16 @@ same Remote dashboard milestone to the Mac app attached to the existing Node
 daemon. Physical acceptance uses the signed internal TestFlight pair and
 checks both providers from iPhone cellular while the Mac stays on port 9120.
 
+#### Dashboard and Collaboration — macOS internal TestFlight
+
+| Target and route | Last verified public version | Previous internal build | Proposed version and build | Class and user-visible reason |
+| --- | --- | --- | --- | --- |
+| macOS / internal TestFlight | 2.1.0 | 2.2.0 / 10801 | 2.2.0 / next CI-assigned build | Rebuild of the unreleased milestone with a compact Dashboard and a Collaboration panel organized around live work and identified message history |
+
+The physical check exercises the signed Mac build with its in-process Swift
+daemon and the existing local Node daemon on port 9120. The message graph
+distinguishes identified sessions from observations without identity evidence.
+
 ### npm 2.1.1 release decision — 2026-11-08
 
 | Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |

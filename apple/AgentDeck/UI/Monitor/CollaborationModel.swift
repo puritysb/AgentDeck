@@ -44,6 +44,7 @@ struct CollaborationEvent: Decodable, Sendable {
     let relation: String?
     let direction: String?
     let peerSessionId: String?
+    let peerIdentity: String?
     let peerName: String?
     let evidence: String?
     let detail: String?
@@ -67,6 +68,7 @@ struct CollaborationRelation: Identifiable, Equatable, Sendable {
     /// `open` while the peer/process still runs; `closed` after, or for a message.
     var phase: String
     var peerSessionId: String?
+    var peerIdentity: String? = nil
     var peerName: String?
     var evidence: String
     var detail: String?
@@ -77,10 +79,14 @@ struct CollaborationRelation: Identifiable, Equatable, Sendable {
 }
 
 enum CollaborationProjection {
+    static func workRelations(_ relations: [CollaborationRelation]) -> [CollaborationRelation] {
+        relations.filter { $0.relation == "waiting_on" || $0.isLaunchObservation }
+    }
+
     /// Navigation uses confirmed peer identity, never project-name similarity.
     /// Historical relations establish a link; the roster supplies current state.
     static func relatedSessions(_ relations: [CollaborationRelation], roster: [SessionInfo], excluding sessionId: String) -> [SessionInfo] {
-        let peers = Set(relations.filter { !$0.isLaunchObservation }.compactMap(\.peerSessionId)
+        let peers = Set(relations.filter { $0.relation == "messaged" && $0.peerIdentity == "pid" }.compactMap(\.peerSessionId)
             .map { ObservedAgentRules.rawSessionId($0) }.filter { !$0.isEmpty })
         let selected = ObservedAgentRules.rawSessionId(sessionId)
         return prioritizedSessions(roster.filter {
@@ -91,9 +97,10 @@ enum CollaborationProjection {
 
     static func prioritizedSessions(_ sessions: [SessionInfo]) -> [SessionInfo] {
         func priority(_ s: SessionInfo) -> Int {
+            if !s.alive { return 4 }
             if s.state?.hasPrefix("awaiting") == true { return 0 }
             if s.state == "processing" { return 1 }
-            if (s.subagents?.active ?? 0) > 0 || (s.coordination?.spawnedActive ?? 0) > 0 || (s.coordination?.backgroundJobs ?? 0) > 0 { return 2 }
+            if (s.subagents?.active ?? 0) > 0 || (s.coordination?.backgroundJobs ?? 0) > 0 { return 2 }
             return 3
         }
         return sessions.sorted {
@@ -149,7 +156,7 @@ enum CollaborationProjection {
                 (old.observedAt == event.ts && old.phase == "closed") { continue }
             let row = CollaborationRelation(
                 id: key, relation: relation, direction: direction, phase: phase,
-                peerSessionId: event.peerSessionId, peerName: event.peerName,
+                peerSessionId: event.peerSessionId, peerIdentity: event.peerIdentity, peerName: event.peerName,
                 evidence: evidence, detail: event.detail ?? byID[key]?.detail, observedAt: event.ts)
             if byID[key] == nil { order.append(key) }
             byID[key] = row

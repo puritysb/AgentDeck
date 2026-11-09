@@ -114,6 +114,9 @@ struct MonitorScreen: View {
         mainContent
             .environmentObject(inspection)
             #if os(iOS)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                directControls
+            }
             .sheet(isPresented: $showSettingsSheet) {
                 SettingsScreen()
                     .environmentObject(stateHolder)
@@ -162,19 +165,6 @@ struct MonitorScreen: View {
                 await communications.observe(port: communicationPort, connected: stateHolder.state.bridgeConnected)
             }
             .modifier(KeyboardShortcutsModifier(stateHolder: stateHolder))
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Picker("Dashboard view", selection: $collaborationEnabled) {
-                        Text("Habitat").tag(false)
-                        // The segment names the view; its Beta status is a
-                        // badge in the panel header, not half of the label.
-                        Text("Collaboration").tag(true)
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 220)
-                    .accessibilityIdentifier("dashboard-collaboration-switch")
-                }
-            }
             #endif
     }
 
@@ -198,6 +188,8 @@ struct MonitorScreen: View {
 
     private var mainContent: some View {
         GeometryReader { geo in
+            let disconnected = !stateHolder.state.bridgeConnected
+            let compactTimelineControls = usesCompactTimelineControls(width: geo.size.width, disconnected: disconnected)
             ZStack {
                 terrariumLayer
                 if preferences.effectiveDashboardType != .aquarium3D && shellHomePresent {
@@ -207,7 +199,7 @@ struct MonitorScreen: View {
                     }.allowsHitTesting(false)
                 }
 
-                hudLayer(geo: geo, disconnected: !stateHolder.state.bridgeConnected)
+                hudLayer(geo: geo, disconnected: disconnected, compactTimelineControls: compactTimelineControls)
                 #if AGENTDECK_DOT_PREVIEW
                 if preferences.effectiveDashboardType != .aquarium3D && stateHolder.state.bridgeConnected,
                    let dot = stateHolder.state.dot {
@@ -215,7 +207,7 @@ struct MonitorScreen: View {
                 }
                 #endif
 
-                if !stateHolder.state.bridgeConnected {
+                if disconnected && showsConnectionOverlay {
                     ConnectionOverlay()
                 }
 
@@ -223,7 +215,11 @@ struct MonitorScreen: View {
 
                 setupNeededLayer(geo: geo)
 
-                settingsLayer
+                #if os(macOS)
+                if !compactTimelineControls {
+                    settingsLayer
+                }
+                #endif
 
                 toastLayer(geo: geo)
 
@@ -339,9 +335,7 @@ struct MonitorScreen: View {
     /// Attention is non-modal: empty water still toggles the viewing mode.
     /// Hiding the HUD never answers or dismisses the underlying request.
     private var backgroundTapHandler: (() -> Void)? {
-        return {
-            withAnimation(.easeInOut(duration: 0.25)) { hudHidden.toggle() }
-        }
+        toggleViewingMode
     }
 
     /// `disconnected` hides the HUD without unmounting it. Swapping this whole
@@ -353,7 +347,7 @@ struct MonitorScreen: View {
     /// of the timeline. Hidden-but-mounted keeps ConnectionOverlay's look (it
     /// draws its own scrim on top) while the state survives the round trip.
     @ViewBuilder
-    private func hudLayer(geo: GeometryProxy, disconnected: Bool) -> some View {
+    private func hudLayer(geo: GeometryProxy, disconnected: Bool, compactTimelineControls: Bool) -> some View {
         MonitorHUD()
             .opacity(hudHidden || disconnected ? 0 : 1)
             .allowsHitTesting(!hudHidden && !disconnected)
@@ -362,12 +356,45 @@ struct MonitorScreen: View {
         if preferences.showTimeline {
             VStack {
                 Spacer()
-                TimelineStripView(usesMetalHabitat: preferences.effectiveDashboardType == .aquarium3D)
+                TimelineStripView(
+                    usesMetalHabitat: preferences.effectiveDashboardType == .aquarium3D,
+                    availableWidth: geo.size.width,
+                    headerControls: compactTimelineControls ? AnyView(compactTimelineActions) : nil
+                )
                     .frame(height: geo.size.height * MonitorLayout.sandFraction)
             }
             .opacity(disconnected || (preferences.effectiveDashboardType == .aquarium3D && hudHidden) ? 0 : 1)
             .allowsHitTesting(!disconnected && !(preferences.effectiveDashboardType == .aquarium3D && hudHidden))
         }
+    }
+
+    private func usesCompactTimelineControls(width: CGFloat, disconnected: Bool) -> Bool {
+        #if os(macOS)
+        preferences.showTimeline && !disconnected
+            && (preferences.effectiveDashboardType != .aquarium3D || !hudHidden)
+            && TimelineLayoutMode.forDashboard(width: width) == .compact
+        #else
+        false
+        #endif
+    }
+
+    private var compactTimelineActions: some View {
+        HStack(spacing: 8) {
+            Button(action: toggleViewingMode) {
+                Image(systemName: hudHidden ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+            }
+            .accessibilityLabel(hudHidden ? "Show dashboard" : "View aquarium")
+            .accessibilityIdentifier("dashboard-viewing-mode")
+            .help(hudHidden ? "Show dashboard" : "View aquarium")
+            if showsSettingsGear {
+                Button(action: openSettings) { Image(systemName: "gearshape") }
+                    .accessibilityLabel("Settings")
+                    .help("Settings")
+            }
+        }
+        .font(.callout)
+        .foregroundStyle(TerrariumHUD.subtext)
+        .buttonStyle(.borderless)
     }
 
     /// Floating attention theater — mirrors the menubar's Option D hero card
@@ -555,44 +582,84 @@ struct MonitorScreen: View {
             index: index, sessionId: session.id, question: questionFor(session)))
     }
 
-    @ViewBuilder
+    #if os(iOS)
+    private var directControls: some View {
+        HStack(spacing: 4) {
+            Spacer(minLength: 0)
+            if hudHidden {
+                viewingModeButton
+            }
+            Menu {
+                Button("Rotate screen", systemImage: "rectangle.portrait.rotate", action: rotateScreen)
+                if !hudHidden {
+                    Button("View aquarium only", systemImage: "arrow.up.left.and.arrow.down.right",
+                           action: toggleViewingMode)
+                }
+                if !showsSettingsGear {
+                    Button("Settings", systemImage: "gearshape", action: openSettings)
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.title2)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(TerrariumHUD.subtext)
+            .accessibilityLabel("Direct display options")
+
+            if showsSettingsGear {
+                settingsGearButton
+            }
+        }
+        .padding(.horizontal, 12)
+    }
+    #else
     private var settingsLayer: some View {
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                viewingModeButton
+                if showsSettingsGear {
+                    settingsGearButton
+                }
+            }
+        }
+    }
+    #endif
+
+    private var showsSettingsGear: Bool {
+        preferences.showSettingsButton || preferences.effectiveDashboardType == .aquarium3D
+    }
+
+    private var showsConnectionOverlay: Bool {
         #if os(iOS)
-        VStack {
-            Spacer()
-            HStack {
-                Spacer()
-                rotationButton
-                viewingModeButton
-                if preferences.showSettingsButton || preferences.effectiveDashboardType == .aquarium3D {
-                    settingsGearButton
-                }
-            }
-        }
+        !hudHidden
         #else
-        VStack {
-            Spacer()
-            HStack {
-                Spacer()
-                viewingModeButton
-                if preferences.showSettingsButton || preferences.effectiveDashboardType == .aquarium3D {
-                    settingsGearButton
-                }
-            }
-        }
+        true
         #endif
     }
 
+    private func toggleViewingMode() {
+        withAnimation(.easeInOut(duration: 0.25)) { hudHidden.toggle() }
+    }
+
     private var viewingModeButton: some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.25)) { hudHidden.toggle() }
-        } label: {
+        Button(action: toggleViewingMode) {
             Label(hudHidden ? "Show dashboard" : "View aquarium",
                   systemImage: hudHidden ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                .foregroundStyle(TerrariumHUD.subtext)
+                #if os(iOS)
+                .font(.callout.weight(.semibold))
+                .padding(.horizontal, 6)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+                #else
                 .labelStyle(.iconOnly)
                 .font(.title2)
-                .foregroundStyle(TerrariumHUD.subtext)
                 .padding(16)
+                #endif
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("dashboard-viewing-mode")
@@ -604,7 +671,6 @@ struct MonitorScreen: View {
     /// NavigationSplitView sidebar-toggle lands in the titlebar instead
     /// of drifting into the sidebar header (Settings-scene limitation).
     /// iOS keeps the sheet path.
-    @ViewBuilder
     private var settingsGearButton: some View {
         Button {
             openSettings()
@@ -612,35 +678,31 @@ struct MonitorScreen: View {
             gearLabel
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Settings")
     }
 
     private var gearLabel: some View {
         Image(systemName: "gearshape")
             .font(.title2)
+            #if os(iOS)
+            .foregroundStyle(TerrariumHUD.subtext)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+            #else
             .foregroundStyle(.white.opacity(0.6))
             .padding(.vertical, 16)
             .padding(.trailing, 24)
+            #endif
     }
 
     #if os(iOS)
-    private var rotationButton: some View {
-        Button {
-            guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
-            let prefs: UIWindowScene.GeometryPreferences.iOS
-            if scene.interfaceOrientation.isLandscape {
-                prefs = UIWindowScene.GeometryPreferences.iOS(interfaceOrientations: .portrait)
-            } else {
-                prefs = UIWindowScene.GeometryPreferences.iOS(interfaceOrientations: .landscapeRight)
-            }
-            scene.requestGeometryUpdate(prefs)
-        } label: {
-            Image(systemName: "rectangle.portrait.rotate")
-                .font(.title3)
-                .foregroundStyle(.white.opacity(0.35))
-                .padding(.vertical, 16)
-                .padding(.trailing, 4)
-        }
-        .buttonStyle(.plain)
+    private func rotateScreen() {
+        guard let scene = UIApplication.shared.connectedScenes.first(where: {
+            $0.activationState == .foregroundActive && $0 is UIWindowScene
+        }) as? UIWindowScene else { return }
+        let orientation: UIInterfaceOrientationMask = scene.interfaceOrientation.isLandscape
+            ? .portrait : .landscapeRight
+        scene.requestGeometryUpdate(.iOS(interfaceOrientations: orientation))
     }
     #endif
 
