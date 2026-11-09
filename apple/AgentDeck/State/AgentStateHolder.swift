@@ -47,11 +47,8 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
               ["localhost", "127.0.0.1", "::1", "[::1]"].contains(host),
               let snapshot = attentionSessionSnapshot, snapshot.isFresh(),
               snapshot.endpoint == PairingCredential.endpoint(of: preferredLocalBridgeUrl) else { return nil }
-        return RemoteLocalRoster(sessions: snapshot.sessions.map { row in
-            RemoteSessionEvidence(localID: row.id, alive: row.alive,
-                working: row.state == AgentConnectionState.processing.rawValue,
-                waitingForResponse: AgentConnectionState(rawValue: row.state ?? "")?.isAwaiting == true
-                    && !(row.question?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true))
+        return RemoteLocalRoster(sessions: snapshot.sessions.map {
+            RemoteSessionEvidence(row: $0, observedAt: snapshot.receivedAt)
         }, observedAt: snapshot.receivedAt)
     }
     #endif

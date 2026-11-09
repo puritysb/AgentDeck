@@ -33,6 +33,7 @@ final class RemoteObservationController: ObservableObject {
     private let automaticLifecycle: Bool
     private var generation = 0
     private var source: (() -> RemoteLocalRoster?)?
+    private var localUsage: (() async -> [RemoteUsageWindow])?
     private var scheduler: Task<Void, Never>?
     private var observer: NSObjectProtocol?
     private var lastReadAt: Date?
@@ -72,7 +73,7 @@ final class RemoteObservationController: ObservableObject {
             if writer?.account != revoked.account || writer?.installationID != revoked.installationID {
                 writer = RemotePublicationJournal(account: revoked.account, installationID: revoked.installationID, revision: revoked.revision)
             }
-            writer?.enabled = false; writer?.intent = revoked.intent
+            writer?.enabled = false; writer?.includeDetails = nil; writer?.intent = revoked.intent
             writer?.bindings.removeAll(); writer?.episodes.removeAll()
         }
         if disk.read("receiver-disabled.json", as: [String: Int].self) != nil {
@@ -92,8 +93,9 @@ final class RemoteObservationController: ObservableObject {
         }
     }
 
-    func bindLocalSource(_ source: @escaping () -> RemoteLocalRoster?) {
+    func bindLocalSource(usage: (() async -> [RemoteUsageWindow])? = nil, source: @escaping () -> RemoteLocalRoster?) {
         self.source = source
+        localUsage = usage
         start()
     }
 
@@ -196,12 +198,27 @@ final class RemoteObservationController: ObservableObject {
         await publishIfNeeded(force: true)
     }
 
+    func setDetailsSharing(_ enabled: Bool) async {
+        guard !busy, var updated = writer, updated.enabled, updated.intent == .none,
+              (updated.includeDetails == true) != enabled else { return }
+        updated.includeDetails = enabled ? true : nil
+        updated.lastPublishedAt = nil
+        updated.retryAt = nil
+        do { try disk.write(updated, to: "publisher.json") }
+        catch {
+            status = "The detail sharing preference could not be saved."
+            return
+        }
+        writer = updated
+        await publishIfNeeded(force: true)
+    }
+
     func stopSharing(delete: Bool = false) async {
         // User stop takes precedence over an in-flight save. Persist intent before any network work.
         generation += 1; let token = generation; busy = true
         releaseActivity()
         if writer == nil { busy = false; return }
-        writer?.enabled = false
+        writer?.enabled = false; writer?.includeDetails = nil
         if delete || writer?.intent == .delete { writer?.intent = .delete } else { writer?.intent = .stop }
         writer?.retryAt = nil; writer?.invalidateSource()
         do { try persistRevocation(); try persistWriter() }
@@ -259,6 +276,9 @@ final class RemoteObservationController: ObservableObject {
                 status = "Remote data and its notification subscriptions were deleted. Sharing is off."
                 return
             }
+            let usage = journal.enabled && journal.includeDetails == true && currentRoster() != nil
+                ? await localUsage?() ?? [] : []
+            guard token == generation else { return }
             let fresh = journal.intent == .stop ? nil : currentRoster()
             if let fresh { journal.observe(fresh, at: now()) } else { journal.invalidateSource() }
             let mutations = journal.intent == .stop ? [] : journal.mutations(roster: fresh, at: now())
@@ -268,7 +288,7 @@ final class RemoteObservationController: ObservableObject {
                 if let index = journal.episodes.firstIndex(where: { $0.event.id == mutation.event.id }) { journal.episodes[index].attempted = true }
             }
             writer = journal; try persistWriter() // Stable identities/revision precede an ambiguous cloud commit.
-            let summary = journal.snapshot(roster: fresh, at: now(), disabled: journal.intent == .stop)
+            let summary = journal.snapshot(roster: fresh, at: now(), disabled: journal.intent == .stop, usage: usage)
             try await transport.publish(summary, events: mutations, account: account)
             guard token == generation else { return }
             for mutation in mutations {

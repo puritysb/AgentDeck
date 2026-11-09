@@ -16,10 +16,23 @@ unknown counts, never a fabricated empty roster or task-success claim.
 
 iPhone/iPad has independent Direct and Remote tabs, including before local
 onboarding or pairing is completed. Direct opens the paired-Mac dashboard.
-Remote shows shared Mac activity in place over iCloud. It reads only encrypted
-working/waiting counts, source time and opaque attention IDs. It never populates DashboardState,
-exposes approval controls, or sends a command. No quota, session titles, paths,
-questions, transcripts, provider credentials, widgets or Watch target are added.
+Remote shows shared Mac activity in place over iCloud. Counts, source time and
+opaque attention IDs remain the default. A separate **Share session and usage
+details** setting on the Mac adds up to 24 live session rows with agent type,
+state, start time and observed child/background counts. It also adds account
+allowance percentages with their original observation and reset times, when
+available from the Mac's in-process daemon. Codex uses the credential-matched
+native account reading and z.ai uses its provider
+reading. Claude has no native account allowance source in the current app.
+Percentages describe each reported window. Ended windows disappear.
+Aggregate-only clients continue to read the same encrypted snapshot field.
+Turning off detailed sharing replaces that snapshot with counts only on the
+next successful publication. An offline reader can retain its last saved
+observation until it reconnects or the observation expires.
+
+Remote never populates DashboardState, exposes approval controls, or sends a
+command. Session titles, paths, questions, transcripts and provider credentials
+stay local.
 Both devices use the same Apple Account. Remote receiving and visible alerts
 each require explicit user actions. Normal active refresh is coalesced to 60
 seconds; foreground return, pull/button refresh and notification hints can refresh

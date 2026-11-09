@@ -20,7 +20,7 @@ struct RemoteObservationView: View {
             Button("Stop sharing and delete remote data", role: .destructive) { Task { await model.stopSharing(delete: true) } }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("Removes its summary, attention events and notification subscriptions from iCloud. If offline, deletion stays pending until this Mac reconnects with the original account. Already delivered alerts may remain on your devices.")
+            Text("Removes its observations, attention events and notification subscriptions from iCloud. If offline, deletion stays pending until this Mac reconnects with the original account. Already delivered alerts may remain on your devices.")
         }
     }
 
@@ -57,7 +57,7 @@ struct RemoteObservationView: View {
     }
 
     private var privacyDetails: some View {
-        Text("Uses your private iCloud storage. Both devices use the same Apple Account. Your Mac must be running and online to publish new observations. Apple controls notification timing and eligible Watch forwarding.")
+        Text("Uses your private iCloud storage. Both devices use the same Apple Account. Your Mac must be running and online to publish new observations. Prompts, project names, transcripts and credentials stay local. Apple controls notification timing and eligible Watch forwarding.")
             .font(.footnote).foregroundStyle(.secondary)
     }
 
@@ -65,10 +65,20 @@ struct RemoteObservationView: View {
     private var publisher: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Share work status from this Mac").font(.headline)
-            Text("Shares only encrypted counts, observation times and random attention IDs. Prompts, questions, project names, paths, transcripts and credentials stay on this Mac.")
+            Text("Shares encrypted work counts and attention updates with your devices.")
             if model.writer?.enabled == true {
                 Label("Sharing enabled", systemImage: "checkmark.icloud")
                     .foregroundStyle(DesignTokens.Status.processing)
+                Toggle(isOn: Binding(get: { model.writer?.includeDetails == true }, set: { enabled in
+                    Task { await model.setDetailsSharing(enabled) }
+                })) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Share session and usage details")
+                        Text("Includes agent types, states, start times, child and background activity counts, and available account limits.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .disabled(model.busy)
                 Button("Stop sharing") { Task { await model.stopSharing() } }
             } else {
                 Button("Enable sharing") { Task { await model.enableSharing() } }
@@ -85,27 +95,30 @@ struct RemoteObservationView: View {
     }
     #else
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var showAllSessions = false
 
     private var reader: some View {
         VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 6) {
-                Label("Mac activity", systemImage: "icloud")
-                    .font(.largeTitle.bold())
-                    .accessibilityAddTraits(.isHeader)
-                Label("iCloud · Read only", systemImage: "eye")
-                    .font(.subheadline).foregroundStyle(.secondary)
+            ViewThatFits(in: .horizontal) {
+                HStack { readerTitle; Spacer(); if model.reader.receiving { refreshButton } }
+                VStack(alignment: .leading, spacing: 8) {
+                    readerTitle
+                    if model.reader.receiving { refreshButton }
+                }
             }
             if model.reader.receiving {
                 TimelineView(.periodic(from: .now, by: 15)) { context in
                     observation(at: context.date)
                 }
-                ViewThatFits(in: .horizontal) {
-                    HStack { refreshButton; notificationButton }
-                    VStack(alignment: .leading) { refreshButton; notificationButton }
+                DisclosureGroup("Remote settings") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        notificationButton.buttonStyle(.bordered)
+                        Button("Stop receiving") { Task { await model.stopReceiving() } }
+                    }
+                    .padding(.top, 10)
                 }
-                .buttonStyle(.bordered)
-                Button("Stop receiving") { Task { await model.stopReceiving() } }
-                    .font(.footnote)
+                .font(.subheadline)
             } else {
                 VStack(alignment: .leading, spacing: 12) {
                     Label("Share from your Mac", systemImage: "desktopcomputer")
@@ -132,12 +145,22 @@ struct RemoteObservationView: View {
         }
     }
 
+    private var readerTitle: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Mac activity").font(.largeTitle.bold()).accessibilityAddTraits(.isHeader)
+            Label("iCloud · Read only", systemImage: "eye")
+                .font(.subheadline).foregroundStyle(.secondary)
+        }
+    }
+
     private var refreshButton: some View {
         Button {
             Task { await model.refresh(force: true) }
         } label: {
             Label("Refresh", systemImage: "arrow.clockwise")
         }
+        .labelStyle(.iconOnly)
+        .buttonStyle(.bordered)
         .disabled(model.busy)
     }
 
@@ -154,56 +177,190 @@ struct RemoteObservationView: View {
     @ViewBuilder
     private func observation(at date: Date) -> some View {
         if let snapshot = model.snapshot {
-            VStack(alignment: .leading, spacing: 12) {
-                if snapshot.sourceState == .disabled {
-                    Label("Sharing stopped on the Mac", systemImage: "icloud.slash")
-                } else if snapshot.sourceState == .unavailable {
-                    Label("Mac session status is unconfirmed", systemImage: "questionmark.circle")
-                    Text("The publisher reported that its local source was unavailable. This does not mean the work finished.")
-                } else {
-                    switch snapshot.freshness(at: date) {
-                    case .recent, .historical:
-                        Text(model.usingCache || snapshot.freshness(at: date) == .historical ? "Last saved observation" : "Last observed on the Mac")
-                            .foregroundStyle(.secondary)
-                        let layout = dynamicTypeSize.isAccessibilitySize
-                            ? AnyLayout(VStackLayout(spacing: 10))
-                            : AnyLayout(HStackLayout(alignment: .top, spacing: 10))
-                        layout {
-                            metric(snapshot.workingCount, title: "Working", symbol: "bolt.horizontal",
-                                   color: DesignTokens.Session.working)
-                            metric(snapshot.waitingCount, title: "Waiting for response", symbol: "exclamationmark.bubble",
-                                   color: DesignTokens.Session.awaiting)
-                        }
-                        if snapshot.freshness(at: date) == .historical {
-                            Text("Historical · no recent source confirmation").foregroundStyle(.secondary)
-                        }
-                    case .expired: Text("The shared observation expired. Refresh to check for a newer one.")
-                    case .unknown: Text("Observation freshness is unknown. Counts are withheld.")
+            VStack(alignment: .leading, spacing: 16) {
+                summaryCard(snapshot, at: date)
+                if snapshot.sourceState == .observed,
+                   [.recent, .historical].contains(snapshot.freshness(at: date)) {
+                    if let details = snapshot.details {
+                        sessionCard(details)
+                        usageCard(details.usage.filter { $0.isVisible(at: date) }, at: date)
+                    } else {
+                        Label("For sessions and usage, turn on detailed sharing on your Mac.", systemImage: "desktopcomputer")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                if let observedAt = snapshot.observedAt {
-                    Text("Observed \(observedAt.formatted(date: .abbreviated, time: .standard))")
-                        .font(.caption).foregroundStyle(.secondary)
-                        .accessibilityIdentifier("remote-observation.source-time")
-                }
-                if let event = model.attentionEvent {
-                    Divider()
-                    Label("Attention update", systemImage: "bell.badge").font(.headline)
-                    Text(eventText(event.presentation(snapshot: model.usingCache ? nil : snapshot, at: date)))
-                        .accessibilityIdentifier("remote-observation.event-state")
-                    Text(event.occurredAt, format: .dateTime.month().day().hour().minute().second()).font(.caption)
-                }
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
         } else {
             ContentUnavailableView(
                 "Waiting for a Mac",
                 systemImage: "desktopcomputer",
-                description: Text("When your Mac shares an observation, its work status appears here.")
+                description: Text("Turn on sharing in your Mac’s Remote Monitoring settings.")
             )
         }
+    }
+
+    private func summaryCard(_ snapshot: RemoteObservationSnapshot, at date: Date) -> some View {
+        dashboardCard {
+            if snapshot.sourceState == .disabled {
+                Label("Sharing stopped on the Mac", systemImage: "icloud.slash")
+            } else if snapshot.sourceState == .unavailable {
+                Label("Mac session status is unconfirmed", systemImage: "questionmark.circle")
+            } else {
+                switch snapshot.freshness(at: date) {
+                case .recent, .historical:
+                    Text(model.usingCache || snapshot.freshness(at: date) == .historical ? "Last saved observation" : "Last observed on the Mac")
+                        .foregroundStyle(.secondary)
+                    let layout = dynamicTypeSize.isAccessibilitySize
+                        ? AnyLayout(VStackLayout(spacing: 10))
+                        : AnyLayout(HStackLayout(alignment: .top, spacing: 10))
+                    layout {
+                        metric(snapshot.workingCount, title: "Working", symbol: "bolt.horizontal",
+                               color: DesignTokens.Session.working)
+                        metric(snapshot.waitingCount, title: "Waiting for response", symbol: "exclamationmark.bubble",
+                               color: DesignTokens.Session.awaiting)
+                    }
+                case .expired: Text("The shared observation expired. Refresh to check for a newer one.")
+                case .unknown: Text("Observation freshness is unknown. Counts are withheld.")
+                }
+            }
+            if let observedAt = snapshot.observedAt {
+                Text("Observed \(observedAt.formatted(date: .abbreviated, time: .standard))")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .accessibilityIdentifier("remote-observation.source-time")
+            }
+            if let event = model.attentionEvent {
+                Divider()
+                Label("Attention update", systemImage: "bell.badge").font(.headline)
+                Text(eventText(event.presentation(snapshot: model.usingCache ? nil : snapshot, at: date)))
+                    .accessibilityIdentifier("remote-observation.event-state")
+                Text(event.occurredAt, format: .dateTime.month().day().hour().minute().second()).font(.caption)
+            }
+        }
+    }
+
+    private func sessionCard(_ details: RemoteObservationDetails) -> some View {
+        dashboardCard {
+            Label("Sessions (\(details.sessionCount))", systemImage: "rectangle.stack")
+                .font(.headline).accessibilityAddTraits(.isHeader)
+            if details.sessions.isEmpty {
+                Text("No active sessions observed").font(.subheadline).foregroundStyle(.secondary)
+            }
+            let visible = showAllSessions ? details.sessions[...] : details.sessions.prefix(4)
+            ForEach(visible.indices, id: \.self) { index in
+                if index > 0 { Divider() }
+                sessionRow(visible[index])
+            }
+            if details.sessions.count > 4 {
+                Button(showAllSessions ? "Show fewer sessions" : "Show all shared sessions") {
+                    showAllSessions.toggle()
+                }
+                .font(.subheadline)
+            }
+            if showAllSessions, details.sessionCount > details.sessions.count {
+                Text("Showing \(details.sessions.count) of \(details.sessionCount) sessions")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func sessionRow(_ session: RemoteSessionDetail) -> some View {
+        let state: (title: LocalizedStringKey, icon: String, color: Color) = switch session.phase {
+        case .response: ("Needs response", "exclamationmark.bubble", DesignTokens.Session.awaiting)
+        case .working: ("Working", "bolt.horizontal", DesignTokens.Session.working)
+        case .awaiting: ("Waiting", "pause.circle", DesignTokens.Session.awaiting)
+        case .idle: ("Idle", "moon", DesignTokens.Session.idle)
+        case .unknown: ("Unconfirmed", "questionmark.circle", .secondary)
+        }
+        return VStack(alignment: .leading, spacing: 4) {
+            ViewThatFits(in: .horizontal) {
+                HStack { agentName(session); Spacer(); Label(state.title, systemImage: state.icon).foregroundStyle(state.color) }
+                VStack(alignment: .leading, spacing: 4) {
+                    agentName(session)
+                    Label(state.title, systemImage: state.icon).foregroundStyle(state.color)
+                }
+            }
+            .font(.subheadline)
+            if let start = session.startedAt {
+                Text("Started \(start.formatted(date: .abbreviated, time: .shortened))")
+            }
+            if let count = session.activeSubagents, count > 0 { Text("Active subagents: \(count)") }
+            if let count = session.backgroundJobs, count > 0 { Text("Background jobs: \(count)") }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func agentName(_ session: RemoteSessionDetail) -> some View {
+        Text(displayAgentLabel(session.agent == .unknown ? nil : session.agent.rawValue))
+            .fontWeight(.semibold).foregroundStyle(.primary)
+    }
+
+    private func usageCard(_ windows: [RemoteUsageWindow], at date: Date) -> some View {
+        dashboardCard {
+            Label("Usage", systemImage: "gauge.with.dots.needle.50percent")
+                .font(.headline).accessibilityAddTraits(.isHeader)
+            if windows.isEmpty {
+                Text("No account limits available from this Mac").font(.subheadline).foregroundStyle(.secondary)
+            }
+            ForEach(RemoteUsageWindow.Provider.allCases, id: \.self) { provider in
+                let group = windows.filter { $0.provider == provider }
+                if !group.isEmpty {
+                    Divider()
+                    Text(providerName(provider)).font(.subheadline.bold())
+                    ForEach(group.indices, id: \.self) { usageRow(group[$0], at: date) }
+                }
+            }
+        }
+    }
+
+    private func providerName(_ provider: RemoteUsageWindow.Provider) -> LocalizedStringKey {
+        switch provider {
+        case .codex: "Codex"
+        case .zai: "z.ai"
+        }
+    }
+
+    private func usageRow(_ window: RemoteUsageWindow, at date: Date) -> some View {
+        let aged = window.provider == .codex
+            && date.timeIntervalSince(window.observedAt) > CodexUsageFreshness.snapshotStaleInterval
+        let color = UsageSeverity.color(aged ? -1 : 100 - window.remainingPercent, onPaper: colorScheme == .light)
+        let duration = TopologyRail.windowLabel(window.durationMinutes)
+        let percentage = (window.remainingPercent / 100).formatted(.percent.precision(.fractionLength(0...1)))
+        return VStack(alignment: .leading, spacing: 5) {
+            ViewThatFits(in: .horizontal) {
+                HStack {
+                    usageLabel(window, duration: duration)
+                    Spacer()
+                    Text("\(percentage) left").fontWeight(.semibold).foregroundStyle(color)
+                }
+                VStack(alignment: .leading) {
+                    usageLabel(window, duration: duration)
+                    Text("\(percentage) left").fontWeight(.semibold).foregroundStyle(color)
+                }
+            }
+            .font(.subheadline)
+            ProgressView(value: window.remainingPercent, total: 100)
+                .tint(color).accessibilityHidden(true)
+            Text("Read \(window.observedAt.formatted(date: .abbreviated, time: .shortened))")
+                .font(.caption).foregroundStyle(.secondary)
+            if !aged {
+                Text("Resets \(window.resetsAt.formatted(date: .abbreviated, time: .shortened))")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func usageLabel(_ window: RemoteUsageWindow, duration: String) -> Text {
+        window.quantity == .mcp ? Text("MCP · \(duration)") : Text(duration)
+    }
+
+    private func dashboardCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12, content: content)
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 
     private func metric(_ count: Int?, title: LocalizedStringKey, symbol: String, color: Color) -> some View {

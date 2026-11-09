@@ -12092,6 +12092,29 @@ final class DaemonServer {
         }
     }
 
+    /// Read existing native account observations without a provider fetch or a
+    /// LAN wire field. The general Codex display may select a passive model pool.
+    func remoteAccountUsage(at now: Date = Date()) -> [RemoteUsageWindow] {
+        var windows: [RemoteUsageWindow] = []
+        if let account = codexAccountUsage.snapshot(passive: nil, credential: usageAPI.codexUsageCredential(), now: now),
+           CodexPlanRules.snapshotMatchesAccountPlan(snapshot: account.planType, account: codexAuthStatusSnapshot()?.planType) {
+            let stamp = remoteObservationDate(account.capturedAt)
+            windows += [account.primary, account.secondary].compactMap { window in
+                RemoteUsageWindow.make(provider: .codex, minutes: window?.windowMinutes, used: window?.usedPercent,
+                    observedAt: stamp, resetsAt: window?.resetsAt, at: now)
+            }
+        }
+        if let cached = ZaiUsageClient.shared.cached(), cached.data.authFailed != true {
+            let stamp = cached.fetchedAt
+            windows += [cached.data.primary, cached.data.secondary].compactMap { window in
+                RemoteUsageWindow.make(provider: .zai, quantity: window?.quantity == "mcp" ? .mcp : .allowance,
+                    minutes: window?.windowMinutes, used: window?.usedPercent, observedAt: stamp,
+                    resetsAt: window?.resetsAt, validUntil: stamp.addingTimeInterval(Self.usageStaleTTL), at: now)
+            }
+        }
+        return windows
+    }
+
     /// Read-time expiry covers initial/state frames as well as the usage tick.
     private var claudeUsageStale: Bool {
         apiUsageStale || (cachedApiUsage?.stale ?? true) ||

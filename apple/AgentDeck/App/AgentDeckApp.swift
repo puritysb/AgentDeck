@@ -225,7 +225,9 @@ struct AgentDeckApp: App {
         // Wire AppDelegate to daemon service for clean shutdown
         appDelegate.daemonService = daemonService
         appDelegate.stateHolder = stateHolder
-        RemoteObservationController.shared.bindLocalSource { [weak stateHolder] in stateHolder?.remoteObservationRoster }
+        RemoteObservationController.shared.bindLocalSource(usage: { [weak daemonService] in
+            await daemonService?.remoteAccountUsage() ?? []
+        }) { [weak stateHolder] in stateHolder?.remoteObservationRoster }
         stateHolder.onRemoteObservationInvalidated = {
             Task { @MainActor in await RemoteObservationController.shared.sourceWasInvalidated() }
         }

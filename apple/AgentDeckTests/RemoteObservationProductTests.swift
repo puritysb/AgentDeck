@@ -138,6 +138,83 @@ final class RemoteObservationProductTests: XCTestCase {
         XCTAssertEqual(finalCounts.creations, 1)
     }
 
+    func testDetailsConsentIsSeparateAndClearsWithStop() async throws {
+        let fixture = Fixture()
+        fixture.rows([row(waiting: true)])
+        let publisher = fixture.model()
+        await publisher.enableSharing()
+        assertNil(await fixture.store.latest?.details)
+
+        await publisher.setDetailsSharing(true)
+        let detailed = await fixture.store.latest
+        XCTAssertEqual(detailed?.details?.sessions.first?.phase, .response)
+        XCTAssertEqual(fixture.disk.read("publisher.json", as: RemotePublicationJournal.self)?.includeDetails, true)
+
+        let reader = fixture.model()
+        await reader.enableReceiving()
+        assertNotNil(reader.snapshot?.details)
+        await publisher.setDetailsSharing(false)
+        await reader.refresh(force: true)
+        assertNil(reader.snapshot?.details)
+        XCTAssertEqual(reader.snapshot?.waitingCount, 1)
+
+        await publisher.setDetailsSharing(true)
+        await publisher.stopSharing()
+        await reader.refresh(force: true)
+        XCTAssertEqual(reader.snapshot?.sourceState, .disabled)
+        assertNil(reader.snapshot?.details)
+        await publisher.enableSharing()
+        assertNil(await fixture.store.latest?.details)
+    }
+
+    func testDetailsPayloadBoundsRowsAndKeepsPrivateSessionFieldsLocal() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        var privateRow = SessionInfo(id: "private-session-id", port: 0, projectName: "private-project-name",
+                                     agentType: "codex-app", state: "awaiting_option")
+        privateRow.question = "private-question"
+        privateRow.activity = "private-activity"
+        privateRow.subagents = SubagentSummary(active: 2, peak: 3, completed: 1)
+        let extra = (0..<30).map { row("private-id-\($0)", waiting: false) }
+        let roster = RemoteLocalRoster(sessions: extra + [.init(row: privateRow, observedAt: now)], observedAt: now)
+        var journal = RemotePublicationJournal(account: "account-a")
+        journal.revision = 1
+        let old = try RemoteObservationContract.encode(journal.snapshot(roster: roster, at: now))
+        XCTAssertNil(try RemoteObservationContract.decode(RemoteObservationSnapshot.self, from: old).details)
+
+        journal.includeDetails = true
+        let snapshot = journal.snapshot(roster: roster, at: now)
+        try snapshot.validate()
+        let bytes = try RemoteObservationContract.encode(snapshot)
+        XCTAssertFalse(String(decoding: bytes, as: UTF8.self).contains("private-"))
+        let decoded = try RemoteObservationContract.decode(RemoteObservationSnapshot.self, from: bytes)
+        XCTAssertEqual(decoded.details?.sessionCount, 31)
+        XCTAssertEqual(decoded.details?.sessions.count, RemoteObservationDetails.sessionLimit)
+        XCTAssertEqual(decoded.details?.sessions.first?.agent, .codexApp)
+        XCTAssertEqual(decoded.details?.sessions.first?.phase, .response)
+        XCTAssertEqual(decoded.details?.sessions.first?.activeSubagents, 2)
+        XCTAssertNil(journal.snapshot(roster: nil, at: now).details)
+    }
+
+    func testUsageProjectionPreservesSourceTimeAndRetiresUnknownOrEndedWindows() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let reset = now.addingTimeInterval(120)
+        let rawReset = reset.formatted(.iso8601)
+        let stamp = now.addingTimeInterval(-120)
+        let deadline = now.addingTimeInterval(60)
+        let reading = try XCTUnwrap(RemoteUsageWindow.make(provider: .zai, quantity: .mcp, minutes: 60,
+            used: 72.5, observedAt: stamp, resetsAt: rawReset, validUntil: deadline, at: now))
+        XCTAssertEqual(reading.remainingPercent, 27.5)
+        XCTAssertEqual(reading.observedAt, stamp)
+        XCTAssertEqual(reading.resetsAt, reset)
+        XCTAssertFalse(reading.isVisible(at: deadline))
+        XCTAssertNil(RemoteUsageWindow.make(provider: .codex, minutes: 60,
+            used: 0, observedAt: nil, resetsAt: rawReset, at: now))
+        XCTAssertNil(RemoteUsageWindow.make(provider: .codex, minutes: 60,
+            used: 0, observedAt: stamp, resetsAt: rawReset, at: reset))
+        XCTAssertNil(RemoteUsageWindow.make(provider: .codex, minutes: 60,
+            used: .nan, observedAt: stamp, resetsAt: rawReset, at: now))
+    }
+
     func testAmbiguousCommittedAlertResolvesBySameIdentityWithoutDuplicateCreation() async throws {
         let fixture = Fixture(); fixture.rows([])
         let model = fixture.model(); await model.enableSharing()

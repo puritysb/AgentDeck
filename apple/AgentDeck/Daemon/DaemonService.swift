@@ -1355,6 +1355,12 @@ final class DaemonService: ObservableObject {
         return false
     }
 
+    func remoteAccountUsage() async -> [RemoteUsageWindow] {
+        guard isSelfDaemon, let daemon = server as? DaemonServer else { return [] }
+        let windows = await daemon.remoteAccountUsage()
+        return isSelfDaemon && server === daemon ? windows : []
+    }
+
     // MARK: - Device Summary Refresh
 
     /// Refresh only the edited provider; keep sessions and devices connected.

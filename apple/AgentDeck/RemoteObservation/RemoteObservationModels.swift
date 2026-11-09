@@ -78,6 +78,7 @@ struct RemoteObservationSnapshot: Codable, Equatable, Sendable {
     let workingCount: Int?
     let waitingCount: Int?
     let activeEventIDs: [UUID]
+    var details: RemoteObservationDetails? = nil
 
     func validate() throws {
         guard schemaVersion == RemoteObservationContract.version else { throw RemoteObservationError.unsupportedSchema }
@@ -89,7 +90,8 @@ struct RemoteObservationSnapshot: Codable, Equatable, Sendable {
                   activeEventIDs.count <= waitingCount else {
                 throw RemoteObservationError.invalidData
             }
-        } else if workingCount != nil || waitingCount != nil || !activeEventIDs.isEmpty {
+            if let details, !details.isValid(at: publishedAt) { throw RemoteObservationError.invalidData }
+        } else if workingCount != nil || waitingCount != nil || !activeEventIDs.isEmpty || details != nil {
             throw RemoteObservationError.invalidData
         }
     }
@@ -134,6 +136,68 @@ struct RemoteEventMutation: Sendable, Equatable {
     let mayCreate: Bool
 }
 
+/// The optional encrypted extension contains only closed vocabularies and numbers.
+struct RemoteObservationDetails: Codable, Equatable, Sendable {
+    static let sessionLimit = 24
+    static let usageLimit = 4
+    let sessions: [RemoteSessionDetail]
+    let sessionCount: Int
+    let usage: [RemoteUsageWindow]
+
+    func isValid(at publishedAt: Date) -> Bool {
+        sessions.count <= Self.sessionLimit && sessionCount >= sessions.count
+            && usage.count <= Self.usageLimit && usage.allSatisfy { $0.isVisible(at: publishedAt) }
+            && sessions.allSatisfy { ($0.startedAt ?? publishedAt) <= publishedAt
+                && ($0.activeSubagents ?? 0) >= 0 && ($0.backgroundJobs ?? 0) >= 0 }
+    }
+}
+
+struct RemoteSessionDetail: Codable, Equatable, Sendable {
+    enum Agent: String, Codable, Sendable {
+        case claude = "claude-code", codexCLI = "codex-cli", codexApp = "codex-app"
+        case openCode = "opencode", openClaw = "openclaw", antigravity, hermes
+        case kiroCLI = "kiro-cli", kiroIDE = "kiro-ide", unknown
+    }
+    // Priority also sets which rows survive the snapshot size cap.
+    enum Phase: Int, Codable, Sendable { case response, working, awaiting, idle, unknown }
+    let agent: Agent
+    let phase: Phase
+    let startedAt: Date?
+    let activeSubagents: Int?
+    let backgroundJobs: Int?
+}
+
+struct RemoteUsageWindow: Codable, Equatable, Sendable {
+    enum Provider: String, Codable, CaseIterable, Sendable { case codex, zai }
+    enum Quantity: String, Codable, Sendable { case allowance, mcp }
+
+    let provider: Provider
+    let quantity: Quantity
+    let durationMinutes: Int
+    let remainingPercent: Double
+    let observedAt: Date
+    let resetsAt: Date
+    let validUntil: Date?
+
+    func isVisible(at now: Date) -> Bool {
+        durationMinutes > 0 && (0...100).contains(remainingPercent) && observedAt <= now && now < min(resetsAt, validUntil ?? resetsAt)
+    }
+
+    static func make(provider: Provider, quantity: Quantity = .allowance, minutes: Int?,
+                     used: Double?, observedAt: Date?, resetsAt: String?, validUntil: Date? = nil, at now: Date) -> Self? {
+        guard let minutes, let used, let observedAt, let reset = remoteObservationDate(resetsAt) else { return nil }
+        let window = Self(provider: provider, quantity: quantity, durationMinutes: minutes,
+                          remainingPercent: 100 - used, observedAt: observedAt, resetsAt: reset, validUntil: validUntil)
+        return window.isVisible(at: now) ? window : nil
+    }
+}
+
+func remoteObservationDate(_ value: String?) -> Date? {
+    guard let value else { return nil }
+    return (try? Date.ISO8601FormatStyle(includingFractionalSeconds: true).parse(value))
+        ?? (try? Date.ISO8601FormatStyle().parse(value))
+}
+
 struct RemoteLocalRoster: Sendable {
     let sessions: [RemoteSessionEvidence]
     let observedAt: Date
@@ -151,6 +215,7 @@ struct RemotePublicationJournal: Codable, Equatable, Sendable {
     let account: String
     var installationID = UUID()
     var enabled = false
+    var includeDetails: Bool?
     var intent = Intent.none
     var revision = 0
     var bindings: [String: UUID] = [:]
@@ -164,7 +229,7 @@ struct RemotePublicationJournal: Codable, Equatable, Sendable {
 
     mutating func invalidateSource() { baseline = false }
     mutating func revokeConsent() {
-        enabled = false; bindings.removeAll(); episodes.removeAll(); baseline = false
+        enabled = false; includeDetails = nil; bindings.removeAll(); episodes.removeAll(); baseline = false
         if intent == .none { intent = .stop }
         retryAt = nil
     }
@@ -207,18 +272,34 @@ struct RemotePublicationJournal: Codable, Equatable, Sendable {
         baseline = true
     }
 
-    func snapshot(roster: RemoteLocalRoster?, at now: Date, disabled: Bool = false) -> RemoteObservationSnapshot {
+    func snapshot(roster: RemoteLocalRoster?, at now: Date, disabled: Bool = false,
+                  usage: [RemoteUsageWindow] = []) -> RemoteObservationSnapshot {
         let state: RemoteSourceState = disabled ? .disabled : (roster == nil ? .unavailable : .observed)
         let living = roster?.sessions.filter(\.alive)
         let waitingIDs = Set((roster?.sessions ?? []).filter { $0.alive && $0.waitingForResponse }.map(\.localID))
         let active = episodes.filter { episode in episode.event.resolvedAt == nil && now < episode.event.expiresAt
             && bindings.contains(where: { waitingIDs.contains($0.key) && $0.value == episode.event.id }) }
+        let details: RemoteObservationDetails?
+        if state == .observed, includeDetails == true {
+            let rows = Dictionary((living ?? []).map { ($0.localID, $0) }, uniquingKeysWith: { _, last in last })
+                .values.sorted { lhs, rhs in
+                    if lhs.detail.phase != rhs.detail.phase { return lhs.detail.phase.rawValue < rhs.detail.phase.rawValue }
+                    if lhs.detail.startedAt != rhs.detail.startedAt {
+                        return (lhs.detail.startedAt ?? .distantFuture) < (rhs.detail.startedAt ?? .distantFuture)
+                    }
+                    return lhs.localID < rhs.localID
+                }
+            details = RemoteObservationDetails(sessions: rows.prefix(RemoteObservationDetails.sessionLimit).map(\.detail),
+                sessionCount: rows.count, usage: Array(usage.filter { $0.isVisible(at: now) }.prefix(RemoteObservationDetails.usageLimit)))
+        } else {
+            details = nil
+        }
         return RemoteObservationSnapshot(installationID: installationID, revision: revision,
             sourceState: state, observedAt: roster?.observedAt, publishedAt: now,
             expiresAt: now.addingTimeInterval(RemoteObservationPolicy.readerLifetime),
             workingCount: state == .observed ? Set((living ?? []).filter(\.working).map(\.localID)).count : nil,
             waitingCount: state == .observed ? waitingIDs.count : nil,
-            activeEventIDs: state == .observed ? active.map { $0.event.id } : [])
+            activeEventIDs: state == .observed ? active.map { $0.event.id } : [], details: details)
     }
 
     func mutations(roster: RemoteLocalRoster?, at now: Date) -> [RemoteEventMutation] {
