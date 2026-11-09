@@ -89,7 +89,7 @@ describe('optional Python BLE runtime', () => {
     expect(calls.some(({ args }) => args.includes('pip') && args.includes(paths.requirements))).toBe(true);
     expect(existsSync(paths.readyMarker)).toBe(true);
     expect(JSON.parse(readFileSync(paths.readyMarker, 'utf8'))).toHaveProperty('requirementsSha256');
-    expect(getBleRuntimeStatus({ packageRoot: root, dataDir, env: {} })).toMatchObject({
+    expect(getBleRuntimeStatus({ packageRoot: root, dataDir, env: {}, run: () => ({ status: 0 }) })).toMatchObject({
       ready: true,
       python: paths.venvPython,
     });
@@ -116,6 +116,47 @@ describe('optional Python BLE runtime', () => {
 
     expect(runtime.python).toBe(paths.legacyPython);
     expect(calls).toHaveLength(1);
+    expect(existsSync(paths.readyMarker)).toBe(false);
+  });
+
+  it('rejects an incompatible override before any BLE command can use it', () => {
+    const root = join(tempDir(), 'bridge');
+    makePackage(root);
+    const override = join(root, 'external-python');
+    write(override);
+    const options = {
+      packageRoot: root,
+      env: { AGENTDECK_BLE_PYTHON: override },
+      run: () => ({ status: 1 }),
+    };
+
+    expect(getBleRuntimeStatus(options)).toMatchObject({ ready: false });
+    expect(() => ensureBleRuntime(options)).toThrow('cryptography >= 50.0.0');
+  });
+
+  it('rejects incompatible legacy and managed environments even with a matching marker', () => {
+    const root = join(tempDir(), 'bridge');
+    const dataDir = join(root, '.data');
+    makePackage(root);
+    const paths = resolveBleRuntimePaths({ packageRoot: root, dataDir, env: {} });
+    write(paths.legacyPython);
+    let rejectManaged = false;
+    const options = {
+      packageRoot: root, dataDir, env: {},
+      run: (command: string, args: string[]) => {
+        if (args.includes('venv')) write(paths.venvPython);
+        const incompatible = command === paths.legacyPython ||
+          (rejectManaged && command === paths.venvPython && args.includes('-B'));
+        return { status: incompatible ? 1 : 0 };
+      },
+    };
+
+    expect(getBleRuntimeStatus(options)).toMatchObject({ ready: false });
+    expect(ensureBleRuntime(options).python).toBe(paths.venvPython);
+    expect(getBleRuntimeStatus(options)).toMatchObject({ ready: true });
+    rejectManaged = true;
+    expect(getBleRuntimeStatus(options)).toMatchObject({ ready: false });
+    expect(() => ensureBleRuntime(options)).toThrow('Failed to install optional BLE dependencies');
     expect(existsSync(paths.readyMarker)).toBe(false);
   });
 
@@ -245,7 +286,7 @@ describe('Rosetta interpreter guard (darwin/arm64)', () => {
     write(paths.legacyPython);
     writeFileSync(paths.legacyPython, machOFat([ARM64, X86_64]));
 
-    const base = { packageRoot: root, dataDir: join(root, '.data'), env: {} };
+    const base = { packageRoot: root, dataDir: join(root, '.data'), env: {}, run: () => ({ status: 0 }) };
     expect(getBleRuntimeStatus({ ...base, platform: 'darwin', hostArch: 'arm64' }).ready).toBe(true);
 
     // The same x86_64-only binary is fine where Rosetta is not in play.
@@ -264,6 +305,7 @@ describe('Rosetta interpreter guard (darwin/arm64)', () => {
       packageRoot: root,
       dataDir: join(root, '.data'),
       env: {},
+      run: () => ({ status: 0 }),
       platform: 'darwin',
       hostArch: 'arm64',
     });
