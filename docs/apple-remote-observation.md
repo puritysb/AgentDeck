@@ -201,9 +201,15 @@ Both signed archives and exports passed the Production entitlement checks.
 [App Store Connect](https://github.com/puritysb/AgentDeck/actions/runs/42581256125)
 reported both builds valid.
 The [pre-release receipt](../verification/receipts/2026-11-09-8696f80.json)
-covers this source. The cellular acceptance target is the installed Mac
-publisher connected to the existing Node daemon on port 9120 and an iPhone
-reader on the same TestFlight build.
+covers this source.
+
+The Mac ran 10801 with its TestFlight receipt, and Settings showed
+`External daemon on port 9120`. The existing Node process had the same PID
+before and after the update. With detailed sharing enabled, the Mac saved
+a Production observation. The user confirmed on iPhone 14 Pro Max running
+10801 with Wi-Fi off that Remote showed Codex and z.ai usage with measurement
+and reset times after refresh. The Mac then stopped sharing and confirmed
+that the stopped state was saved remotely.
 
 ## Earlier development experiment
 
