@@ -160,6 +160,38 @@ public database grants. The three development-only probe types were retired
 before promotion. A new PoC run can recreate probe types in Development, so
 review the full diff before any subsequent promotion.
 
+## Production Remote dashboard TestFlight acceptance
+
+On 2026-11-09, [internal TestFlight 2.2.0 (10701)](https://github.com/puritysb/AgentDeck/actions/runs/42570741498)
+was built from `cd9caa7c` and assigned to the existing App Review QA group on
+macOS and iOS. Both signed archives and exported packages passed the Production
+entitlement checks. [App Store Connect readback](https://github.com/puritysb/AgentDeck/actions/runs/42573534820)
+reported both builds valid. The [pre-release receipt](../verification/receipts/2026-11-09-7112fc0.json)
+covers the unchanged executable source.
+
+The Mac ran the installed 10701 with its TestFlight receipt. Its in-process
+daemon used a dedicated loopback listener with device modules off during the
+test. The existing Node daemon continued serving port 9120. The only scripted
+session was a real OpenCode question driven by the isolated local model fixture.
+The user updated the iPhone 14 Pro Max to 10701, disabled Wi-Fi and reported
+the Remote screen over cellular.
+
+- With details enabled, the phone displayed session details and Codex and
+  z.ai usage. The first phone check was inconclusive, and the details appeared
+  after checking Remote enrollment and refreshing.
+- After turning off detailed sharing on the Mac, the phone refreshed to
+  aggregate counts. The Sessions and Usage cards disappeared.
+- Re-enabling details restored both cards, including the measurement and reset
+  times. After full stop, the phone showed `Sharing stopped on the Mac` and
+  removed the counts, sessions and usage.
+- The Mac confirmed deletion of the test observations and notification
+  subscriptions. After refresh on cellular, the phone showed that there was no
+  shared observation, with no previous data on screen.
+
+The isolated OpenCode process exited and the Mac's original port and device
+module settings were restored. Remote account limits in this build require
+the Mac app's in-process daemon.
+
 ## Earlier development experiment
 
 **Decision date: 2026-11-01. Status: development-only transport, automatic
