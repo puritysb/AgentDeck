@@ -27,7 +27,8 @@ def verify_entitlements(entitlements, platform, environment):
         raise ValueError(f"signed APNs environment must be {environment.lower()}")
     if platform == "macos" and entitlements.get("com.apple.security.app-sandbox") is not True:
         raise ValueError("macOS Sandbox entitlement is missing")
-    if environment == "Production" and entitlements.get("get-task-allow") is True:
+    debug_keys = ("get-task-allow", "com.apple.security.get-task-allow")
+    if environment == "Production" and any(entitlements.get(key) is True for key in debug_keys):
         raise ValueError("Production archive permits debugging")
 
 
@@ -47,7 +48,8 @@ def self_test():
         ("com.apple.developer.icloud-container-environment", "Development", "ios"),
         ("aps-environment", "development", "ios"),
         ("com.apple.security.app-sandbox", False, "macos"),
-        ("get-task-allow", True, "macos"),
+        ("get-task-allow", True, "ios"),
+        ("com.apple.security.get-task-allow", True, "macos"),
     ]
     for key, value, platform in invalid:
         try:
@@ -64,7 +66,7 @@ def self_test():
         pass
     else:
         raise AssertionError("accepted Development storage in a Production archive")
-    print("Remote observation archive guard: 10 entitlement/identity cases passed")
+    print("Remote observation archive guard: 11 entitlement/identity cases passed")
 
 
 def main():

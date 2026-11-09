@@ -3,6 +3,7 @@ set -euo pipefail
 
 # Install the persistent App Store signing assets used by apple-release.yml.
 # Usage: install-ci-signing-assets.sh ios|macos
+# Set FETCH_ASC_PROFILE=true to read the active profile on the CI runner.
 #
 # The archive itself is signed with Apple Distribution. This is intentional:
 # automatic archive signing asks Apple for a fresh DEVELOPMENT certificate on
@@ -52,14 +53,12 @@ fi
 echo "Installed distribution identity for team $TEAM_ID."
 
 if [[ "$TARGET" == "ios" ]]; then
-    : "${IOS_PROVISIONING_PROFILE_BASE64:?IOS_PROVISIONING_PROFILE_BASE64 is required}"
-    PROFILE_BASE64="$IOS_PROVISIONING_PROFILE_BASE64"
+    PROFILE_BASE64="${IOS_PROVISIONING_PROFILE_BASE64:-}"
     PROFILE_PATH="$RUNNER_TEMP/agentdeck.mobileprovision"
     PROFILE_SUFFIX="mobileprovision"
     PROFILE_APP_ID_KEY="application-identifier"
 else
-    : "${MACOS_PROVISIONING_PROFILE_BASE64:?MACOS_PROVISIONING_PROFILE_BASE64 is required}"
-    PROFILE_BASE64="$MACOS_PROVISIONING_PROFILE_BASE64"
+    PROFILE_BASE64="${MACOS_PROVISIONING_PROFILE_BASE64:-}"
     PROFILE_PATH="$RUNNER_TEMP/agentdeck.provisionprofile"
     PROFILE_SUFFIX="provisionprofile"
     PROFILE_APP_ID_KEY="com.apple.application-identifier"
@@ -79,7 +78,12 @@ else
     echo "Installed Mac installer identity for team $TEAM_ID."
 fi
 
-echo -n "$PROFILE_BASE64" | base64 --decode -o "$PROFILE_PATH"
+if [[ "${FETCH_ASC_PROFILE:-false}" == "true" ]]; then
+    node apple/scripts/fetch-appstore-profile.mjs "$TARGET" "$PROFILE_PATH"
+else
+    : "${PROFILE_BASE64:?App Store profile secret is required}"
+    printf '%s' "$PROFILE_BASE64" | base64 --decode -o "$PROFILE_PATH"
+fi
 PROFILE_PLIST="$RUNNER_TEMP/agentdeck-profile.plist"
 security cms -D -i "$PROFILE_PATH" > "$PROFILE_PLIST"
 
@@ -95,6 +99,29 @@ if [[ "$PROFILE_APP_ID" != "$TEAM_ID.$BUNDLE_ID" ]]; then
     echo "::error::Provisioning profile targets $PROFILE_APP_ID, expected $TEAM_ID.$BUNDLE_ID."
     exit 1
 fi
+
+python3 - "$PROFILE_PLIST" "$TARGET" <<'PYPROFILE'
+import plistlib
+import sys
+from datetime import datetime
+
+path, platform = sys.argv[1:]
+with open(path, "rb") as file:
+    profile = plistlib.load(file)
+entitlements = profile["Entitlements"]
+environment = entitlements.get("com.apple.developer.icloud-container-environment", [])
+if isinstance(environment, str):
+    environment = [environment]
+if profile["ExpirationDate"] <= datetime.utcnow():
+    sys.exit("App Store profile is expired.")
+if ("iCloud.bound.serendipity.agent.deck" not in entitlements.get("com.apple.developer.icloud-container-identifiers", [])
+        or "CloudKit" not in entitlements.get("com.apple.developer.icloud-services", [])
+        or "Production" not in environment):
+    sys.exit("App Store profile lacks the AgentDeck Production CloudKit entitlement.")
+if platform == "ios" and entitlements.get("aps-environment") != "production":
+    sys.exit("iOS App Store profile lacks the production APNs entitlement.")
+print("App Store profile permits Production CloudKit" + (" and production APNs." if platform == "ios" else "."))
+PYPROFILE
 
 mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
 cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.$PROFILE_SUFFIX"

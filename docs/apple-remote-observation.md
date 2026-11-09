@@ -93,10 +93,12 @@ No container/schema/profile/account mutations are performed by local verificatio
    uses the developer's normal management-token flow; never put tokens in this
    repository, command-line examples, logs or app UI.
 2. Verify encrypted Bytes `payload` on both new types from creation. Verify
-   queryable `AttentionEvent.installationID` for subscriptions and
-   `AttentionEvent.deleteAfter` for cleanup. Merge/promotion must preserve probe
-   and unrelated container schema. Promote schema/indexes in CloudKit Console;
-   export Production again and compare the actual result. Development records
+   queryable `AttentionEvent.installationID` for subscriptions and queryable and
+   sortable `AttentionEvent.deleteAfter` for the cleanup range query. The product
+   types have no public database grants. Preserve unrelated container schema and
+   keep development-only changes out of the Production promotion. Promote the
+   schema and indexes in CloudKit Console, then compare a fresh Production
+   export with the intended result. Development records
    and account subscriptions do not migrate to Production.
 3. Attach the existing container to both bundle IDs and renew the distribution
    profiles. `Release` selects CloudKit Production and iOS APNs production;
@@ -133,6 +135,16 @@ Apple references: [schema management and cktool](https://developer.apple.com/icl
 [encrypted fields](https://developer.apple.com/documentation/cloudkit/ckrecord/encryptedvalues),
 [zone-scoped query subscriptions](https://developer.apple.com/documentation/cloudkit/ckquerysubscription/zoneid),
 [schema language](https://developer.apple.com/documentation/cloudkit/integrating-a-text-based-schema-into-your-workflow).
+
+## Production schema receipt
+
+On 2026-11-09 the existing container's Production schema was read back after
+promotion. The export preserves `Users` and adds only `ObservationSnapshot`
+and `AttentionEvent`. Both product payloads are encrypted Bytes. Attention
+lookup and range cleanup indexes are present, and neither product type has
+public database grants. The three development-only probe types were retired
+before promotion. A new PoC run can recreate probe types in Development, so
+review the full diff before any subsequent promotion.
 
 ## Earlier development experiment
 

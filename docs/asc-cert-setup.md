@@ -89,6 +89,13 @@ Run **Apple Release (TestFlight)** with `workflow_dispatch`:
 - `release_version`: the current Apple version, for example `1.0.5`
 - `upload`: `false`
 
+For a profile renewal, set `fetch_active_profiles` to `true` to fetch the exact
+active iOS and macOS App Store profiles from Apple using the existing CI release
+key. Profile bytes stay on the runner and the manual signing identity is the
+existing distribution certificate. The archive and export gates check the
+actual signed entitlements. Normal dispatches and tags still use the stored
+profiles, which should be refreshed before the next tag.
+
 Both jobs must pass archive, export, and `verify-appstore-archive.sh`. With `upload=false`, no binary reaches App Store Connect and no submitted version is replaced. The workflow dynamically reads the exact imported Mac installer identity and adds it to a temporary export plist; the common name is not hard-coded in the repository.
 
 After the dry-run, dispatch **ASC Certificates** with `action=list`. A successful manual-signing run must not create another `DEVELOPMENT` certificate.

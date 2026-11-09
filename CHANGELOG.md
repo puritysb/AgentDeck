@@ -45,6 +45,13 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+## 2026-11-09 — Apple 2.2.0
+
+- **Read-only remote monitoring.** Share aggregate agent activity from Mac and
+  see it in the iPhone or iPad Remote tab outside the local network. Attention
+  notifications open the current event status, including resolution and expiry.
+  Stop sharing from Mac or delete the published observation and attention data.
+
 ## 2026-11-08 — npm 2.1.1
 
 - **Node daemon photo uploads.** Keep device-supplied board IDs inside the photo

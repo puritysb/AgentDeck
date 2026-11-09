@@ -150,8 +150,9 @@ describe('2.1.0 store scope', () => {
 });
 
 describe('bounded macOS ASC release', () => {
-  it('extracts only current macOS EN/KO/JA and the marked macOS reviewer field', () => {
-    const version = readFileSync(resolve(ROOT, 'apple/project.yml'), 'utf8').match(/MARKETING_VERSION: "([^"]+)"/)![1];
+  it('extracts the latest prepared macOS EN/KO/JA copy and its marked reviewer field', () => {
+    // Internal-only TestFlight versions do not require public submission metadata.
+    const version = LISTED_RELEASE_VERSIONS.at(-1)!;
     const extracted = extractReleaseCopy(readFileSync(resolve(ROOT, 'docs/appstore-metadata-draft.md'), 'utf8'),
       readFileSync(resolve(ROOT, 'apple/APP_REVIEW_NOTES.md'), 'utf8'), version);
     expect(Object.keys(extracted.whatsNew)).toEqual(['en-US', 'ko', 'ja']);

@@ -6,9 +6,7 @@ DEFINE SCHEMA
         revision INT64,
         publishedAt TIMESTAMP,
         expiresAt TIMESTAMP,
-        payload ENCRYPTED BYTES,
-        GRANT READ, WRITE TO "_creator",
-        GRANT CREATE TO "_icloud"
+        payload ENCRYPTED BYTES
     );
 
     RECORD TYPE AttentionEvent (
@@ -16,8 +14,6 @@ DEFINE SCHEMA
         installationID STRING QUERYABLE,
         occurredAt TIMESTAMP,
         expiresAt TIMESTAMP,
-        deleteAfter TIMESTAMP QUERYABLE,
-        payload ENCRYPTED BYTES,
-        GRANT READ, WRITE TO "_creator",
-        GRANT CREATE TO "_icloud"
+        deleteAfter TIMESTAMP QUERYABLE SORTABLE,
+        payload ENCRYPTED BYTES
     );

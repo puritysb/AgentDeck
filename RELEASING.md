@@ -95,6 +95,18 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### Apple 2.2.0 internal TestFlight decision — 2026-11-09
+
+| Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
+| --- | --- | --- | --- | --- | --- |
+| Apple macOS + iOS/iPadOS / internal TestFlight | 2.1.0 on both platforms | 2.1.0 / 10301 on both platforms | 2.2.0 / CI-assigned | Minor: read-only monitoring and attention notifications outside the LAN | The feature requires the Mac publisher and the iPhone/iPad reader under the same iCloud account |
+
+The [November 9 ASC inventory](https://github.com/puritysb/AgentDeck/actions/runs/42543484570)
+shows 2.1.0 / 10301 as the newest valid upload on both platforms. Use the
+internal-only export for the paired candidate. Verify Production signing,
+remote receipt, alert resolution and expiry, and stop/delete on physical
+devices. Public delivery requires a separate decision.
+
 ### npm 2.1.1 release decision — 2026-11-08
 
 | Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
