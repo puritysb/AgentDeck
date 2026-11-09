@@ -38,7 +38,8 @@ version/build and signed CloudKit/APNs environment separately. Full preparation
 and latency sampling: [remote monitoring](apple-remote-observation.md#production-preparation-and-acceptance).
 
 - [ ] Fresh launch asks for neither cloud sharing nor notification authorization. The Remote tab opens without LAN pairing, including before local onboarding completes.
-- [ ] Explicit Mac sharing and phone receiving use the same Apple Account. Only aggregate counts and original observation time appear; no question text or controls appear in Remote.
+- [ ] Explicit Mac sharing and phone receiving use the same Apple Account. With detailed sharing off, Remote displays aggregate counts and the original observation time.
+- [ ] With Wi-Fi off on the iPhone, enable **Share session and usage details** on the Mac. Verify session states, a confirmed Codex or z.ai allowance, and its measurement and reset times. Turn the option off, refresh Remote, and verify the counts remain while the session and usage cards disappear. Re-enable details before testing full stop and deletion.
 - [ ] A real wait after enrollment produces a generic alert on the eligible phone/Watch. A baseline wait does not produce a historical alert.
 - [ ] Open a resolved, expired and still-waiting alert. A disconnected/missing source remains unconfirmed; no disappearance claims task success. Foreground alerts do not switch tabs without a tap.
 - [ ] Disable phone Wi-Fi and use cellular. Exercise locked phone/Watch, background, force quit, Focus and denied alerts; distinguish cloud-save acknowledgement from visible delivery.

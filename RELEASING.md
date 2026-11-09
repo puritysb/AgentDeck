@@ -107,6 +107,19 @@ internal-only export for the paired candidate. Verify Production signing,
 remote receipt, alert resolution and expiry, and stop/delete on physical
 devices. Public delivery requires a separate decision.
 
+#### Remote dashboard follow-up — internal TestFlight
+
+| Target / routes | Last verified public version | Uploaded / reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
+| --- | --- | --- | --- | --- | --- |
+| Apple macOS + iOS/iPadOS / internal TestFlight | 2.1.0 on both platforms | 2.2.0 / 10601 on both platforms | 2.2.0 / next CI-assigned build | Rebuild of the unreleased 2.2.0 milestone with the session roster and account allowance gauges | Mac publishes details with a separate opt-in. The iPhone/iPad Remote tab presents them with their observation times. |
+
+The [November 9 inventory](https://github.com/puritysb/AgentDeck/actions/runs/42567753360)
+confirmed build 10601 is valid on both platforms. The candidate changes the
+encrypted payload within the existing Production schema. Acceptance covers
+the iPhone on cellular with both builds updated, including sessions, a
+verified account allowance, return to counts after detail sharing is disabled,
+and removal after full stop and deletion. This delivery is internal-only.
+
 ### npm 2.1.1 release decision — 2026-11-08
 
 | Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |

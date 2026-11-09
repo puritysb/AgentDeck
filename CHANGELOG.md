@@ -51,6 +51,9 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
   see it in the iPhone or iPad Remote tab outside the local network. Attention
   notifications open the current event status, including resolution and expiry.
   Stop sharing from Mac or delete the published observation and attention data.
+- **Remote dashboard.** Turn on detailed sharing on Mac to see individual agent
+  states, start times and observed child activity in Remote. Available Codex
+  and z.ai account limits show remaining allowance, measurement and reset times.
 
 ## 2026-11-08 — npm 2.1.1
 
