@@ -45,6 +45,18 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+## 2026-11-10 — Apple 2.1.1
+
+**macOS Dashboard.** Work opens in the same window and puts sessions that need
+your input first. A compact window opens the selected task from the list.
+A wide window shows the list and details side by side. Resizing keeps the
+selection, and the Work header opens Usage & Services.
+
+Task details show delegates, background work and confirmed handoffs. Recent
+message history and its graph open on demand, with unidentified peers shown
+separately. The Dashboard keeps its session list, timeline and usage overview.
+See [PR #748](https://github.com/puritysb/AgentDeck/pull/748).
+
 ## 2026-11-08 — npm 2.1.1
 
 - **Node daemon photo uploads.** Keep device-supplied board IDs inside the photo

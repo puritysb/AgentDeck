@@ -1,0 +1,42 @@
+{
+  "version": "2.1.1",
+  "screenshots": [
+    {
+      "file": "apple/appstore-submission/2.1.1/screenshots/en/macOS/01-work-wide.png",
+      "sha256": "517fa813fa951452e7f74ede36b6b72d889e522213356443482850ba4ed4ee11",
+      "platform": "macOS",
+      "locale": "en"
+    },
+    {
+      "file": "apple/appstore-submission/2.1.1/screenshots/en/macOS/02-work-compact.png",
+      "sha256": "aedb89818ca65b802d211a4bd2823f745aef01c1743f3c0928e62bdb5aa29a3f",
+      "platform": "macOS",
+      "locale": "en"
+    },
+    {
+      "file": "apple/appstore-submission/2.1.1/screenshots/ko/macOS/01-work-wide.png",
+      "sha256": "62fb0fc147c4eaf0038e0d9b5e86546c3f2441cb2d9fae72ec6ba69dc4c3702e",
+      "platform": "macOS",
+      "locale": "ko"
+    },
+    {
+      "file": "apple/appstore-submission/2.1.1/screenshots/ko/macOS/02-work-compact.png",
+      "sha256": "e1bf20a946078f72306ce58cc031081a6a0032ae7d98d4c9978caab04b575eb1",
+      "platform": "macOS",
+      "locale": "ko"
+    },
+    {
+      "file": "apple/appstore-submission/2.1.1/screenshots/ja/macOS/01-work-wide.png",
+      "sha256": "5b098641c57e6a27d4bda4ab6f581d85a0e6d17352fe9c8033b9a89b20f0bdcd",
+      "platform": "macOS",
+      "locale": "ja"
+    },
+    {
+      "file": "apple/appstore-submission/2.1.1/screenshots/ja/macOS/02-work-compact.png",
+      "sha256": "16ef7def600c3567d886f73f3f9f9b83e6229dcb61b38d1b1df2de26fd5528df",
+      "platform": "macOS",
+      "locale": "ja"
+    }
+  ],
+  "previews": []
+}

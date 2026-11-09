@@ -95,6 +95,25 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### Apple macOS 2.1.1 release decision — 2026-11-10
+
+| Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
+| --- | --- | --- | --- | --- | --- |
+| macOS / Mac App Store | 2.1.0 / 10301 | No 2.1.1 version or build in the ASC inventory. Private macOS TestFlight 2.2.0 / 11201 is valid. | 2.1.1 / next CI-assigned build above 11201 | Patch: open Work in its own Dashboard screen and keep the selected task and access to Usage & Services as the window resizes. | Improves the existing local macOS Dashboard. |
+
+[ASC inventory](https://github.com/puritysb/AgentDeck/actions/runs/42680239547)
+and [PR #748](https://github.com/puritysb/AgentDeck/pull/748) establish the
+candidate scope. The private 2.2.0 candidate included additional CloudKit code.
+This patch starts at the merged Work source on master and requires a new signed
+macOS build and runtime acceptance. Use the single-platform manual upload workflow.
+The public iPhone/iPad version remains 2.1.0.
+
+The Mac draft selects two native Work captures per locale from the synthetic
+compact and split layout tests. The [2.1.1 media selection](apple/appstore-submission/media-2.1.1-selection.json)
+pins the six screenshots. The old Collaboration video shows controls and reply
+indicators that are no longer part of this release. The 2.1.1 draft removes that
+preview and verifies the new screenshots after Apple processes them.
+
 ### npm 2.1.1 release decision — 2026-11-08
 
 | Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |

@@ -22,7 +22,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
-import { prepareSelectedMedia, assertSelectedMedia } from './asc-release-media.mjs';
+import { prepareSelectedMedia, assertSelectedMedia, hasSelectedMedia } from './asc-release-media.mjs';
 
 const ORIGIN = 'https://api.appstoreconnect.apple.com';
 const APP_ID = '6784822497';
@@ -165,7 +165,8 @@ async function storeStatus() {
     const response = await api(path);
     console.log(JSON.stringify({resource: path.split('?')[0].split('/').at(-1), data: response.data, included: response.included ?? []}));
     if (!path.startsWith(`${root}/appStoreVersions?`)) continue;
-    for (const version of response.data.filter(v => LISTED_RELEASE_VERSIONS.includes(v.attributes?.versionString))) {
+    for (const version of response.data.filter(v => LISTED_RELEASE_VERSIONS.includes(v.attributes?.versionString)
+      || hasSelectedMedia(v.attributes?.versionString, v.attributes?.platform))) {
       const locales = await api(`/v1/appStoreVersions/${resourceId(version, 'appStoreVersions')}/appStoreVersionLocalizations?limit=200`);
       for (const locale of locales.data) for (const [setType, assetType] of [['appScreenshotSets', 'appScreenshots'], ['appPreviewSets', 'appPreviews']]) {
         const sets = await api(`/v1/appStoreVersionLocalizations/${resourceId(locale, 'appStoreVersionLocalizations')}/${setType}?limit=200`);
@@ -506,7 +507,7 @@ async function releaseSnapshot(request, version, build) {
 /** ASC normally carries version media forward. Text-only initialization must
  * never turn missing screenshots/previews into a submission-ready result. */
 async function assertReleaseMedia(request, version, snapshot) {
-  if (version === '2.0.0') return assertSelectedMedia({ request, version, platform: PLATFORM, localizations: snapshot.localizations });
+  if (hasSelectedMedia(version, PLATFORM)) return assertSelectedMedia({ request, version, platform: PLATFORM, localizations: snapshot.localizations });
   if (version === '1.9.2') return; // Preserve the bounded legacy replacement operation.
   const previous = (await macVersions(request)).filter(v => v.attributes.appStoreState === 'READY_FOR_SALE'
     && /^\d+\.\d+\.\d+$/.test(v.attributes.versionString) && compareVersions(v.attributes.versionString, version) < 0);
@@ -759,7 +760,7 @@ export async function runRelease({ action, version, build, copy, request, proven
   }
   if (action === 'release-prepare') await ensureReleaseVersion(request, version, build, copy);
   let snapshot = await releaseSnapshot(request, version, build);
-  if (action === 'release-prepare' && version === '2.0.0') {
+  if (action === 'release-prepare' && hasSelectedMedia(version, PLATFORM)) {
     requireThat(EDITABLE.has(snapshot.target.attributes.appStoreState), 'Media requires an editable draft');
     await prepareSelectedMedia({ request, version, platform: PLATFORM, localizations: snapshot.localizations, versionId: snapshot.versionId });
   }
