@@ -9,7 +9,7 @@ import { selectedMedia, uploadParts, prepareSelectedMedia, assertSelectedMedia }
 import { releasePlatform, validatePlatformRelease, extractReleaseCopy } from '../asc-certificates.mjs';
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
-function fixture() {
+function fixture(version = '2.0.0') {
   const root = mkdtempSync(join(tmpdir(), 'asc-media-')); roots.push(root);
   const digest = (algorithm: string, data: Buffer) => createHash(algorithm).update(data).digest('hex');
   const rows: any[] = [], previews: any[] = [];
@@ -25,13 +25,15 @@ function fixture() {
   mkdirSync(join(root, 'docs/media/current'), { recursive: true });
   writeFileSync(join(root, 'docs/media/current/manifest.json'), JSON.stringify({ storePreviewCandidates: { files: previews } }));
   const localizations = Object.fromEntries(['en-US','ko','ja'].map(locale => [locale, { id: locale, attributes: { locale } }]));
-  const groups = selectedMedia('2.0.0', 'MAC_OS', root);
+  if (version === '2.1.1') writeFileSync(join(root, 'apple/appstore-submission/media-2.1.1-selection.json'),
+    JSON.stringify({ version, screenshots: rows.filter(row => row.platform === 'macOS'), previews: [] }));
+  const groups = selectedMedia(version, 'MAC_OS', root);
   const sets = new Map<string, any>(); const assets = new Map<string, any>(); const calls: any[] = [];
   let serial = 0, state = 'PREPARE_FOR_SUBMISSION', processing = false, app = '6784822497';
   const data = (value: any) => ({ data: value });
   async function request(path: string, method = 'GET', body?: any): Promise<any> {
     calls.push({ path, method, body }); const p = path.split('?')[0];
-    if (method === 'GET' && p === '/v1/apps/6784822497/appStoreVersions') return data(app === '6784822497' ? [{ id: 'version', attributes: { platform: 'MAC_OS', versionString: '2.0.0', appStoreState: state } }] : []);
+    if (method === 'GET' && p === '/v1/apps/6784822497/appStoreVersions') return data(app === '6784822497' ? [{ id: 'version', attributes: { platform: 'MAC_OS', versionString: version, appStoreState: state } }] : []);
     if (method === 'GET' && p.startsWith('/v1/appStoreVersionLocalizations/')) {
       const [, , , locale, type] = p.split('/'); return data([...sets.values()].filter(s => s.locale === locale && s.type === type));
     }
@@ -71,6 +73,15 @@ describe('bounded Store media delivery', () => {
     writeFileSync(join(f.root,f.groups[0].files[0].path),'tampered');
     await expect(prepareSelectedMedia({...f,version:'2.0.0',platform:'MAC_OS',versionId:'version'})).rejects.toThrow('checksum'); expect(f.calls).toEqual([]);
   });
+  it('pins the current Mac Work media without enabling a 2.1.1 iOS media operation', () => {
+    const groups = selectedMedia('2.1.1', 'MAC_OS');
+    const screenshots = groups.filter((group: { preview: boolean }) => !group.preview);
+    const previews = groups.filter((group: { preview: boolean }) => group.preview);
+    expect(screenshots.map((group: { locale: string }) => group.locale)).toEqual(['en-US', 'ko', 'ja']);
+    expect(screenshots.every((group: { files: unknown[] }) => group.files.length > 0)).toBe(true);
+    expect(new Set(previews.flatMap((group: { files: { md5: string }[] }) => group.files.map(file => file.md5))).size).toBeLessThanOrEqual(1);
+    expect(() => selectedMedia('2.1.1', 'IOS')).toThrow();
+  });
   it('refuses a submitted draft or another app before any write', async () => {
     for (const drift of ['submitted','foreign']) { const f=fixture(); if(drift==='submitted')f.setState('WAITING_FOR_REVIEW');else f.setApp('other');
       await expect(prepareSelectedMedia({...f,version:'2.0.0',platform:'MAC_OS',versionId:'version'})).rejects.toThrow(); expect(f.calls.every(c=>c.method==='GET')).toBe(true); }
@@ -83,6 +94,21 @@ describe('bounded Store media delivery', () => {
     const posts=f.calls.filter(c=>c.method==='POST').length; await prepareSelectedMedia(args); expect(f.calls.filter(c=>c.method==='POST')).toHaveLength(posts); expect(sent).toHaveLength(15);
     const asset=[...f.assets.values()][0]; asset.attributes.sourceFileChecksum='wrong';
     await expect(assertSelectedMedia(args)).rejects.toThrow('checksum');
+  });
+  it('removes an inherited Mac preview when the selected version supplies screenshots only', async () => {
+    const f = fixture('2.1.1');
+    const set = (await f.request('/v1/appPreviewSets', 'POST', { data: {
+      type: 'appPreviewSets', attributes: { previewType: 'DESKTOP' },
+      relationships: { appStoreVersionLocalization: { data: { id: 'en-US' } } },
+    } })).data;
+    const stale = (await f.request('/v1/appPreviews', 'POST', { data: {
+      type: 'appPreviews', attributes: { fileName: 'stale.mp4', fileSize: 10 },
+      relationships: { appPreviewSet: { data: { id: set.id } } },
+    } })).data;
+    const args = { ...f, version: '2.1.1', platform: 'MAC_OS', versionId: 'version', transport: async () => ({ ok: true }) };
+    await expect(prepareSelectedMedia(args)).resolves.toMatchObject({ screenshots: 12, previews: 0 });
+    expect(f.assets.has(stale.id)).toBe(false);
+    await expect(assertSelectedMedia(args)).resolves.toMatchObject({ status: 'complete', previews: 0 });
   });
   it('never calls processing media ready or retries an ambiguous reservation POST', async () => {
     const f=fixture(); f.setProcessing();
