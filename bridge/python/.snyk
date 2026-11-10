@@ -1,0 +1,5 @@
+# Resolve the BLE manifest with the same Python minor as the verified runtime.
+# Snyk's Python 3.7 fallback can omit requirements for newer packages.
+version: v1.25.0
+language-settings:
+  python: '3.14'
