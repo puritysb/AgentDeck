@@ -364,17 +364,22 @@ export function parseSlashCommandPrompt(text?: string): SlashCommandInvocation |
   return { command: `/${m[1]}`, ...(args ? { args } : {}) };
 }
 
-const QUESTION_REPLY_ENVELOPE = /^\s*<send_user_message_question_reply>\s*([\s\S]*?)\s*<\/send_user_message_question_reply>\s*$/;
+const QUESTION_REPLY_OPEN = '<send_user_message_question_reply>';
+const QUESTION_REPLY_CLOSE = '</send_user_message_question_reply>';
 
 /** The user's own words from a Codex question-reply envelope: its JSON rows
  *  carry the question, an internal call id and the typed `answer`. Returns
  *  null when the text is not that envelope or holds no readable answer, so an
- *  unreadable envelope is shown as it arrived rather than as an empty turn. */
+ *  unreadable envelope is shown as it arrived rather than as an empty turn.
+ *  Plain string tests, not a pattern: the text is whatever an agent sent. */
 export function questionReplyAnswers(text: string): string | null {
-  const match = QUESTION_REPLY_ENVELOPE.exec(text);
-  if (!match) return null;
+  const trimmed = text.trim();
+  if (!trimmed.startsWith(QUESTION_REPLY_OPEN) || !trimmed.endsWith(QUESTION_REPLY_CLOSE) ||
+      trimmed.length < QUESTION_REPLY_OPEN.length + QUESTION_REPLY_CLOSE.length) return null;
+  const body = trimmed.slice(QUESTION_REPLY_OPEN.length, trimmed.length - QUESTION_REPLY_CLOSE.length);
+  if (body.includes(QUESTION_REPLY_CLOSE)) return null;
   let rows: unknown;
-  try { rows = JSON.parse(match[1]); } catch { return null; }
+  try { rows = JSON.parse(body); } catch { return null; }
   if (!Array.isArray(rows)) return null;
   const answers = rows
     .map(row => (row && typeof row === 'object' && typeof (row as { answer?: unknown }).answer === 'string'
