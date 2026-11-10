@@ -40,6 +40,16 @@ The submitted macOS app must not contain `Process()`, `/bin/sh`, AppleScript, ge
 
 The upgrade story exists in README, web, and developer documentation only. App Store UI must not tell users to install or launch a companion executable. CLI-only sections appear as progressive enhancement when an independently running external daemon is detected.
 
+## Node-only Hermes attention pilot
+
+The Node receiver can project top-level Hermes human-input hooks into the
+existing display-only awaiting states. The Swift receiver does not advertise
+`hermesAttention: 1`; its Hermes observation remains activity-only. A companion
+connected to Node receives the existing session-state fields, but this pilot
+does not attest native/mobile or physical-device rendering. It adds no reply
+path, request ID, approval choice or App Store subprocess. See
+[Hermes status scope](hermes-agent.md#node-only-human-input-status-pilot).
+
 ## Steering invariant
 
 All surfaces follow the same rule:

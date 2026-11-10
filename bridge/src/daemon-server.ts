@@ -247,7 +247,7 @@ import { CodexHookReplayGuard } from './codex-hook-replay.js';
 import { HookCodexSessions, buildCodexPermissionQuestion } from './hook-codex-sessions.js';
 import { HubStateDriverTracker, resolveHubFrameIdentity, shapeHubFrame } from './hub-state-identity.js';
 import { CodexAmbientSessions, isCodexBackgroundCwd } from './codex-ambient-hooks.js';
-import { HermesSessions } from './hermes-sessions.js';
+import { HermesSessions, isHermesAttentionEvent } from './hermes-sessions.js';
 import { ObservedTurnWatchdogs } from './observed-turn-watchdogs.js';
 import {
   getApmeInitFailure,
@@ -2308,6 +2308,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       res.end(JSON.stringify({
         status: 'ok', mode: 'daemon', state: snap.state, isSwift: false,
         hermesObserver: 1,
+        hermesAttention: 1,
+        hermesAttentionSnapshot: 1,
         gateway: gatewayAdapter?.isAlive() ? 'connected' : 'disconnected',
         // A link that keeps reconnecting reads `connected` at every sample.
         // This is the field that says the samples were lying (null = stable).
@@ -3708,6 +3710,12 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // Routes through APME collector the same way session bridge's hook-server does.
     if (req.method === 'POST' && pathname.startsWith('/hooks/')) {
       let eventName = pathname.slice('/hooks/'.length);
+      const hermesAttention = isHermesAttentionEvent(eventName);
+      if (hermesAttention && (!isLocalConnection(req.socket.remoteAddress ?? '') || localTrustOf(req) !== 'trusted')) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Hermes attention requires a trusted local producer' }));
+        return;
+      }
       let body = '';
       req.on('data', (c: Buffer) => { body += c; if (body.length > 1_000_000) req.destroy(); });
       req.on('end', async () => {
@@ -3716,6 +3724,15 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         try {
         let json: Record<string, unknown> = {};
         try { json = body ? JSON.parse(body) : {}; } catch { /* ignore */ }
+        if (hermesAttention) {
+          // Keep display updates outside harness attribution, turn accounting
+          // and control admission. The session tracker schedules the roster.
+          const received = json !== null && typeof json === 'object' && !Array.isArray(json)
+            && hermesSessions.note(eventName, json);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ received }));
+          return;
+        }
         // The hook shell's parent pid (`X-AgentDeck-Pid: $PPID` in the
         // installed snippet) — the only consent-free session→process link.
         // Carried inside the payload as `agentdeck_pid` so every consumer

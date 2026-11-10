@@ -370,6 +370,44 @@ Persistent memory is [profile-scoped and injected as a session-start snapshot](h
 A `memory` tool call alone is not proof that a write succeeded. This preview
 exports tool names only, so it deliberately makes no “learned a skill” claim.
 
+## Node-only human-input status pilot
+
+The Node receiver additionally advertises `hermesAttention: 1`. With the updated
+observer, Hermes's `on_human_input_request` / `on_human_input_resolved` hooks
+project an existing top-level conversation as waiting for input (`clarify`) or
+permission (`approval` / `sudo`). Automatic model approval review does not emit
+these human-wait hooks. Answer in Hermes; this adds no device approval, input
+injection, terminal steering, or new command route.
+
+The observer exports only the kind and a profile/session-scoped hash of the
+request ID, alongside existing session metadata. It exports no prompt, choices,
+command, answer, password, or outcome from these hooks. `liveAnswerable` stays
+false; no wire `requestId` or options are offered. Matching resolutions clear
+only their own wait, while turn/session boundaries clear outstanding waits.
+Unrelated tool activity cannot hide a pending request.
+
+This pilot does **not** add Swift receiver parity. Receivers without the new
+capability keep activity-only observation; `hermes-observer --check` reports
+the receiver's attention capability separately from activity readiness. That
+check cannot prove which hooks an already-running Hermes process loaded.
+Attention requires a Hermes runtime implementing both hooks. They were verified
+against Hermes commit `aa910ca036a9`; older releases and a minimum released
+version are not validated by this pilot.
+
+With `hermesAttentionSnapshot: 1`, the observer sends the current wait set
+on changes and refreshes active waits every three seconds. A fresh Node
+receiver can show an outstanding wait while the same Hermes process is alive.
+An empty set clears the display; a wait without refresh expires after twelve
+seconds, with up to one daemon sweep interval before a connected display updates.
+The snapshot can restore a display row, never an execution session or timeline
+event. No wait history is persisted. Older Node attention receivers still receive
+the request and resolution edges.
+
+Delegated-child attention is outside this top-level pilot. Missing Hermes
+callbacks are not replayed. Turn and session boundaries clear the source's wait
+set. Expiry is loss of observation, not a user response or a task outcome.
+Swift/mobile-host and physical-device acceptance remain separate work.
+
 ## Try the preview
 
 Requires an AgentDeck receiver advertising `hermesObserver: 1` in local health.

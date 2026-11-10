@@ -22,6 +22,15 @@ afterEach(async () => {
 });
 
 describe('Hermes setup readiness', () => {
+  it.each([undefined, 1])('distinguishes activity-only receivers from attention capability %s', async capability => {
+    const dir = home(); const daemon = await server({ mode: 'daemon', hermesObserver: 1, hermesAttention: capability });
+    installHermesObserver(dir, { port: daemon.port });
+    writeFileSync(join(dir, 'config.yaml'), 'plugins: {enabled: [agentdeck-observer]}');
+    expect(await collectHermesDiagnostic({ home: dir, dataDir: dir })).toMatchObject({
+      ok: true, receiver: 'supported', attention: capability === 1 ? 'supported' : 'activity-only',
+    });
+    expect(daemon.requests).toEqual(['GET /health']);
+  });
   it('reports both missing plugin and missing registry without assuming a default port', async () => {
     const dir = home();
     const result = await collectHermesDiagnostic({ home: dir, dataDir: dir });
