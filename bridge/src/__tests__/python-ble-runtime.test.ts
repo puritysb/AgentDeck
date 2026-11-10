@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
@@ -131,7 +132,46 @@ describe('optional Python BLE runtime', () => {
     };
 
     expect(getBleRuntimeStatus(options)).toMatchObject({ ready: false });
-    expect(() => ensureBleRuntime(options)).toThrow('cryptography >= 50.0.0');
+    expect(() => ensureBleRuntime(options)).toThrow('cryptography >= 50.0.2');
+  });
+
+  describe.each(['managed', 'legacy', 'override'] as const)('%s interpreter', (kind) => {
+    it.each([
+      ['50.0.0', false],
+      ['50.0.1', false],
+      ['50.0.2rc1', false],
+      ['50.0.2', true],
+      ['50.0.2.post1', true],
+      ['50.1', true],
+    ])('probes cryptography %s (ready: %s)', (version, ready) => {
+      const root = join(tempDir(), 'bridge');
+      const dataDir = join(root, '.data');
+      makePackage(root);
+      const base = { packageRoot: root, dataDir, env: {}, platform: 'linux' as const };
+      const paths = resolveBleRuntimePaths(base);
+      const override = join(root, 'external-python');
+      const python = kind === 'managed' ? paths.venvPython : kind === 'legacy' ? paths.legacyPython : override;
+      write(python);
+      if (kind === 'managed') ensureBleRuntime({ ...base, run: () => ({ status: 0 }) });
+
+      // Run the actual probe with fixture modules. No pip, network or BLE hardware.
+      for (const name of ['bleak', 'idotmatrix']) write(join(root, name + '.py'));
+      write(join(root, 'PIL.py'), '__version__ = "13.0.0"\n');
+      write(join(root, 'cryptography.py'), `__version__ = "${version}"\n`);
+      const status = getBleRuntimeStatus({
+        ...base,
+        env: kind === 'override' ? { AGENTDECK_BLE_PYTHON: override } : {},
+        run: (command, args, options) => {
+          expect(command).toBe(python);
+          const result = spawnSync(process.platform === 'win32' ? 'python' : 'python3', args, { ...options, cwd: root });
+          if (result.error) throw result.error;
+          return result;
+        },
+      });
+      expect(status.ready).toBe(ready);
+      if (ready) expect(status.python).toBe(python);
+      else expect(status.reason).toContain('cryptography >= 50.0.2');
+    });
   });
 
   it('rejects incompatible legacy and managed environments even with a matching marker', () => {

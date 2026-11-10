@@ -187,7 +187,10 @@ function readyMarkerMatches(paths: BleRuntimePaths): boolean {
   }
 }
 
-const BLE_DEPENDENCY_REQUIREMENTS = 'bleak, idotmatrix, Pillow >= 13.0.0, and cryptography >= 50.0.0';
+const PILLOW_MINIMUM = [13, 0, 0] as const;
+const CRYPTOGRAPHY_MINIMUM = [50, 0, 2] as const;
+const BLE_DEPENDENCY_REQUIREMENTS =
+  `bleak, idotmatrix, Pillow >= ${PILLOW_MINIMUM.join('.')}, and cryptography >= ${CRYPTOGRAPHY_MINIMUM.join('.')}`;
 
 /** Check the selected interpreter without installing anything. */
 export function getBleRuntimeStatus(options: BleRuntimeOptions = {}): BleRuntimeStatus {
@@ -263,13 +266,17 @@ import cryptography
 import idotmatrix
 import PIL
 
-def meets_minimum(version, minimum_major):
+def meets_minimum(version, minimum):
     # Accept stable releases, including post releases and local builds.
-    release = re.fullmatch(r"(\d+)(?:\.\d+)*(?:\.post\d+)?(?:\+[a-zA-Z0-9.]+)?", version)
-    return release is not None and int(release[1]) >= minimum_major
+    release = re.fullmatch(r"(\d+(?:\.\d+)*)(?:\.post\d+)?(?:\+[a-zA-Z0-9.]+)?", version)
+    if release is None:
+        return False
+    parts = tuple(map(int, release[1].split(".")))
+    return (parts + (0, 0, 0))[:3] >= minimum
 
 raise SystemExit(not (
-    meets_minimum(PIL.__version__, 13) and meets_minimum(cryptography.__version__, 50)
+    meets_minimum(PIL.__version__, (${PILLOW_MINIMUM.join(', ')}))
+    and meets_minimum(cryptography.__version__, (${CRYPTOGRAPHY_MINIMUM.join(', ')}))
 ))
 `], { timeout: 5_000 });
 }
