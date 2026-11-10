@@ -364,9 +364,31 @@ export function parseSlashCommandPrompt(text?: string): SlashCommandInvocation |
   return { command: `/${m[1]}`, ...(args ? { args } : {}) };
 }
 
+const QUESTION_REPLY_ENVELOPE = /^\s*<send_user_message_question_reply>\s*([\s\S]*?)\s*<\/send_user_message_question_reply>\s*$/;
+
+/** The user's own words from a Codex question-reply envelope: its JSON rows
+ *  carry the question, an internal call id and the typed `answer`. Returns
+ *  null when the text is not that envelope or holds no readable answer, so an
+ *  unreadable envelope is shown as it arrived rather than as an empty turn. */
+export function questionReplyAnswers(text: string): string | null {
+  const match = QUESTION_REPLY_ENVELOPE.exec(text);
+  if (!match) return null;
+  let rows: unknown;
+  try { rows = JSON.parse(match[1]); } catch { return null; }
+  if (!Array.isArray(rows)) return null;
+  const answers = rows
+    .map(row => (row && typeof row === 'object' && typeof (row as { answer?: unknown }).answer === 'string'
+      ? (row as { answer: string }).answer.trim() : ''))
+    .filter(Boolean);
+  return answers.length ? answers.join('\n') : null;
+}
+
 /** Normalize a prompt for timeline display: command XML envelopes collapse to
- *  their "/name args" form; everything else passes through unchanged. */
+ *  their "/name args" form and a question-reply envelope to the answer the
+ *  user typed; everything else passes through unchanged. */
 export function normalizeCommandPrompt(text: string): string {
+  const answers = questionReplyAnswers(text);
+  if (answers !== null) return answers;
   if (!text.includes('<command-name>')) return text;
   const cmd = parseSlashCommandPrompt(text);
   if (!cmd) return text;

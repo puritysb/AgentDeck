@@ -797,6 +797,15 @@ final class OpenClawToolNoiseTests: XCTestCase {
     func testNormalizeCommandPromptPassesOrdinaryTextThrough() {
         XCTAssertEqual(DaemonServer.normalizeCommandPrompt("/merge"), "/merge")
         XCTAssertEqual(DaemonServer.normalizeCommandPrompt("일반 프롬프트"), "일반 프롬프트")
+        // Codex question-reply envelope: the timeline shows what the user typed.
+        func wrap(_ body: String) -> String { "<send_user_message_question_reply>\n\(body)\n</send_user_message_question_reply>" }
+        let reply = #"[{"questionItemId":"[\"request_user_input_async\",\"call_ab53\",0]","question":"로그인한 뒤 알려 주세요.","answer":" 로그인 했다 "}]"#
+        XCTAssertEqual(DaemonServer.normalizeCommandPrompt(wrap(reply)), "로그인 했다")
+        for body in ["not json", "{}", "[]", #"[{"question":"q"}]"#, #"[{"answer":"  "}]"#] {
+            XCTAssertEqual(DaemonServer.normalizeCommandPrompt(wrap(body)), wrap(body))
+        }
+        XCTAssertEqual(DaemonServer.normalizeCommandPrompt("about <send_user_message_question_reply> tags"),
+                       "about <send_user_message_question_reply> tags")
     }
 
     // MARK: - Duration formatting (DaemonTimelineStore.formatDurationSec)

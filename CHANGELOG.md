@@ -45,6 +45,11 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- **Timeline.** An answer typed into a Codex question no longer appears as
+  its transport envelope with an internal call id and the question's JSON. The
+  row shows what the user typed. Applies to the Node and Mac daemons; rows
+  already stored keep their old text.
+
 ## 2026-11-10 — Apple 2.1.1
 
 **macOS Dashboard.** Work opens in the same window and puts sessions that need
