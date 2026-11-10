@@ -144,7 +144,7 @@ describe('2.1.0 store scope', () => {
       const listing = JSON.parse(readFileSync(resolve(ROOT, `apple/appstore-submission/metadata-${version}.json`), 'utf8'));
       expect(listing.version).toBe(version);
       const copy = extractReleaseCopy(readFileSync(resolve(ROOT, 'docs/appstore-metadata-draft.md'), 'utf8'),
-        readFileSync(resolve(ROOT, 'apple/APP_REVIEW_NOTES.md'), 'utf8').replaceAll('NEW IN 2.1.0', `NEW IN ${version}`), version, platform);
+        readFileSync(resolve(ROOT, 'apple/APP_REVIEW_NOTES.md'), 'utf8').replace(/^NEW IN \d+\.\d+\.\d+/gm, `NEW IN ${version}`), version, platform);
       for (const locale of ['en-US', 'ko', 'ja']) expect(listing.platforms[platform].localizations[locale].whatsNew).toBe(copy.whatsNew[locale]);
     });
 });

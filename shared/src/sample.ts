@@ -151,6 +151,8 @@ export interface RelationEvent extends TrajectoryEventBase {
   phase: 'open' | 'closed';
   /** Bare session id of the peer when resolvable. */
   peerSessionId?: string | null;
+  /** The message peer was uniquely resolved from a process address at capture. */
+  peerIdentity?: 'pid' | null;
   /** The name/handle the evidence carried (`from-name`, `to`, a command basename). */
   peerName?: string | null;
   /** Which observation produced this row (`process_ancestry`, `bash_claude_p`,

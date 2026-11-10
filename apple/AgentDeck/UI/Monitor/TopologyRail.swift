@@ -128,6 +128,10 @@ struct TopologyRail: View {
                 .font(.system(size: 11, weight: .bold, design: .monospaced))
                 .kerning(1.4)
                 .foregroundStyle(TerrariumHUD.subtext)
+                #if os(macOS)
+                .lineLimit(1)
+                .layoutPriority(1)
+                #endif
             Rectangle()
                 .fill(TerrariumHUD.tetraNeon.opacity(0.25))
                 .frame(height: 0.5)

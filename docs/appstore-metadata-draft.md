@@ -12,6 +12,32 @@ Copy-ready text for the App Store Connect submission form. Each field respects A
 **Content Rating**: 4+ (no user-generated content, no ads, no external links to age-restricted sites)
 **Price**: Free
 
+## Prepared macOS 2.1.1 update text
+
+### English — macOS What's New
+
+```text
+• Open Work from the Dashboard to see which sessions need your input. Select a task to see delegates, background jobs and confirmed handoffs.
+• Keep the selected task as you resize. Compact windows open the task from the list, and wider windows show the list and details side by side.
+• Open Usage & Services directly from Work. Open recent messages and the graph when you need them.
+```
+
+### Korean — macOS 새로운 기능
+
+```text
+• 대시보드의 Work에서 내 응답이 필요한 세션을 먼저 확인할 수 있습니다. 작업을 선택하면 위임, 백그라운드 작업, 확인된 인계가 표시됩니다.
+• 창 크기를 바꿔도 선택한 작업이 유지됩니다. 좁은 창에서는 목록에서 상세를 열고, 넓은 창에서는 목록과 상세를 나란히 봅니다.
+• Work에서 사용량과 서비스 상태를 바로 열 수 있습니다. 최근 메시지와 그래프는 필요할 때 열어 확인하세요.
+```
+
+### Japanese — macOS このバージョンの新機能
+
+```text
+• ダッシュボードの Work では、対応が必要なセッションが先に表示されます。タスクを選ぶと、委任先、バックグラウンドの処理、確認済みの引き継ぎが表示されます。
+• ウインドウのサイズを変えてもタスクの選択が維持されます。狭いウインドウでは一覧から詳細を開き、広いウインドウでは一覧と詳細が横に並びます。
+• Work から使用量とサービスの状態を直接確認できます。最近のメッセージとグラフは必要なときに開けます。
+```
+
 ## Prepared macOS 2.1.0 update text
 
 Patch-class follow-up to 2.0; promotional text and description are unchanged from 2.0.0. Full listing in

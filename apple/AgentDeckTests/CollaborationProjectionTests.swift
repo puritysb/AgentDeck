@@ -20,8 +20,8 @@ final class CollaborationProjectionTests: XCTestCase {
         """.utf8))
         let value = try sample("""
         [{"kind":"relation","ts":1,"relation":"spawned","direction":"out","phase":"closed","peerSessionId":"worker"},
-         {"kind":"relation","ts":2,"relation":"messaged","direction":"in","phase":"closed","peerSessionId":"waiting"},
-         {"kind":"relation","ts":3,"relation":"messaged","direction":"in","phase":"closed","peerSessionId":"worker"},
+         {"kind":"relation","ts":2,"relation":"messaged","direction":"in","phase":"closed","peerIdentity":"pid","peerSessionId":"waiting"},
+         {"kind":"relation","ts":3,"relation":"messaged","direction":"in","phase":"closed","peerIdentity":"pid","peerSessionId":"worker"},
          {"kind":"relation","ts":4,"relation":"spawned","direction":"in","phase":"open","peerSessionId":"parent"},
          {"kind":"relation","ts":5,"relation":"spawned","direction":"out","phase":"open","peerSessionId":"missing"},
          {"kind":"relation","ts":6,"relation":"spawned","direction":"out","phase":"open","peerSessionId":"unrelated","evidence":"bash_claude_p"}]
@@ -31,6 +31,22 @@ final class CollaborationProjectionTests: XCTestCase {
         XCTAssertEqual(peers.map(\.id), ["waiting", "worker"])
         XCTAssertEqual(peers.last?.state, "processing", "A historical close must not override live state")
         XCTAssertTrue(CollaborationProjection.relatedSessions([], roster: roster, excluding: "parent").isEmpty)
+    }
+
+    func testDashboardWorkSeparatesUserAttentionFromBackgroundActivity() throws {
+        let sessions = try JSONDecoder().decode([SessionInfo].self, from: Data("""
+        [{"id":"background","port":1,"alive":true,"state":"idle","backgroundTaskCount":1},
+         {"id":"approval","port":1,"alive":true,"state":"awaiting_permission","weight":100},
+         {"id":"question","port":1,"alive":true,"state":"awaiting_option"},
+         {"id":"quiet","port":1,"alive":true,"state":"idle","backgroundStandbyCount":1},
+         {"id":"gone","port":1,"alive":false,"state":"awaiting_permission"},
+         {"id":"unrecognized","port":1,"alive":true,"state":"awaiting_peer"},
+         {"id":"working","port":1,"alive":true,"state":"processing"}]
+        """.utf8))
+        let ordered = CollaborationProjection.prioritizedSessions(sessions)
+        XCTAssertEqual(ordered.filter(CollaborationProjection.needsInput).map(\.id), ["question", "approval"])
+        XCTAssertEqual(ordered.filter(CollaborationProjection.isWorking).map(\.id), ["background", "working"])
+        XCTAssertEqual(ordered.prefix(4).map(\.id), ["question", "approval", "background", "working"])
     }
 
     func testTaskHeadingKeepsTaskSeparateFromResultAndIgnoresBlankTitles() throws {
@@ -468,7 +484,7 @@ final class CollaborationFeedTests: XCTestCase {
         XCTAssertNil(feed.task)
     }
 
-    func testRenderCollaborationHistoryAtRailWidth() async throws {
+    func testRenderCollaborationHistoryAtCompactAndSplitWidths() async throws {
         let holder = AgentStateHolder()
         holder.stopConnectionAttempts()
         defer { holder.stopConnectionAttempts() }
@@ -490,9 +506,9 @@ final class CollaborationFeedTests: XCTestCase {
         await feed.observe(sessionId: "s1", port: 1)
         let inspection = DashboardInspection()
         inspection.select("s1", state: holder.state)
-        let view = CollaborationPanel(maxHeight: 1000, port: 1, feed: feed, inspectedID: "s1")
+        let view = CollaborationPanel(port: 1, feed: feed)
             .environmentObject(inspection)
-            .environmentObject(holder).frame(width: 390, height: 1000).environment(\.colorScheme, .dark)
+            .environmentObject(holder).environment(\.colorScheme, .dark)
         // Mounting the panel starts its own async observation. Wait for that
         // refresh rather than assuming a CI runner finishes it within 100 ms.
         let refreshed = expectation(description: "Mounted collaboration feed is ready")
@@ -510,14 +526,21 @@ final class CollaborationFeedTests: XCTestCase {
         XCTAssertEqual(holder.state.focusedSessionId, "s1")
         XCTAssertEqual(feed.state, .ready)
         XCTAssertEqual(feed.relations.count, 3)
-        hosting.layoutSubtreeIfNeeded()
-        let bitmap = try XCTUnwrap(hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds))
-        hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
-        let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
-        try png.write(to: URL(fileURLWithPath: "/tmp/agentdeck-collaboration-panel.png"))
-        let attachment = XCTAttachment(image: try XCTUnwrap(NSImage(data: png)))
-        attachment.lifetime = .keepAlways
-        add(attachment)
+        for width in [390, 920, 390] {
+            let size = NSSize(width: CGFloat(width), height: 720)
+            window.setContentSize(size)
+            hosting.frame = NSRect(origin: .zero, size: size)
+            hosting.layoutSubtreeIfNeeded()
+            XCTAssertEqual(inspection.sessionId, "s1")
+            XCTAssertEqual(feed.task?.id, "t1")
+            let bitmap = try XCTUnwrap(hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds))
+            hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+            let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+            let attachment = XCTAttachment(image: try XCTUnwrap(NSImage(data: png)))
+            attachment.name = "Work at \(width)pt"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
     }
 
     func testLatePreviousSelectionCannotOverwriteNewSelection() async {

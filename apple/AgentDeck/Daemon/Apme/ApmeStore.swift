@@ -1123,20 +1123,21 @@ final class ApmeStore: @unchecked Sendable {
     /// Bounded relation-only history; uses the existing (kind, ts) index.
     enum CommunicationReadError: Error { case unavailable, queryFailed }
 
-    func listCommunicationEvents(since: Int, limit: Int) throws -> [[String: Any]] {
+    func listCommunicationEvents(since: Int, limit: Int, until: Int = Int.max) throws -> [[String: Any]] {
         guard let db else { throw CommunicationReadError.unavailable }
         var stmt: OpaquePointer?
         let sql = """
             SELECT se.*, r.session_id FROM sample_events se
             JOIN runs r ON r.id = se.run_id
-            WHERE se.kind = 'relation' AND se.ts >= ?
+            WHERE se.kind = 'relation' AND se.ts BETWEEN ? AND ?
               AND json_extract(se.payload, '$.relation') = 'messaged'
             ORDER BY se.ts DESC, se.id DESC LIMIT ?
             """
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { throw CommunicationReadError.queryFailed }
         defer { sqlite3_finalize(stmt) }
         sqlite3_bind_int64(stmt, 1, Int64(since))
-        sqlite3_bind_int(stmt, 2, Int32(limit))
+        sqlite3_bind_int64(stmt, 2, Int64(until))
+        sqlite3_bind_int(stmt, 3, Int32(limit))
         var result: [[String: Any]] = []
         var step = sqlite3_step(stmt)
         while step == SQLITE_ROW {
@@ -1146,6 +1147,10 @@ final class ApmeStore: @unchecked Sendable {
             event["sessionId"] = row["session_id"]
             if let detail = event["detail"] as? String {
                 event["detail"] = String(detail.unicodeScalars.prefix(CollaborationPresentation.networkDetailCharacters))
+            }
+            for key in ["relationId", "peerSessionId", "peerName", "peerIdentity", "detail", "messageIntent", "messageFingerprint"]
+                where event[key] == nil {
+                event[key] = NSNull()
             }
             result.append(event)
             step = sqlite3_step(stmt)
@@ -1351,6 +1356,7 @@ final class ApmeStore: @unchecked Sendable {
             out["direction"] = (p["direction"] as? String) == "in" ? "in" : "out"
             out["phase"] = (p["phase"] as? String) == "closed" ? "closed" : "open"
             out["peerSessionId"] = p["peerSessionId"]
+            if p["peerIdentity"] as? String == "pid" { out["peerIdentity"] = "pid" }
             out["peerName"] = p["peerName"]
             out["evidence"] = p["evidence"] as? String ?? "unknown"
             out["detail"] = p["detail"]
@@ -1724,6 +1730,7 @@ final class ApmeStore: @unchecked Sendable {
         for sql in [
             "CREATE INDEX IF NOT EXISTS idx_steps_run_ts ON steps(run_id, ts)",
             "CREATE INDEX IF NOT EXISTS idx_sevents_run_ts ON sample_events(run_id, ts)",
+            "CREATE INDEX IF NOT EXISTS idx_sevents_kind_ts ON sample_events(kind, ts)",
             "CREATE INDEX IF NOT EXISTS idx_turns_run_started ON turns(run_id, started_at)",
             "CREATE INDEX IF NOT EXISTS idx_evals_task ON evals(task_id)",
             "CREATE INDEX IF NOT EXISTS idx_tasks_started ON tasks(started_at)",

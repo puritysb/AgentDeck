@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SCREENSHOTS="$ROOT/apple/appstore-submission/screenshots"
 PREVIEWS="$ROOT/apple/appstore-submission/previews"
 METADATA="$ROOT/docs/appstore-metadata-draft.md"
+MAC_211_MEDIA="$ROOT/apple/appstore-submission/2.1.1"
 
 failures=0
 
@@ -62,6 +63,8 @@ for locale in en ko ja; do
   validate_platform "macOS" "1280x800 1440x900 2560x1600 2880x1800"
   validate_platform "iPhone" "1242x2688 2688x1242 1284x2778 2778x1284"
   validate_platform "iPad" "2064x2752 2752x2064 2048x2732 2732x2048"
+  SCREENSHOTS="$MAC_211_MEDIA/screenshots/$locale"
+  validate_platform "macOS" "2560x1600"
 done
 
 probe_stream() {
@@ -84,7 +87,7 @@ validate_previews() {
   local directory="$PREVIEWS/$platform"
   local files=()
 
-  [[ -d "$directory" ]] || return
+  [[ -d "$directory" ]] || return 0
   if ! command -v ffprobe >/dev/null 2>&1; then
     fail "ffprobe is required to validate App Preview videos"
     return
@@ -140,6 +143,15 @@ validate_previews() {
 validate_previews "macOS" "1920x1080"
 validate_previews "iPhone" "886x1920 1920x886"
 validate_previews "iPad" "1200x1600 1600x1200"
+PREVIEWS="$MAC_211_MEDIA/previews"
+validate_previews "macOS" "1920x1080"
+if ! node --input-type=module -e '
+  import { pathToFileURL } from "node:url";
+  const module = await import(pathToFileURL(process.argv[1]));
+  module.selectedMedia("2.1.1", "MAC_OS");
+' "$ROOT/scripts/asc-release-media.mjs"; then
+  fail "The macOS 2.1.1 media selection does not match the repository"
+fi
 
 metadata_errors=0
 while IFS= read -r line; do

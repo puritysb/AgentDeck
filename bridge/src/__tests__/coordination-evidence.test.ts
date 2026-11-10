@@ -153,7 +153,7 @@ describe('CoordinationTracker', () => {
     expect(tracker.summary('parent-1')).toMatchObject({ backgroundJobs: 0 });
   });
 
-  it('resolves a message peer through the sender pid and learns its name', () => {
+  it('resolves a uniquely addressed process and keeps a name-only message unidentified', () => {
     const tracker = new CoordinationTracker(() => 7_000);
     tracker.observe([{ pid: 4240, ppid: 1, command: 'claude' }], [{ sessionId: 'sender-1', pid: 4240 }, { sessionId: 'receiver-1', pid: 999 }]);
     const inbound = tracker.noteMessageIn('receiver-1', ENVELOPE);
@@ -161,9 +161,9 @@ describe('CoordinationTracker', () => {
       relation: 'messaged', direction: 'in', phase: 'closed',
       peerSessionId: 'sender-1', peerName: 'agentdeck-06', evidence: 'cross_session_message',
     });
-    // A reply addressed by name now resolves to the session that name belongs to.
+    // A name-only destination is not evidence of a separate session.
     const reply = tracker.noteToolCall('receiver-1', 'SendMessage', { to: 'agentdeck-06', summary: 'done' });
-    expect(reply).toMatchObject({ direction: 'out', peerSessionId: 'sender-1', peerName: 'agentdeck-06', detail: 'done' });
+    expect(reply).toMatchObject({ direction: 'out', peerSessionId: null, peerName: 'agentdeck-06', detail: 'done' });
     expect(tracker.summary('receiver-1')).toMatchObject({ messagesIn: 1, messagesOut: 1, lastPeerName: 'agentdeck-06' });
     expect(tracker.noteMessageIn('receiver-1', 'plain prompt')).toBeNull();
     expect(tracker.noteToolCall('receiver-1', 'Read', { file_path: '/x' })).toBeNull();

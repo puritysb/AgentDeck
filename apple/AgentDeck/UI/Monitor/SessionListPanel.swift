@@ -68,15 +68,20 @@ struct SessionListPanel: View {
         let rows = Self.buildDisplayRows(entries)
 
         return VStack(alignment: .leading, spacing: 4) {
-            // Brand logo — stacked-deck mark + "AgentDeck" wordmark. Unified
-            // with the menubar brand direction so the same logo shape appears
-            // in both surfaces, just retinted (neon cyan for the aquarium
-            // HUD vs the menubar's system-primary).
+            // The Mac window header carries the brand. The mobile panel
+            // keeps its own wordmark.
             HStack(spacing: 6) {
+                #if os(macOS)
+                Text("Sessions")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(TerrariumHUD.text)
+                    .lineLimit(1)
+                #else
                 AgentDeckLogo(size: 20, color: TerrariumHUD.tetraNeon)
                 Text("AgentDeck")
                     .font(.system(size: 22, weight: .bold, design: .monospaced))
                     .foregroundStyle(TerrariumHUD.text)
+                #endif
                 Spacer(minLength: 4)
                 Text("\(entries.count) \(entries.count == 1 ? "session" : "sessions")")
                     .font(.system(size: 9, weight: .medium, design: .monospaced))

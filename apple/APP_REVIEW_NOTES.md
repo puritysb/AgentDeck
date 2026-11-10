@@ -644,15 +644,15 @@ Contact: admin@foundby.kr
 ```text
 NO ACCOUNT REQUIRED. Review on a clean Mac with only AgentDeck installed; no external process or terminal setup is required for these instructions.
 
-NEW IN 2.1.0 — MACOS ONLY
-Pairing settings can renew this Mac's pairing token; retired devices can request pairing again and still need explicit approval. Token custody across daemon handover, USB display discovery, Pixoo previews and Keychain storage for optional evaluation API keys are improved. No new entitlement. Dot is excluded.
+NEW IN 2.1.1 — MACOS ONLY
+Open Work in the Dashboard header. The list prioritizes sessions that need input. A selected task shows observed delegates, background jobs and confirmed handoffs when available. Resize the window to switch between task navigation and the side-by-side list and detail. The selection is preserved. The Work header opens Usage & Services. Recent message history and its graph open on demand.
 
 WHAT IT DOES
-The sandboxed Swift daemon monitors user-enabled agent integrations, serves Dashboard, pairs companions and evaluates turns. Users start agents independently. An optional experimental Collaboration view displays observed messages, not inferred project dependencies or automatic coordination.
+The sandboxed Swift daemon monitors user-enabled agent integrations, serves Dashboard, pairs companions and evaluates turns. Users start agents independently. Work presents observed activity and keeps unidentified message peers separate.
 
 REVIEW WITHOUT AGENTS OR HARDWARE
 1. Choose an aquarium appearance. Skip integrations/devices and choose Open Dashboard.
-2. Open Device Preview from the menu bar for bundled synthetic sessions and renderers.
+2. Select Work in the Dashboard header. On a clean Mac, an empty work list is expected. Open Device Preview from the menu bar for bundled synthetic sessions and renderers.
 3. Devices > Pair Device opens optional companion approval/QR pairing. Settings > Dashboard > Set Up AgentDeck reopens setup.
 
 SHORTCUTS / NOTIFICATIONS

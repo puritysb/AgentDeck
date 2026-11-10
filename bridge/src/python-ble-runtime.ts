@@ -4,7 +4,7 @@
  * The npm package owns the Python scripts, while the writable virtual
  * environment lives under ~/.agentdeck so a global npm upgrade cannot erase it.
  * Explicit BLE CLI commands may prepare the environment; daemon startup only
- * inspects it and never performs network installation on its own.
+ * validates the selected interpreter without installing packages.
  */
 
 import { spawnSync, type SpawnSyncOptions } from 'child_process';
@@ -187,10 +187,9 @@ function readyMarkerMatches(paths: BleRuntimePaths): boolean {
   }
 }
 
-/**
- * Read-only daemon probe. It deliberately does not run Python or install
- * packages, so daemon startup remains deterministic and offline-safe.
- */
+const BLE_DEPENDENCY_REQUIREMENTS = 'bleak, idotmatrix, Pillow >= 13.0.0, and cryptography >= 50.0.0';
+
+/** Check the selected interpreter without installing anything. */
 export function getBleRuntimeStatus(options: BleRuntimeOptions = {}): BleRuntimeStatus {
   const env = options.env ?? process.env;
   const platform = options.platform ?? process.platform;
@@ -205,24 +204,29 @@ export function getBleRuntimeStatus(options: BleRuntimeOptions = {}): BleRuntime
     };
   }
 
+  const run = options.run ?? defaultRun;
+  const checkedStatus = (python: string, repair: string): BleRuntimeStatus =>
+    dependencyProbe(run, python)
+      ? { ready: true, python, paths }
+      : { ready: false, paths, reason: `${python} must provide ${BLE_DEPENDENCY_REQUIREMENTS}; ${repair}` };
+
   const override = env.AGENTDECK_BLE_PYTHON;
   if (override) {
     return existsSync(override)
-      ? { ready: true, python: override, paths }
+      ? checkedStatus(override, `install the dependencies from ${paths.requirements}`)
       : { ready: false, paths, reason: `AGENTDECK_BLE_PYTHON does not exist: ${override}` };
   }
 
   if (existsSync(paths.venvPython) && readyMarkerMatches(paths)) {
     const rosetta = rosettaInterpreterReason(paths.venvPython, platform, hostArch);
-    if (!rosetta) return { ready: true, python: paths.venvPython, paths };
+    if (!rosetta) return checkedStatus(paths.venvPython, 'run `agentdeck ble setup` to repair it');
     return { ready: false, paths, reason: `${rosetta}; run \`agentdeck ble setup\` to rebuild it` };
   }
 
-  // Preserve source-checkout and pre-1.0.4 manual environments. An explicit BLE
-  // command will import-probe this interpreter before using it.
+  // Preserve compatible source-checkout and pre-1.0.4 manual environments.
   if (!existsSync(paths.venvPython) && existsSync(paths.legacyPython)) {
     const rosetta = rosettaInterpreterReason(paths.legacyPython, platform, hostArch);
-    if (!rosetta) return { ready: true, python: paths.legacyPython, paths };
+    if (!rosetta) return checkedStatus(paths.legacyPython, 'run `agentdeck ble setup` to prepare a managed environment');
     return { ready: false, paths, reason: `${rosetta}; run \`agentdeck ble setup\` to rebuild it` };
   }
 
@@ -252,10 +256,22 @@ function commandSucceeded(
 }
 
 function dependencyProbe(run: BleCommandRunner, python: string): boolean {
-  return commandSucceeded(run, python, [
-    '-c',
-    'import bleak; import PIL; import idotmatrix',
-  ]);
+  return commandSucceeded(run, python, ['-B', '-c', String.raw`
+import re
+import bleak
+import cryptography
+import idotmatrix
+import PIL
+
+def meets_minimum(version, minimum_major):
+    # Accept stable releases, including post releases and local builds.
+    release = re.fullmatch(r"(\d+)(?:\.\d+)*(?:\.post\d+)?(?:\+[a-zA-Z0-9.]+)?", version)
+    return release is not None and int(release[1]) >= minimum_major
+
+raise SystemExit(not (
+    meets_minimum(PIL.__version__, 13) and meets_minimum(cryptography.__version__, 50)
+))
+`], { timeout: 5_000 });
 }
 
 function systemPython(
@@ -321,7 +337,7 @@ export function ensureBleRuntime(options: BleRuntimeOptions = {}): BleRuntimeSta
     }
     if (!dependencyProbe(run, override)) {
       throw new Error(
-        `AGENTDECK_BLE_PYTHON cannot import bleak, Pillow, and idotmatrix: ${override}. ` +
+        `AGENTDECK_BLE_PYTHON must provide ${BLE_DEPENDENCY_REQUIREMENTS}: ${override}. ` +
         `Install the dependencies from ${paths.requirements}.`,
       );
     }
@@ -384,7 +400,7 @@ export function ensureBleRuntime(options: BleRuntimeOptions = {}): BleRuntimeSta
   ], { stdio: 'inherit' });
   if (install.error || install.status !== 0 || !dependencyProbe(run, paths.venvPython)) {
     throw new Error(
-      `Failed to install optional BLE dependencies. Retry with \`agentdeck ble setup\` ` +
+      `Failed to install optional BLE dependencies (${BLE_DEPENDENCY_REQUIREMENTS}). Retry with \`agentdeck ble setup\` ` +
       `or inspect ${paths.requirements}.`,
     );
   }
