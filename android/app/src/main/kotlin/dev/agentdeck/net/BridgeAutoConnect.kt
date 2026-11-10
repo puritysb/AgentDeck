@@ -184,7 +184,7 @@ fun BridgeAutoConnect(
             if (daemon == null) return@collectLatest
             if (!mayDial(daemon)) return@collectLatest
             autoConnectDebug { "mDNS dial: ${daemon.name} at ${PairingCredential.endpointOf(daemon.wsUrl())}" }
-            connection.connect(daemon.wsUrl(), daemon.fallbackWsUrl())
+            connection.autoConnect(daemon.wsUrl(), daemon.fallbackWsUrl())
         }
     }
 

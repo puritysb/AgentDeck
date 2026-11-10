@@ -38,6 +38,7 @@ enum class ConnectionStatus {
 
 class BridgeConnection internal constructor(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    private val usbUrl: String = BridgeConstants.LOCALHOST_WS_URL,
     private val nowMs: () -> Long = System::currentTimeMillis,
 ) {
 
@@ -85,6 +86,7 @@ class BridgeConnection internal constructor(
     @Volatile var pairedUrls: Map<String, String> = emptyMap()
     private var backoffMs = INITIAL_BACKOFF_MS
     private var shouldReconnect = false
+    private var allowUsbRecovery = false
     /** Secondary URL (NSD-resolved host) to try once the primary keeps failing; null when none. */
     private var fallbackUrl: String? = null
     /** Whether we've already switched to [fallbackUrl] this connect cycle. */
@@ -169,7 +171,10 @@ class BridgeConnection internal constructor(
         }.build()
     }
 
-    fun connect(requestedUrl: String, fallbackUrl: String? = null) {
+    fun connect(requestedUrl: String, fallbackUrl: String? = null) =
+        connect(requestedUrl, fallbackUrl, allowUsbRecovery = false)
+
+    private fun connect(requestedUrl: String, fallbackUrl: String?, allowUsbRecovery: Boolean) {
         // Reject malformed manual/saved endpoints before replacing a working socket.
         try {
             connectionRequest(requestedUrl)
@@ -180,6 +185,7 @@ class BridgeConnection internal constructor(
         }
         generation.incrementAndGet()
         _userStopped.value = false
+        this.allowUsbRecovery = allowUsbRecovery
         pairedUrls = PairingCredential.remember(pairedUrl, pairedUrls)
         val wsUrl = PairingCredential.resolveFromStore(requestedUrl, pairedUrls)
         if (!PairingCredential.isLoopback(wsUrl)) selectedUrl = wsUrl
@@ -243,10 +249,10 @@ class BridgeConnection internal constructor(
     fun sendInterrupt() = send(PluginCommands.interrupt())
     fun sendEscape() = send(PluginCommands.escape())
     fun sendQueryUsage() = send(PluginCommands.queryUsage())
-    /** Connect to a saved URL if not already connected. */
-    fun autoConnect(savedUrl: String?) {
-        if (!_userStopped.value && savedUrl != null && _status.value == ConnectionStatus.DISCONNECTED) {
-            connect(savedUrl)
+    /** Connect to a saved or discovered URL if not already connected. */
+    fun autoConnect(url: String?, fallbackUrl: String? = null) {
+        if (!_userStopped.value && url != null && _status.value == ConnectionStatus.DISCONNECTED) {
+            connect(url, fallbackUrl, allowUsbRecovery = true)
         }
     }
 
@@ -405,7 +411,16 @@ class BridgeConnection internal constructor(
                     loopbackTried = true, unauthorizedAt = _unauthorizedEndpoints.value,
                     savedUrl = null, nowMs = nowMs(),
                 )
-            ) connect(wsUrl)
+            ) {
+                // An automatic LAN refusal keeps its URL selected throughout the
+                // holdoff. Try USB before knocking again so a restored tunnel
+                // can recover without an app restart.
+                if (allowUsbRecovery && !isLocalhostUrl(wsUrl)) {
+                    connect(usbUrl, wsUrl, allowUsbRecovery = true)
+                } else {
+                    connect(wsUrl, null, allowUsbRecovery)
+                }
+            }
         }
     }
 
@@ -469,7 +484,7 @@ class BridgeConnection internal constructor(
                 delay(PairingCodeRules.CLIENT_RECONNECT_COOLDOWN_MS)
                 if (generation.get() == retryGeneration && selectedUrl == selected &&
                     _url.value == null && _status.value == ConnectionStatus.DISCONNECTED
-                ) connect(selected ?: currentUrl)
+                ) connect(selected ?: currentUrl, null, allowUsbRecovery)
             }
             return
         }
