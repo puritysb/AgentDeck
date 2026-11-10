@@ -16,6 +16,39 @@
 
 import SwiftUI
 
+/// Dashboard wordmark: the mark beside the monospaced product name. Every Apple
+/// dashboard uses this one definition, with `AgentDeckBrandRule` beneath it.
+struct AgentDeckWordmark: View {
+    var body: some View {
+        HStack(spacing: 6) {
+            AgentDeckLogo(size: 20, color: TerrariumHUD.tetraNeon)
+            Text("AgentDeck")
+                .font(.system(size: 22, weight: .bold, design: .monospaced))
+                .foregroundStyle(TerrariumHUD.text)
+                .lineLimit(1)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("AgentDeck")
+    }
+}
+
+/// The neon rule under the dashboard wordmark: a soft glow over a crisp bar,
+/// centred at 80% of the width it is given.
+struct AgentDeckBrandRule: View {
+    var body: some View {
+        Canvas { context, size in
+            let barWidth = size.width * 0.8
+            let x = (size.width - barWidth) / 2
+            context.fill(Path(roundedRect: CGRect(x: x, y: 0, width: barWidth, height: 3), cornerRadius: 1.5),
+                         with: .color(TerrariumHUD.tetraNeon.opacity(0.3)))
+            context.fill(Path(roundedRect: CGRect(x: x, y: 3, width: barWidth, height: 2), cornerRadius: 1),
+                         with: .color(TerrariumHUD.tetraNeon))
+        }
+        .frame(height: 5)
+        .accessibilityHidden(true)
+    }
+}
+
 struct AgentDeckLogo: View {
     var size: CGFloat = 16
     var color: Color = .primary

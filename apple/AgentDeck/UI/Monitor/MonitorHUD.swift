@@ -75,6 +75,8 @@ enum DashboardHUDLayout {
 
     #if os(macOS)
     static let headerHeight: CGFloat = 44
+    /// Room the Mac wordmark and its rule take above the session rail.
+    static let brandClearance: CGFloat = 38
 
     static func showsDashboardRails(availableWidth: CGFloat) -> Bool {
         availableWidth >= 640
@@ -259,7 +261,7 @@ struct MonitorHUD: View {
     #if os(macOS)
     private func macHUD(size: CGSize) -> some View {
         let edge = DashboardHUDLayout.edgePadding
-        let brandClearance: CGFloat = 38
+        let brandClearance = DashboardHUDLayout.brandClearance
         let hasRails = DashboardHUDLayout.showsDashboardRails(availableWidth: size.width)
         let showsUsage = hasRails && showsRightPanel
         let showSessions = hasRails && preferences.showSessionList

@@ -810,18 +810,6 @@ final class AquariumResidents {
         applyLabelLayout()
     }
 
-    /// Actual world pose projected through the same camera as resident labels.
-    /// Off-camera, removed and not-yet-loaded residents have no current anchor.
-    func communicationPosition(_ id: String, aspect: Float) -> SIMD2<Float>? {
-        guard let resident = residents[id], resident.isEnabled, let camera else { return nil }
-        let world = resident.position(relativeTo: nil)
-        let eye = camera.transformMatrix(relativeTo: nil).inverse * SIMD4<Float>(world, 1)
-        guard eye.z < -0.1 else { return nil }
-        let f = 1 / tan(camera.camera.fieldOfViewInDegrees * .pi / 360)
-        return SIMD2((eye.x * f / max(aspect, 0.1) / -eye.z + 1) / 2,
-                     (1 - eye.y * f / -eye.z) / 2)
-    }
-
     private var focusedID: String?
 
     private func rebuildLabel(for item: AquariumResident, on resident: Entity, compact: Bool) {

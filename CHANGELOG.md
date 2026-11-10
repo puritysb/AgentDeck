@@ -52,9 +52,14 @@ your input first. A compact window opens the selected task from the list.
 A wide window shows the list and details side by side. Resizing keeps the
 selection, and the Work header opens Usage & Services.
 
-Task details show delegates, background work and confirmed handoffs. Recent
-message history and its graph open on demand, with unidentified peers shown
-separately. The Dashboard keeps its session list, timeline and usage overview.
+Task details show delegates, background work and confirmed handoffs. The
+Dashboard keeps its session list, timeline and usage overview. The separate
+message history, its graph and the aquarium message currents are removed: they
+showed observed traffic between Claude sessions only, and no one could act on
+it from there.
+
+The Mac header now carries the same AgentDeck wordmark and rule as the iPhone,
+iPad and Android dashboards, on both Dashboard and Work.
 See [PR #748](https://github.com/puritysb/AgentDeck/pull/748).
 
 ## 2026-11-08 — npm 2.1.1

@@ -313,10 +313,7 @@ final class TerrariumRenderer {
 
     // MARK: - Draw (layer order matching Android ColorRenderer)
 
-    func draw(context: inout GraphicsContext, size: CGSize, includeHabitat: Bool = true, residentLabels: Bool = true,
-              communications: AquariumCommunications = .empty, communicationDate: Date = Date(),
-              communicationMotion: Bool = true, communicationLabels: Bool = true,
-              communicationLabelInsets: EdgeInsets = EdgeInsets()) {
+    func draw(context: inout GraphicsContext, size: CGSize, includeHabitat: Bool = true, residentLabels: Bool = true) {
         if size.height > 0 { canvasAspect = Float(size.width / size.height) }
         if includeHabitat {
             // Layer 1: Deep-sea 3-color gradient background
@@ -346,10 +343,6 @@ final class TerrariumRenderer {
             // Layer 6.5: Back-layer fish (behind creatures for 3D depth)
             tetra.drawBackLayer(context: &context, size: size)
         }
-
-        AquariumCommunicationDrawing.draw(context: &context, size: size, communications: communications,
-            date: communicationDate, reduceMotion: !communicationMotion, labels: false,
-            pose: { self.residentPose($0)?.center })
 
         // Layer 6.7: Focus halo (drawn behind every creature so the sprite
         // sits cleanly inside the glow). Driven by stateHolder's focused
@@ -434,21 +427,6 @@ final class TerrariumRenderer {
 
             // Layer 10.5: Water surface line
             waterSurface.draw(context: &context, size: size)
-        }
-
-        // Currents stay behind residents, but their captions must remain legible
-        // above sprites and outside HUD rails. Exclude each visible body and tag.
-        if communicationLabels, !communications.currents.isEmpty {
-            var obstacles: [CGRect] = []
-            for item in AquariumResident.project(lastState ?? TerrariumState()) {
-                guard let pose = residentPose(item.id) else { continue }
-                let r = CGFloat(pose.radius)*size.width
-                obstacles.append(CGRect(x: CGFloat(pose.center.x)*size.width-r-8,
-                    y: CGFloat(pose.center.y)*size.height-r-24, width: r*2+16, height: r*2+40))
-            }
-            AquariumCommunicationDrawing.draw(context: &context, size: size, communications: communications,
-                date: communicationDate, reduceMotion: !communicationMotion, labels: true, traces: false,
-                labelInsets: communicationLabelInsets, avoiding: obstacles, pose: { self.residentPose($0)?.center })
         }
 
         // Layer 11: Error tint overlay

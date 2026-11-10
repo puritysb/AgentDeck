@@ -46,7 +46,6 @@ struct MonitorScreen: View {
     @EnvironmentObject private var daemonService: DaemonService
     @Environment(\.openWindow) private var openWindow
     @StateObject private var communications = CommunicationFeed()
-    @State private var showsMessages = false
     @State private var showsUsage = false
     @State private var showsSessions = false
     @State private var showsWork = false
@@ -160,11 +159,6 @@ struct MonitorScreen: View {
             } message: {
                 Text(sessionOpenError ?? "")
             }
-            .sheet(isPresented: $showsMessages) {
-                DashboardMessageHistory(feed: communications, roster: stateHolder.state.siblingSessions,
-                                        selectedID: inspection.sessionId,
-                                        inspect: { inspection.select($0, state: stateHolder.state) })
-            }
             .onChange(of: inspection.sessionId) { _, id in
                 showsSessions = false
                 if id != nil {
@@ -176,7 +170,7 @@ struct MonitorScreen: View {
                 AquariumWindowActivityReader(renderingEnabled: $aquariumRenderingEnabled)
                     .allowsHitTesting(false)
             }
-            .task(id: "\(communicationPort)|\(stateHolder.state.bridgeConnected)|\(communications.refreshID)|\(readsCommunications)") {
+            .task(id: "\(communicationPort)|\(stateHolder.state.bridgeConnected)|\(readsCommunications)") {
                 guard readsCommunications else { return }
                 await communications.observe(port: communicationPort, connected: stateHolder.state.bridgeConnected)
             }
@@ -224,7 +218,7 @@ struct MonitorScreen: View {
                 if !hudHidden {
                     VStack(alignment: .leading, spacing: 2) {
                         dashboardHeader(width: geo.size.width)
-                        dashboardBrand.padding(.leading, DashboardHUDLayout.edgePadding)
+                        dashboardBrand(width: geo.size.width).padding(.leading, DashboardHUDLayout.edgePadding)
                         Spacer(minLength: 0)
                     }
                 }
@@ -301,7 +295,7 @@ struct MonitorScreen: View {
     #endif
 
     #if os(macOS)
-    private var readsCommunications: Bool { showsMessages || (showsWork && inspection.sessionId != nil) }
+    private var readsCommunications: Bool { showsWork && inspection.sessionId != nil }
 
     private var workScreen: some View {
         ZStack(alignment: .top) {
@@ -318,13 +312,14 @@ struct MonitorScreen: View {
         }
     }
 
-    private var dashboardBrand: some View {
-        HStack(spacing: 7) {
-            AgentDeckLogo(size: 32, color: DesignTokens.UI.cyan).accessibilityHidden(true)
-            Text("AgentDeck").font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(DesignTokens.Tide.s50)
+    /// Same lockup as the iPhone, iPad and Android dashboards: wordmark with the
+    /// neon rule beneath it, at the width of the session rail it sits above.
+    private func dashboardBrand(width: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            AgentDeckWordmark()
+            AgentDeckBrandRule()
         }
-        .accessibilityElement(children: .combine)
+        .frame(width: DashboardHUDLayout.sessionPanelWidth(availableWidth: width), alignment: .leading)
         .accessibilityIdentifier("dashboard-brand")
     }
 
@@ -377,11 +372,6 @@ struct MonitorScreen: View {
                 .contentShape(Rectangle())
                 .gesture(WindowDragGesture())
                 .accessibilityHidden(true)
-            Button { showsMessages = true } label: {
-                Label("Messages", systemImage: "bubble.left.and.bubble.right")
-                    .modifier(DashboardHeaderLabel(compact: width < 560))
-            }
-            .accessibilityIdentifier("dashboard-messages")
             if !showsWork && preferences.showSessionList && !DashboardHUDLayout.showsDashboardRails(availableWidth: width) {
                 Button { showsSessions.toggle() } label: {
                     Label("Sessions", systemImage: "list.bullet").labelStyle(.iconOnly)
