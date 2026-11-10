@@ -90,11 +90,46 @@ class BridgeConnectionRecoveryTest {
         }
     }
 
-    private class Fixture(code: Int = 503) : AutoCloseable {
+    @Test fun `automatic LAN refusal recovers over a restored USB tunnel`() {
+        Peer(host = "127.0.0.1").use { usb ->
+            Fixture(401, usb.url).use { f ->
+                f.connection.autoConnect(f.server.url)
+                f.await { f.connection.unauthorizedEndpoints.value.isNotEmpty() }
+                usb.approved = true
+                f.clock.advanceTimeBy(PairingCodeRules.CLIENT_RECONNECT_COOLDOWN_MS)
+                f.await { f.connection.status.value == ConnectionStatus.CONNECTED }
+                assertEquals(usb.url, f.connection.url.value)
+                assertEquals(f.server.url, f.connection.selectedUrl)
+                assertEquals(1, f.server.requests.get())
+            }
+        }
+    }
+
+    @Test fun `automatic LAN approval still works when USB cannot connect`() {
+        Peer(host = "127.0.0.1").use { usb ->
+            Fixture(401, usb.url).use { f ->
+                f.connection.autoConnect(f.server.url)
+                f.await { f.connection.unauthorizedEndpoints.value.isNotEmpty() }
+                f.server.approved = true
+                f.clock.advanceTimeBy(PairingCodeRules.CLIENT_RECONNECT_COOLDOWN_MS)
+                for (attempt in 1..2) {
+                    f.await { usb.requests.get() >= attempt && f.connection.status.value == ConnectionStatus.DISCONNECTED }
+                    f.clock.advanceTimeBy(1_000)
+                }
+                f.await { f.connection.status.value == ConnectionStatus.CONNECTED }
+                assertEquals(f.server.url, f.connection.url.value)
+            }
+        }
+    }
+
+    private class Fixture(
+        code: Int = 503,
+        usbUrl: String = BridgeConstants.LOCALHOST_WS_URL,
+    ) : AutoCloseable {
         val server = Peer(code)
         val clock = TestCoroutineScheduler()
         private val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(clock))
-        val connection = BridgeConnection(scope) { clock.currentTime }
+        val connection = BridgeConnection(scope, usbUrl) { clock.currentTime }
 
         fun await(predicate: () -> Boolean) {
             val deadline = System.nanoTime() + 5_000_000_000L
@@ -129,10 +164,10 @@ class BridgeConnectionRecoveryTest {
         }
     }
 
-    private class Peer(private val code: Int = 503) : AutoCloseable {
-        private val listener = ServerSocket(0, 8, InetAddress.getByName("::1"))
+    private class Peer(private val code: Int = 503, host: String = "::1") : AutoCloseable {
+        private val listener = ServerSocket(0, 8, InetAddress.getByName(host))
         private val peers = CopyOnWriteArrayList<Socket>()
-        val url = "ws://[::1]:${listener.localPort}"
+        val url = "ws://${if (host.contains(':')) "[$host]" else host}:${listener.localPort}"
         val requests = AtomicInteger()
         @Volatile var approved = false
         private val worker = thread(isDaemon = true) {
