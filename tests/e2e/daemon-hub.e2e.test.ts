@@ -615,6 +615,55 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
     } finally { client.close(); }
   });
 
+  it('reports Hermes human waits without controls, Claude attribution or synthetic task events', async () => {
+    const sid = `hermes-${'d'.repeat(32)}`;
+    const base = { session_id: sid, pid: daemon.child.pid };
+    const input = { ...base, kind: 'clarify', attention_id: `hermes-input-${'e'.repeat(32)}` };
+    const client = await connect(daemon.port);
+    const current = () => client.frames.filter(f => f.type === 'sessions_list').at(-1)?.sessions as Array<Record<string, unknown>> | undefined;
+    try {
+      expect(await health(daemon.port)).toMatchObject({ hermesObserver: 1, hermesAttention: 1, hermesAttentionSnapshot: 1 });
+      const snapshotEvent = 'hermes_human_input_snapshot';
+      const beforeSnapshot = client.frames.length;
+      const browserPost = await fetch(`http://127.0.0.1:${daemon.port}/hooks/${snapshotEvent}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: 'https://elsewhere.example',
+          Authorization: `Bearer ${(await health(daemon.port)).pairingToken}` },
+        body: JSON.stringify({ ...base, inputs: [input] }),
+      });
+      expect(browserPost.status).toBe(403);
+      expect(await browserPost.json()).toMatchObject({ error: 'Hermes attention requires a trusted local producer' });
+      await postHook(daemon.port, snapshotEvent, { ...base, inputs: [input] });
+      const recovered = await waitFor('recovered Hermes wait without a prompt', () => current()?.find(r =>
+        r.id === `observed:hermes:${sid}` && r.state === 'awaiting_option'));
+      expect(recovered).toMatchObject({ agentType: 'hermes', liveAnswerable: false, controlMode: 'observed' });
+      expect(recovered).not.toHaveProperty('requestId');
+      await postHook(daemon.port, snapshotEvent, { ...base, inputs: [] });
+      await waitFor('cleared snapshot leaves no execution row', () => current()?.every(r => r.id !== `observed:hermes:${sid}`));
+      expect(client.frames.slice(beforeSnapshot).filter(f => f.type === 'timeline_event')).toEqual([]);
+      expect(await (await postHook(daemon.port, 'hermes_human_input_request', input)).json()).toMatchObject({ received: false });
+      await postHook(daemon.port, 'hermes_user_prompt_submit', { ...base, prompt: 'Hermes status test' });
+      await waitFor('Hermes execution row', () => current()?.some(r => r.id === `observed:hermes:${sid}`));
+      const before = client.frames.length;
+      await postHook(daemon.port, 'hermes_human_input_request', { ...input, prompt: 'PRIVATE', options: ['allow'], requestId: 'private' });
+      const waiting = await waitFor('display-only Hermes question', () => current()?.find(r => r.id === `observed:hermes:${sid}` && r.state === 'awaiting_option'));
+      expect(waiting).toMatchObject({ agentType: 'hermes', liveAnswerable: false, controlMode: 'observed' });
+      expect(waiting).not.toHaveProperty('requestId');
+      expect(waiting).not.toHaveProperty('options');
+      expect(JSON.stringify(waiting)).not.toContain('PRIVATE');
+      await postHook(daemon.port, 'hermes_human_input_resolved', input);
+      await waitFor('Hermes resumes after input', () => current()?.some(r => r.id === `observed:hermes:${sid}` && r.state === 'processing'));
+      expect(client.frames.slice(before).filter(f => f.type === 'timeline_event')).toEqual([]);
+      expect(current()?.some(r => r.agentType === 'claude-code')).toBe(false);
+      await postHook(daemon.port, 'hermes_stop', base);
+      await waitFor('Hermes stopped idle', () => current()?.some(r => r.id === `observed:hermes:${sid}` && r.state === 'idle'));
+      expect(await (await postHook(daemon.port, 'hermes_human_input_request', input)).json()).toMatchObject({ received: false });
+    } finally {
+      await postHook(daemon.port, 'hermes_session_end', base);
+      client.close();
+    }
+  });
+
   it('replays real Hermes CLI/Gateway captures without calling cancelled turns completed', async () => {
     const capture = JSON.parse(readFileSync(join(ROOT, 'bridge/src/__tests__/fixtures/hermes-live-lifecycle.json'), 'utf8'));
     const client = await connect(daemon.port);
