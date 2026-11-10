@@ -45,6 +45,19 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- **T-Embed knob (experimental).** The knob now rests on a pager home instead
+  of one session's card: a large `N NEED YOU`, `N WORKING` or `ALL CLEAR`, the
+  oldest request's project and question, and eight dots in ring-LED order.
+  One press opens a waiting request's card. Turning shows the session roster
+  as before, and an untouched list returns home after 20 seconds. Rendered in
+  the simulator; not yet flashed to a board.
+- **T-Display-S3-Pro strip (experimental).** The strip now rests on a session
+  board: one column per session, six across, with a state band and the
+  session's current line. Tap a lane to open it in Focus. The rocker hints no
+  longer lose their last letter. Rendered in the simulator; not yet flashed.
+- **4.2-inch e-ink.** A waiting session's question wraps to as many lines as
+  fit instead of being cut to one.
+
 ## 2026-11-10 — Apple 2.1.1
 
 **macOS Dashboard.** Work opens in the same window and puts sessions that need

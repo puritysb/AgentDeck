@@ -37,6 +37,15 @@ static bool verifyCompanionInteractions(const char* outdir) {
     Companion::copy(g_state.sessions[2].requestId, "request-two");
     Companion::copy(g_state.sessions[2].projectName, "Second project");
 #if defined(BOARD_T_EMBED)
+    // Pager home: the resting screen names what needs the operator. One press
+    // opens the oldest request's card and sends nothing.
+    tick(); assert(visibleText(lv_screen_active(), "2 NEED YOU")); shot("knob-home");
+    SimCommands::reset(); Knob::onKey(Input::KeyEvent::SHORT_PRESS); tick();
+    assert(SimCommands::count() == 0 && Knob::selectedSessionIdx() == 1);
+    assert(visibleText(lv_screen_active(), "NEEDS INPUT"));
+    // An untouched card returns home and the default selection comes back.
+    SimDisplay::tick(20001); tick();
+    assert(visibleText(lv_screen_active(), "2 NEED YOU"));
     tick(); assert(Knob::selectedSessionIdx() == 0); // full roster stays on the current assistant
     Knob::onRotate(3); tick(); // explicit waiting-requests shortcut
     Knob::onKey(Input::KeyEvent::SHORT_PRESS); tick();
@@ -92,6 +101,11 @@ static bool verifyCompanionInteractions(const char* outdir) {
         g_state.addTimelineEntry(event);
     };
     result("The previous result stays readable");
+    // The strip rests on the session board; one lane per session.
+    tick(); assert(Ticker::currentPage() == 2);
+    assert(visibleText(lv_screen_active(), "Pinned project") && visibleText(lv_screen_active(), "WORK"));
+    shot("ticker-board");
+    Ticker::onTouch({Input::TouchGesture::TAP, 30, 27}); // FOCUS tab
     tick(); assert(Ticker::isPinned()); // first focus is pinned automatically
     const std::string pinned = Ticker::displayedSessionId();
     g_state.sessionCount = 3;
@@ -105,16 +119,19 @@ static bool verifyCompanionInteractions(const char* outdir) {
     Ticker::onTouch({Input::TouchGesture::TAP, 280, 27}); tick();
     assert(Ticker::currentPage() == 2); tick(); assert(Ticker::currentPage() == 2); // no forced page theft
     shot("ticker-waiting");
-    // Every row remains reachable when there are more than three requests.
-    for (unsigned i = 3; i < 7; ++i) {
+    // Every lane remains reachable when there are more requests than lanes.
+    for (unsigned i = 3; i < 9; ++i) {
         g_state.sessions[i] = g_state.sessions[1];
         snprintf(g_state.sessions[i].id, sizeof(g_state.sessions[i].id), "wait-%u", i);
         snprintf(g_state.sessions[i].projectName, sizeof(g_state.sessions[i].projectName), "Waiting project %u", i);
     }
-    g_state.sessionCount = 7; tick();
+    g_state.sessionCount = 9; tick();
+    assert(visibleText(lv_screen_active(), "1-6 / 8")); shot("ticker-board-waiting");
     Ticker::onTouch({Input::TouchGesture::TAP, 80, 198}); tick();
-    assert(visibleText(lv_screen_active(), "4-6 / 6"));
-    Ticker::onTouch({Input::TouchGesture::TAP, 140, 60}); tick();
+    assert(visibleText(lv_screen_active(), "7-8 / 8"));
+    Ticker::onTouch({Input::TouchGesture::TAP, 80, 198}); tick();
+    assert(visibleText(lv_screen_active(), "1-6 / 8"));
+    Ticker::onTouch({Input::TouchGesture::TAP, 280, 100}); tick(); // fourth lane
     assert(!strcmp(Ticker::displayedSessionId(), "wait-4"));
     auto& gate = g_state.sessions[4]; gate.requestId[0] = '\0';
     Companion::copy(gate.promptType, "yes_no"); gate.optionCount = 2; tick(); SimCommands::reset();
