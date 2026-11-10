@@ -39,7 +39,7 @@ internal class AquariumResidentOverlay(context: Context) {
         if (item.ciWait != null && item.state != OctopusVisualState.ASKING) {
             paint.color = ciCompanionColor(item.ciWait).toArgb()
             paint.textAlign = Paint.Align.CENTER; paint.typeface = bold; paint.textSize = max(12f*density, unit*.3f)
-            val mark = when (item.ciWait.phase) { "passed" -> "✓"; "failed" -> "!"; "unknown" -> "?"; else -> "CI" }
+            val mark = when (item.ciWait.phase) { "passed" -> "✓"; "failed" -> "!"; else -> "CI" }
             canvas.drawText(mark, bodyX+unit*.8f, bodyY, paint)
         }
         if (item.state == OctopusVisualState.WORKING && item.ciWait?.agentWaiting != true && (item.backgroundTaskCount ?: 0) == 0) {

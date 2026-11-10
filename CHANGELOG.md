@@ -45,6 +45,15 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- **CI wait.** A pull request whose checks include a skipped or neutral run
+  no longer stays at an unread CI state for as long as the agent watches it.
+  Those runs are left out of the verdict and the passed/total count, as
+  `gh pr checks` does; a cancelled run still withholds a verdict. The Node
+  daemon also reads a full page of checks, so commits with more than 30 are
+  covered. An unread wait now says WAIT in the aquarium as it does on deck
+  keys, without a question mark. Applies to the Node and Mac daemons, and to
+  the Mac and Android aquariums.
+
 ## 2026-11-10 — Apple 2.1.1
 
 **macOS Dashboard.** Work opens in the same window and puts sessions that need

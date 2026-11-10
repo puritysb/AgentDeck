@@ -13,6 +13,7 @@ enum GitHubCIPolicy {
     static let maxConcurrent = 4
     static let maxRepositories = 32
     static let maxBackoffSeconds = 86400
+    static let nonBlockingConclusions = ["skipped","neutral"]
     static let maxIdentityChars = 255
     static let maxId: Double = 9007199254740991
     static let repoPattern = "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"

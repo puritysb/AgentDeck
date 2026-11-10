@@ -76,6 +76,7 @@ export * from './dot-interactions.js';
 export * from './dot-deck.js';
 export * from './daemon-parity.js';
 export * from './ci-wait.js';
+export * from './ci-provider-policy.js';
 
 export * from './session-settings-client.js';
 

@@ -8,7 +8,7 @@ import * as rules from '../ci-wait.js';
 import { CI_PROVIDER_POLICY } from '../ci-provider-policy.js';
 import { emitPolicy, OUTPUT as PROVIDER_OUTPUT } from '../../../scripts/generate-ci-provider.mjs';
 import sharp from 'sharp';
-import { ciPhaseFromResponse } from '../../../bridge/src/ci-wait-probe.js';
+import { ciCheckNonBlocking, ciPhaseFromResponse } from '../../../bridge/src/ci-wait-probe.js';
 import projection from '../../ci-wait-projection-vectors.json';
 import { createHash } from 'node:crypto';
 import { CI_GITHUB_GLYPH, CI_GITHUB_GLYPH_SOURCE_SHA256 } from '../ci-github-glyph.generated.js';
@@ -35,13 +35,16 @@ let data = FileHandle.standardInput.readDataToEndOfFile()
 let input = try JSONSerialization.jsonObject(with:data) as! [String:Any]
 let phases = (input["vectors"] as! [[String:Any]]).map { GitHubCIClient.phase($0) }
 let groups = (input["groups"] as! [[String]]).map { GitHubCIClient.combine($0).phase }
-FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:["phases":phases,"groups":groups]))
+let skipped = (input["vectors"] as! [[String:Any]]).map { GitHubCIClient.nonBlocking($0) }
+FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:["phases":phases,"groups":groups,"skipped":skipped]))
 `);
       execFileSync('xcrun',['swiftc','-swift-version','6','-module-cache-path',join(dir,'modules'),
         join(root,PROVIDER_OUTPUT),join(root,'apple/AgentDeck/Daemon/Session/GitHubCIClient.swift'),main,'-o',join(dir,'probe')],{timeout:90_000,stdio:'pipe'});
       const actual = JSON.parse(execFileSync(join(dir,'probe'),[],{input:JSON.stringify({vectors,groups}),encoding:'utf8',timeout:10_000}));
       expect(actual.phases).toEqual(vectors.map(ciPhaseFromResponse));
       expect(actual.groups).toEqual(expectedGroups);
+      expect(actual.skipped).toEqual(vectors.map(ciCheckNonBlocking));
+      expect(vectors.filter(ciCheckNonBlocking)).toEqual([{ status: 'completed', conclusion: 'skipped' }, { status: 'completed', conclusion: 'neutral' }]);
     } finally { rmSync(dir,{recursive:true,force:true}); }
   },120_000);
   it('clears inactive pending phase evidence while preserving terminal verdicts', () => {
