@@ -127,7 +127,11 @@ export class HermesSessions {
     const entry = this.sessions.get(sid);
     if (inputs.size && (entry?.stopped || this.ended.has(sid))) return false;
     // A live snapshot supersedes the old edge-only display for this session.
-    if (entry) clearInputs(entry);
+    if (entry) {
+      clearInputs(entry);
+      // A refreshed wait is activity for an existing run, even without tool hooks.
+      if (inputs.size) entry.lastAt = now;
+    }
     this.attention.delete(sid);
     if (inputs.size) this.attention.set(sid, { inputs, expiresAt: now + HERMES_ATTENTION_LEASE_MS });
     while (this.attention.size > MAX_SESSIONS) this.attention.delete(this.attention.keys().next().value!);

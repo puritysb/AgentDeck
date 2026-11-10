@@ -30,6 +30,26 @@ describe('Hermes human-input status (Node only)', () => {
     expect(expired).not.toHaveBeenCalled();
   });
 
+  it('keeps an existing run open while snapshots refresh past the silence TTL', () => {
+    const s = open();
+    const expired = vi.fn();
+    s.onExpired = expired;
+    const event = 'hermes_human_input_snapshot';
+    const snapshot = { session_id, inputs: [input()] };
+    const startedAt = row(s).startedAt;
+    const afterTtl = HERMES_SILENCE_TTL_MS + 3_000;
+    for (let now = 3_000; now <= afterTtl; now += 3_000) {
+      s.note(event, snapshot, now);
+      s.applyTo([], now);
+    }
+    expect(row(s, afterTtl)).toMatchObject({ state: 'awaiting_option', startedAt });
+    s.note(event, { session_id, inputs: [] }, afterTtl + 1);
+    expect(row(s, afterTtl + 1)).toMatchObject({ state: 'processing', startedAt });
+    expect(expired).not.toHaveBeenCalled();
+    expect(row(s, afterTtl + HERMES_SILENCE_TTL_MS)).toBeUndefined();
+    expect(expired).toHaveBeenCalledExactlyOnceWith(session_id);
+  });
+
   it('applies empty snapshots without creating an execution row', () => {
     const s = new HermesSessions();
     const event = 'hermes_human_input_snapshot';
