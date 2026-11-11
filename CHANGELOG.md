@@ -76,6 +76,12 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 - **4.2-inch e-ink.** A waiting session's question wraps to as many lines as
   fit instead of being cut to one.
 
+## 2026-11-11 — Android 2.1.1
+
+- Retry USB after an automatically selected Wi-Fi connection refuses
+  authentication. The app can reconnect when the USB tunnel comes back without
+  requiring a restart ([#760](https://github.com/puritysb/AgentDeck/pull/760)).
+
 ## 2026-11-11 — npm 2.1.2
 
 - Update the Node daemon's WebSocket dependency to `ws` 8.22.1, which includes

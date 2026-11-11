@@ -247,6 +247,31 @@ Apple, Android, ESP32, Stream Deck and Ulanzi delivery versions were unchanged;
 root `VERSION` remains 2.0.0. No other channel was tagged or uploaded in this
 delivery.
 
+### Android 2.1.1 delivery 2026-11-11
+
+Android 2.1.1 (build 32) is a patch for USB reconnect after an automatically
+selected Wi-Fi endpoint refuses authentication. Both artifacts use the Android
+source from `358dd683`, which merged [PR #760](https://github.com/puritysb/AgentDeck/pull/760),
+with the version set to 2.1.1 (32). The GitHub tag points to release commit
+`986adc64`. Subsequent changes on master are outside these published binaries.
+
+| Channel | Verified delivery |
+| --- | --- |
+| Google Play | Build 32 was published to internal testing at 09:14 KST. The same AAB was promoted to production at 23:24 KST, with a 100% rollout across 178 countries and regions. The Korean [public listing](https://play.google.com/store/apps/details?id=dev.agentdeck&gl=KR) showed 2.1.1 and the USB reconnect notes. AAB SHA-256 `fcf71e48fa462c4e6b61337f9cc8052634ea41f759937944ab1a6da020416e36`. |
+| GitHub APK | [Release](https://github.com/puritysb/AgentDeck/releases/tag/android-v2.1.1) published at 23:56 KST after [release CI](https://github.com/puritysb/AgentDeck/actions/runs/43042327581) built and verified the signed APK. Downloaded APK SHA-256 `746fc855e7773e298a0c33a11fd139fc29850894208d1d0a1a42ff179141c12d`. |
+
+- **Lenovo Tab** updated in place through Google Play internal testing. The app
+  kept its existing data and pairing. A temporary proxy returned HTTP 401 to
+  its Wi-Fi WebSocket request. After restoring USB, the same app process
+  reconnected in 30 seconds.
+- **Crema S and Pantone 6** updated in place using the published GitHub APK.
+  Each installed APK matched the published SHA-256. Their original install
+  times and app data directory identifiers matched the pre-update values, as
+  did the daemon's pairing generation and approvals.
+- **All three** reported 2.1.1 (32) and were registered with the Mac daemon
+  after installation. Crema S and Pantone 6 used USB. Lenovo Tab used Wi-Fi
+  at the final check.
+
 ### 2.1.0 delivery checkpoint 2026-11-06
 
 All six `*-v2.1.0` tags point at merge commit `285a57d1` (PR #733). The table records each
