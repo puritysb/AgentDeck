@@ -63,6 +63,19 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
   row shows what the user typed. Applies to the Node and Mac daemons; rows
   already stored keep their old text.
 
+- **T-Embed knob (experimental).** The knob now rests on a pager home instead
+  of one session's card: a large `N NEED YOU`, `N WORKING` or `ALL CLEAR`, the
+  oldest request's project and question, and eight dots in ring-LED order.
+  One press opens a waiting request's card. Turning shows the session roster
+  as before, and an untouched list returns home after 20 seconds. Rendered in
+  the simulator; not yet flashed to a board.
+- **T-Display-S3-Pro strip (experimental).** The strip now rests on a session
+  board: one column per session, six across, with a state band and the
+  session's current line. Tap a lane to open it in Focus. The rocker hints no
+  longer lose their last letter. Rendered in the simulator; not yet flashed.
+- **4.2-inch e-ink.** A waiting session's question wraps to as many lines as
+  fit instead of being cut to one.
+
 ## 2026-11-11 — npm 2.1.2
 
 - Update the Node daemon's WebSocket dependency to `ws` 8.22.1, which includes

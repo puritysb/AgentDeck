@@ -92,6 +92,15 @@ static uint32_t s_requestRevision = 0;
 // live — that is also what push-to-talk targets, so an idle knob defaults its
 // mic to conversation, not to whichever repo session happens to sort first.
 static bool s_userNavigated = false;
+// Pager home. The resting screen answers one question from across the desk:
+// does anything need me? It is drawn while the operator has not navigated,
+// and an untouched list returns to it. Selection underneath is unchanged, so
+// push-to-talk keeps its default target.
+static uint32_t s_lastInputMs = 0;
+static constexpr uint32_t HOME_RETURN_MS = 20000;
+static bool atHome() {
+    return s_mode == Mode::LIST && !s_userNavigated && !s_waitingOnly && !s_queueShortcut;
+}
 // A durable per-session awaiting latch. Unlike a previous-frame set, this is
 // intentionally retained while a session is absent during a transport gap.
 static KnobAttention::Tracker s_attentionTracker;
@@ -573,6 +582,107 @@ static void renderListBody(bool connected, uint8_t sessionCount) {
     }
 }
 
+static constexpr uint8_t HOME_SEATS = 8;  // one per ring LED (BOARD_WS2812_COUNT)
+
+// One dot per ring LED, in LED order, so the screen and the ring read as the
+// same eight seats. The waiting seats are larger; nothing here animates.
+static void renderSeatRow(int y) {
+    uint8_t count; char states[HOME_SEATS][20];
+    lockState();
+    count = g_state.sessionCount > HOME_SEATS ? HOME_SEATS : g_state.sessionCount;
+    for (uint8_t i = 0; i < count; i++) Companion::copy(states[i], g_state.sessions[i].state);
+    unlockState();
+    for (uint8_t i = 0; i < HOME_SEATS; i++) {
+        const bool seated = i < count;
+        const bool waiting = seated && strstr(states[i], "awaiting") != nullptr;
+        const int size = waiting ? 14 : 10;
+        lv_obj_t* dot = lv_obj_create(s_body);
+        lv_obj_remove_style_all(dot);
+        lv_obj_set_size(dot, size, size);
+        lv_obj_set_style_radius(dot, size / 2, 0);
+        if (seated) {
+            lv_obj_set_style_bg_color(dot, lv_color_hex(stateColorOf(states[i])), 0);
+            lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+        } else {
+            lv_obj_set_style_border_color(dot, lv_color_hex(Theme::HUDFaint), 0);
+            lv_obj_set_style_border_width(dot, 1, 0);
+        }
+        lv_obj_set_pos(dot, 12 + i * 22 + (14 - size) / 2, y + (14 - size) / 2);
+    }
+}
+
+static void renderHomeBody() {
+    uint8_t working = 0, idle = 0, total = 0;
+    char project[40] = {0}, question[160] = {0}, agent[16] = {0}, names[96] = {0};
+    lockState();
+    total = g_state.sessionCount;
+    for (uint8_t i = 0; i < g_state.sessionCount; i++) {
+        const SessionInfo& session = g_state.sessions[i];
+        if (!strcmp(session.state, "processing")) {
+            working++;
+            const size_t used = strlen(names);
+            snprintf(names + used, sizeof(names) - used, "%s%s", used ? ", " : "", sessionDisplayName(session));
+        }
+        else if (!strstr(session.state, "awaiting")) idle++;
+        // The oldest waiting request is the one the press opens.
+        if (s_waiting.count && !strcmp(session.id, s_waiting.ids[0])) {
+            Companion::copy(project, sessionDisplayName(session));
+            Companion::copy(question, session.question);
+            Companion::copy(agent, session.agentType);
+        }
+    }
+    unlockState();
+    Utf8::sanitizeLvglText(project);
+    Utf8::sanitizeLvglText(question);
+
+    char headline[24], line[64];
+    uint32_t color;
+    if (s_waiting.count) {
+        snprintf(headline, sizeof(headline), "%u NEED%s YOU", s_waiting.count, s_waiting.count == 1 ? "S" : "");
+        color = Theme::StatusAmber;
+        lv_obj_t* bar = lv_obj_create(s_body);
+        lv_obj_remove_style_all(bar);
+        lv_obj_set_size(bar, 4, 126);
+        lv_obj_set_style_bg_color(bar, lv_color_hex(Theme::StatusAmber), 0);
+        lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
+    } else if (working) {
+        snprintf(headline, sizeof(headline), "%u WORKING", working);
+        color = Theme::StatusCyan;
+    } else {
+        snprintf(headline, sizeof(headline), "ALL CLEAR");
+        color = Theme::StatusGreen;
+    }
+    auto* head = makeLabel(s_body, &lv_font_montserrat_28, color, headline);
+    lv_obj_set_pos(head, 12, 2);
+
+    if (s_waiting.count) {
+        snprintf(line, sizeof(line), "%s " LV_SYMBOL_BULLET " %s",
+                 project[0] ? project : "session", agentShortLabel(agent));
+        auto* who = makeLabel(s_body, &font_kr_16, Theme::HUDText, line);
+        lv_obj_set_pos(who, 12, 38); lv_obj_set_size(who, 300, 22);
+        lv_label_set_long_mode(who, LV_LABEL_LONG_DOT);
+        auto* ask = makeLabel(s_body, &font_kr_16, Theme::HUDDim,
+                              question[0] ? question : "Waiting for your answer");
+        lv_obj_set_pos(ask, 12, 62); lv_obj_set_size(ask, 300, 42);
+        lv_label_set_long_mode(ask, LV_LABEL_LONG_DOT);
+    } else {
+        if (working) {
+            Utf8::utf8TrimEnd(names);
+            Utf8::sanitizeLvglText(names);
+            auto* who = makeLabel(s_body, &font_kr_16, Theme::HUDText, names);
+            lv_obj_set_pos(who, 12, 38); lv_obj_set_size(who, 300, 22);
+            lv_label_set_long_mode(who, LV_LABEL_LONG_DOT);
+            if (idle) snprintf(line, sizeof(line), "%u idle " LV_SYMBOL_BULLET " nothing waiting", idle);
+            else snprintf(line, sizeof(line), "nothing waiting");
+        } else {
+            snprintf(line, sizeof(line), "%u session%s idle " LV_SYMBOL_BULLET " nothing waiting", total, total == 1 ? "" : "s");
+        }
+        auto* sub = makeLabel(s_body, &font_kr_16, Theme::HUDDim, line);
+        lv_obj_set_pos(sub, 12, working ? 62 : 40);
+    }
+    renderSeatRow(108);
+}
+
 static void renderDetailBody(const SessionSnap& s) {
     // Question / context header (top ~44px)
     const char* head = "";
@@ -754,6 +864,7 @@ void notify(const char* text) {
 
 void onRotate(int detents) {
     if (detents == 0) return;
+    s_lastInputMs = millis();
     lockState();
     uint8_t count = g_state.sessionCount + ((g_state.dot && g_state.dot->configured) ? 1 : 0);
     unlockState();
@@ -792,6 +903,7 @@ void onRotate(int detents) {
 
 void onKey(Input::KeyEvent evt) {
     if (evt == Input::KeyEvent::NONE) return;
+    s_lastInputMs = millis();
 
     if (evt == Input::KeyEvent::LONG_PRESS) {
         // Back one level: SCRUB -> DETAIL -> LIST.
@@ -808,6 +920,13 @@ void onKey(Input::KeyEvent evt) {
         return;
     }
     if (s_mode == Mode::LIST) {
+        if (atHome() && s_waiting.count) {
+            // Same destination as the waiting-requests shortcut: the request
+            // card, where a second deliberate press opens its choices.
+            s_waitingOnly = true; s_userNavigated = true;
+            selectListSession(findSessionById(s_waiting.ids[0]));
+            return;
+        }
         if (s_queueShortcut) {
             s_waitingOnly = !s_waitingOnly; s_queueShortcut = false; s_userNavigated = true;
             selectListSession(s_waitingOnly && s_waiting.count ? findSessionById(s_waiting.ids[0]) : 0);
@@ -983,6 +1102,14 @@ void update(float dt) {
     else if (receipt == Companion::Receipt::RequestChanged) flash("Request changed - review again");
     else if (receipt == Companion::Receipt::Unconfirmed) flash("Not confirmed - check host");
 
+    // An untouched list goes back to the pager home. Voice capture and an
+    // unconfirmed reply keep the screen where the operator left it.
+    if (s_mode == Mode::LIST && (s_userNavigated || s_waitingOnly || s_queueShortcut) &&
+        !s_listeningLabel[0] && !s_speakingText[0] && !s_pendingReply.active &&
+        now - s_lastInputMs >= HOME_RETURN_MS) {
+        s_userNavigated = false; s_waitingOnly = false; s_queueShortcut = false;
+    }
+
     if (s_mode == Mode::LIST && connected) {
         const bool newFocus = sharedFocus[0] && strcmp(sharedFocus, s_lastSharedFocus);
         if (newFocus && !s_userNavigated) {
@@ -1102,10 +1229,24 @@ void update(float dt) {
         // Hash the whole earlier signature too, so truncation cannot hide a
         // request revision or queue/receipt transition at its tail.
         const uint32_t baseHash = Companion::textHash(sig);
-        snprintf(sig, sizeof(sig), "%lu|%lu|%lu|%u|%d%d%d",
+        // Home shows the whole roster's states and the oldest request's text.
+        uint32_t homeHash = 0;
+        if (atHome()) {
+            lockState();
+            for (uint8_t i = 0; i < g_state.sessionCount; ++i) {
+                homeHash = Companion::textHash(g_state.sessions[i].state, homeHash);
+                if (s_waiting.count && !strcmp(g_state.sessions[i].id, s_waiting.ids[0])) {
+                    homeHash = Companion::textHash(g_state.sessions[i].question, homeHash);
+                    homeHash = Companion::textHash(sessionDisplayName(g_state.sessions[i]), homeHash);
+                }
+            }
+            unlockState();
+        }
+        snprintf(sig, sizeof(sig), "%lu|%lu|%lu|%u|%d%d%d|%d%lu",
                  (unsigned long)baseHash, (unsigned long)visibleHash,
                  (unsigned long)s_requestRevision, s_waiting.count,
-                 s_waitingOnly, s_queueShortcut, s_pendingReply.active);
+                 s_waitingOnly, s_queueShortcut, s_pendingReply.active,
+                 atHome() ? 1 : 0, (unsigned long)homeHash);
     }
     if (strcmp(sig, s_lastSig) == 0) return;
     strncpy(s_lastSig, sig, sizeof(s_lastSig) - 1);
@@ -1154,10 +1295,12 @@ void update(float dt) {
         // right edge free prevents long phrases from colliding with WiFi/battery.
         lv_label_set_text(s_headerRight, "");
     } else {
-        lv_label_set_text(s_headerLeft, s_waitingOnly ? "WAITING" : "ALL SESSIONS");
+        const bool home = atHome() && connected && count > 0;
+        lv_label_set_text(s_headerLeft, home ? "AGENTDECK" : s_waitingOnly ? "WAITING" : "ALL SESSIONS");
         lv_obj_set_style_text_font(s_headerLeft, &lv_font_montserrat_12, 0);
         char right[24];
-        if (connected && count > 0)
+        if (home) right[0] = 0;
+        else if (connected && count > 0)
             snprintf(right, sizeof(right), "%d/%d", s_queueShortcut ? 0 : (s_waitingOnly ? s_waiting.index(s_listSessionId) + 1 : s_listIdx + 1), s_waitingOnly ? int(s_waiting.count) : count);
         else
             snprintf(right, sizeof(right), "%s", connected ? "-" : "offline");
@@ -1181,6 +1324,8 @@ void update(float dt) {
         renderScrubBody();
     } else if (s_mode == Mode::DETAIL && haveDetail) {
         renderDetailBody(detail);
+    } else if (atHome() && count > 0) {
+        renderHomeBody();
     } else {
         renderListBody(connected, count);
     }
@@ -1216,7 +1361,10 @@ void update(float dt) {
         // appears once you already know to hold).
         const char* hint = "turn: inspect " LV_SYMBOL_BULLET " press: open "
                            LV_SYMBOL_BULLET " hold: talk";
-        if (s_mode == Mode::LIST && s_queueShortcut) hint = "press: switch list";
+        if (atHome() && count > 0)
+            hint = s_waiting.count ? "press: answer " LV_SYMBOL_BULLET " turn: sessions " LV_SYMBOL_BULLET " hold: talk"
+                                   : "turn: sessions " LV_SYMBOL_BULLET " hold: talk";
+        else if (s_mode == Mode::LIST && s_queueShortcut) hint = "press: switch list";
         else if (s_mode == Mode::LIST && s_waitingOnly) hint = "turn: waiting / all   press: open";
         if (s_mode == Mode::DETAIL)
             hint = "turn: choose " LV_SYMBOL_BULLET " press: send " LV_SYMBOL_BULLET " hold: back";
