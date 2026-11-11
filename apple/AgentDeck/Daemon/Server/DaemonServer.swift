@@ -14223,10 +14223,29 @@ final class DaemonServer {
         return Self.normalizeCommandPrompt(raw)
     }
 
+    /// Mirror of shared/src/timeline.ts `questionReplyAnswers`: the typed
+    /// answers of a Codex question-reply envelope, or nil when the text is not
+    /// that envelope or holds no readable answer.
+    nonisolated static func questionReplyAnswers(_ text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let open = "<send_user_message_question_reply>", close = "</send_user_message_question_reply>"
+        guard trimmed.hasPrefix(open), trimmed.hasSuffix(close), trimmed.count >= open.count + close.count else { return nil }
+        let body = trimmed.dropFirst(open.count).dropLast(close.count)
+        guard !body.contains(close),
+              let rows = try? JSONSerialization.jsonObject(with: Data(body.utf8)) as? [Any] else { return nil }
+        let answers = rows.compactMap { row -> String? in
+            guard let answer = (row as? [String: Any])?["answer"] as? String else { return nil }
+            let value = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+            return value.isEmpty ? nil : value
+        }
+        return answers.isEmpty ? nil : answers.joined(separator: "\n")
+    }
+
     /// Mirror of shared/src/timeline.ts `normalizeCommandPrompt`: collapse a
     /// Claude Code command XML envelope to "/name args"; pass anything else
     /// through unchanged.
     nonisolated static func normalizeCommandPrompt(_ text: String) -> String {
+        if let answers = questionReplyAnswers(text) { return answers }
         guard text.contains("<command-name>") else { return text }
         guard let nameRange = text.range(
             of: #"<command-name>\s*/?[A-Za-z][\w:-]*\s*</command-name>"#,

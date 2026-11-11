@@ -58,6 +58,11 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
   keys, without a question mark. Applies to the Node and Mac daemons, and to
   the Mac and Android aquariums.
 
+- **Timeline.** An answer typed into a Codex question no longer appears as
+  its transport envelope with an internal call id and the question's JSON. The
+  row shows what the user typed. Applies to the Node and Mac daemons; rows
+  already stored keep their old text.
+
 ## 2026-11-11 — npm 2.1.2
 
 - Update the Node daemon's WebSocket dependency to `ws` 8.22.1, which includes
