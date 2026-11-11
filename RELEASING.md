@@ -274,6 +274,11 @@ with the version set to 2.1.1 (32). The GitHub tag points to release commit
   the same app process was observed connected over USB four seconds after
   that command. The app data directory and daemon pairing approvals matched
   their pre-test values.
+- **Lenovo Tab follow-up, November 12.** On build 32, a temporary proxy returned
+  HTTP 401 to the running app's Wi-Fi WebSocket request. After the USB tunnel
+  was restored, the app reconnected over USB in 27 seconds without restarting.
+  Existing settings and pairing were preserved. The app data directory and
+  daemon pairing approvals matched their pre-test values.
 - **All three** reported 2.1.1 (32) and were registered with the Mac daemon
   after installation. Crema S and Pantone 6 used USB. Lenovo Tab used Wi-Fi
   at the final check.
