@@ -777,7 +777,7 @@ final class AquariumResidents {
                 rebuildLabel(for: item, on: resident, compact: labelCompact[item.id] ?? false)
                 resident.findEntity(named: "ci-cue")?.removeFromParent()
                 if let wait = item.ciWait, item.activity != .waiting {
-                    let mark = wait.phase == "passed" ? "✓" : wait.phase == "failed" ? "!" : wait.phase == "unknown" ? "?" : "CI"
+                    let mark = wait.phase == "passed" ? "✓" : wait.phase == "failed" ? "!" : "CI"
                     let mesh = MeshResource.generateText(mark, extrusionDepth: 0.002,
                         font: .init(name: "IBMPlexSans-Bold",size: 0.22) ?? .systemFont(ofSize: 0.22))
                     let cue = ModelEntity(mesh: mesh, materials: [UnlitMaterial(color: nativeColor(CiCompanionPresentation.color(wait)),applyPostProcessToneMap: false)])
@@ -808,18 +808,6 @@ final class AquariumResidents {
         descriptors = next
         updateSharedShell()
         applyLabelLayout()
-    }
-
-    /// Actual world pose projected through the same camera as resident labels.
-    /// Off-camera, removed and not-yet-loaded residents have no current anchor.
-    func communicationPosition(_ id: String, aspect: Float) -> SIMD2<Float>? {
-        guard let resident = residents[id], resident.isEnabled, let camera else { return nil }
-        let world = resident.position(relativeTo: nil)
-        let eye = camera.transformMatrix(relativeTo: nil).inverse * SIMD4<Float>(world, 1)
-        guard eye.z < -0.1 else { return nil }
-        let f = 1 / tan(camera.camera.fieldOfViewInDegrees * .pi / 360)
-        return SIMD2((eye.x * f / max(aspect, 0.1) / -eye.z + 1) / 2,
-                     (1 - eye.y * f / -eye.z) / 2)
     }
 
     private var focusedID: String?

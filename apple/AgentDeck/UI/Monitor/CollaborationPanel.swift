@@ -437,15 +437,13 @@ struct CollaborationPanel: View {
     @ViewBuilder
     private func handoffs(task: CollaborationTask) -> some View {
         if communications.state == .ready {
-            let network = CommunicationNetwork.project(snapshot: communications.snapshot, roster: stateHolder.state.siblingSessions)
-            let deliveries = network.messages.filter { $0.belongsToTask(sessionID: task.sessionId, relations: feed.relations) }
+            let history = CommunicationHistory.project(snapshot: communications.snapshot, roster: stateHolder.state.siblingSessions)
+            let deliveries = history.messages.filter { $0.belongsToTask(sessionID: task.sessionId, relations: feed.relations) }
             if !deliveries.isEmpty {
                 CollaborationRows(title: "Confirmed deliveries", symbol: "tray.and.arrow.down",
                                   rows: deliveries, limit: 4, isCompleted: { _ in false }) { message in
-                    let sender = network.nodes.first { $0.id == message.sender }?.name ?? message.sender
-                    let recipient = network.nodes.first { $0.id == message.recipient }?.name ?? message.recipient
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("\(sender) → \(recipient)").font(.caption.bold())
+                        Text("\(history.name(message.sender)) → \(history.name(message.recipient))").font(.caption.bold())
                         if let detail = message.detail { Text(detail).font(.caption).lineLimit(3) }
                     }
                 }

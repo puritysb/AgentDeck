@@ -14,12 +14,12 @@ import androidx.compose.ui.graphics.toArgb
 import kotlin.math.*
 
 internal fun ciCompanionLabel(wait: CiWaitStatus): String {
-    val phase = if (wait.phase in listOf("queued", "running", "passed", "failed")) wait.phase.uppercase() else "UNKNOWN"
+    val phase = if (wait.phase in listOf("queued", "running", "passed", "failed")) wait.phase.uppercase() else "WAIT"
     return "CI $phase" + (wait.pr?.let { " #$it" } ?: "") + (wait.checks?.let { " · ${it.passed}/${it.total}" } ?: "")
 }
 internal fun ciCompanionBadge(wait: CiWaitStatus) = when (wait.phase) {
     "running" -> wait.checks?.let { "${it.passed}/${it.total}" } ?: "CI running"
-    "queued" -> "CI queued"; "passed" -> "CI ✓"; "failed" -> "CI !"; else -> "CI ?"
+    "queued" -> "CI queued"; "passed" -> "CI ✓"; "failed" -> "CI !"; else -> "CI wait"
 }
 internal fun ciCompanionColor(wait: CiWaitStatus?) = when (wait?.phase) {
     "queued", "running" -> DesignTokens.Session.working

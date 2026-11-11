@@ -2,9 +2,8 @@ import XCTest
 @testable import AgentDeck
 #if os(macOS)
 import SwiftUI
-import RealityKit
 
-final class CommunicationGraphTests: XCTestCase {
+final class CommunicationHistoryTests: XCTestCase {
     private func snapshot(_ events: String) throws -> CommunicationSnapshot {
         try JSONDecoder().decode(CommunicationSnapshot.self, from: Data("""
         {"schema":"agentdeck-communications/v1","capturedAt":100000,"since":1,"truncated":false,"events":\(events)}
@@ -18,64 +17,22 @@ final class CommunicationGraphTests: XCTestCase {
         """.utf8))
     }
 
-    func testEmptyHistoryDoesNotPlotUnrelatedRosterSessions() throws {
-        let network = CommunicationNetwork.project(snapshot: nil, roster: try roster())
-        XCTAssertTrue(network.nodes.isEmpty)
-        XCTAssertTrue(network.links.isEmpty)
+    func testNoSnapshotProjectsNothing() throws {
+        let history = CommunicationHistory.project(snapshot: nil, roster: try roster())
+        XCTAssertTrue(history.messages.isEmpty)
+        XCTAssertTrue(history.names.isEmpty)
     }
 
-    func testLinkBadgesAvoidTheNodesThatHidThemInTheLiveNineNodeGraph() {
-        let width: CGFloat = 760, height: CGFloat = 390, nodeWidth: CGFloat = 130
-        let points = (0..<9).map { index in
-            let angle = Double(index)/9 * .pi*2 - .pi/2
-            return CGPoint(x: width/2+cos(angle)*(width/2-nodeWidth/2-8), y: height/2+sin(angle)*(height/2-38))
-        }
-        var occupied = points.map { CGRect(x: $0.x-nodeWidth/2, y: $0.y-32, width: nodeWidth, height: 64) }
-        let bounds = CGRect(x: 4, y: 4, width: width-8, height: height-8)
-        for (from, to) in [(6, 2), (6, 8), (4, 2), (5, 2)] {
-            let center = CGPoint(x: (points[from].x+points[to].x)/2, y: (points[from].y+points[to].y)/2)
-            let rect = CommunicationLabelLayout.place(preferred: center, size: CGSize(width: 72, height: 24), bounds: bounds, avoiding: occupied)
-            XCTAssertTrue(bounds.contains(rect))
-            XCTAssertFalse(occupied.contains { $0.intersects(rect) }, "A link control must remain visible above the graph geometry")
-            occupied.append(rect)
-        }
-    }
-
-    func testReplyRequestIsOnlyAnObservationAndNewerTrafficWins() throws {
-        let request = """
-        {"id":"1","sessionId":"a","ts":10000,"relation":"messaged","direction":"out","peerSessionId":"b","peerIdentity":"pid","messageIntent":"request"}
-        """
-        let first = CommunicationNetwork.project(snapshot: try snapshot("[\(request)]"), roster: try roster())
-        XCTAssertEqual(first.links.first?.status, "Reply request observed")
-        let next = """
-        {"id":"2","sessionId":"b","ts":20000,"relation":"messaged","direction":"out","peerSessionId":"a","peerIdentity":"pid","messageIntent":"unknown"}
-        """
-        let network = CommunicationNetwork.project(snapshot: try snapshot("[\(request),\(next)]"), roster: try roster())
-        XCTAssertEqual(network.links.map(\.latestSender), ["b"])
-        XCTAssertEqual(network.links.first?.status, "Message observed")
-        XCTAssertEqual(network.links.first?.lastObservedAt, 20000)
-    }
-
-    func testNamesAndLegacyIdsStaySeparateEvenWhenARecentMessageHasTheSameName() throws {
+    func testNamesAndLegacyIdsNeverIdentifyAPeer() throws {
         let value = try snapshot("""
         [{"id":"1","sessionId":"a","ts":10000,"relation":"messaged","direction":"out","peerName":"Reviewer"},
          {"id":"2","sessionId":"a","ts":20000,"relation":"messaged","direction":"in","peerSessionId":"b","peerName":"Reviewer"},
          {"id":"3","sessionId":"a","ts":30000,"relation":"messaged","direction":"in","peerSessionId":"gone","peerIdentity":"pid","peerName":"Reviewer"}]
         """)
-        let network = CommunicationNetwork.project(snapshot: value, roster: try roster())
-        XCTAssertEqual(network.links.map(\.latestSender), ["gone"])
-        XCTAssertEqual(network.nodes.map(\.id), ["a", "gone"])
-        XCTAssertEqual(network.unidentified.map(\.id), ["2", "1"])
-        XCTAssertNil(network.nodes.first { $0.id == "gone" }?.rosterID)
-    }
-
-    func testCrossedMessagesMarkOrderUncertain() throws {
-        let value = try snapshot("""
-        [{"id":"1","sessionId":"a","ts":10000,"relation":"messaged","direction":"out","peerSessionId":"b","peerIdentity":"pid"},
-         {"id":"2","sessionId":"b","ts":11000,"relation":"messaged","direction":"out","peerSessionId":"a","peerIdentity":"pid"}]
-        """)
-        let network = CommunicationNetwork.project(snapshot: value, roster: try roster())
-        XCTAssertEqual(network.links.first?.crossed, true)
+        let history = CommunicationHistory.project(snapshot: value, roster: try roster())
+        XCTAssertEqual(history.messages.map(\.id), ["3"])
+        XCTAssertEqual(history.names, ["a": "Same project", "gone": "Reviewer"])
+        XCTAssertEqual(history.name("absent"), "absent")
     }
 
     func testLegacyDeliveryNeedsUniqueReciprocalEvidence() throws {
@@ -83,15 +40,13 @@ final class CommunicationGraphTests: XCTestCase {
         let receipt = #"{"id":"2","sessionId":"b","ts":10100,"relation":"messaged","direction":"in","peerSessionId":"a","evidence":"cross_session_message","messageFingerprint":"abc"}"#
         let duplicate = #"{"id":"3","sessionId":"a","ts":10200,"relation":"messaged","direction":"out","peerSessionId":"b","evidence":"send_message_tool","messageFingerprint":"abc"}"#
         let roster = try roster()
-        let corroborated = CommunicationNetwork.project(snapshot: try snapshot("[\(send),\(receipt)]"), roster: roster)
-        XCTAssertEqual(corroborated.links.count, 1)
-        XCTAssertTrue(corroborated.unidentified.isEmpty)
-        let ambiguous = CommunicationNetwork.project(snapshot: try snapshot("[\(send),\(receipt),\(duplicate)]"), roster: roster)
-        XCTAssertTrue(ambiguous.links.isEmpty)
-        XCTAssertEqual(ambiguous.unidentified.count, 3)
+        let corroborated = CommunicationHistory.project(snapshot: try snapshot("[\(send),\(receipt)]"), roster: roster)
+        XCTAssertEqual(corroborated.messages.map(\.id), ["2"])
+        XCTAssertEqual(corroborated.messages.first?.sent?.id, "1")
+        let ambiguous = CommunicationHistory.project(snapshot: try snapshot("[\(send),\(receipt),\(duplicate)]"), roster: roster)
+        XCTAssertTrue(ambiguous.messages.isEmpty)
         let outsideWindow = receipt.replacingOccurrences(of: "10100", with: "13000")
-        let distant = CommunicationNetwork.project(snapshot: try snapshot("[\(send),\(outsideWindow)]"), roster: roster)
-        XCTAssertTrue(distant.links.isEmpty)
+        XCTAssertTrue(CommunicationHistory.project(snapshot: try snapshot("[\(send),\(outsideWindow)]"), roster: roster).messages.isEmpty)
     }
 
     func testTaskHandoffRequiresReceiptAndMatchingTaskEvidence() throws {
@@ -100,7 +55,7 @@ final class CommunicationGraphTests: XCTestCase {
          {"id":"receipt","sessionId":"b","ts":10100,"relation":"messaged","direction":"in","peerSessionId":"a","peerIdentity":"pid","evidence":"cross_session_message","messageFingerprint":"abc"},
          {"id":"other","sessionId":"a","ts":20000,"relation":"messaged","direction":"out","peerSessionId":"b","peerIdentity":"pid","evidence":"send_message_tool","messageFingerprint":"def"}]
         """)
-        let messages = CommunicationNetwork.project(snapshot: value, roster: try roster()).messages
+        let messages = CommunicationHistory.project(snapshot: value, roster: try roster()).messages
         XCTAssertEqual(messages.map(\.id), ["other", "receipt"])
         XCTAssertEqual(messages.last?.detail, "Reproduction steps")
 
@@ -117,55 +72,13 @@ final class CommunicationGraphTests: XCTestCase {
         XCTAssertTrue(messages.filter { $0.belongsToTask(sessionID: "unrelated", relations: [outgoing]) }.isEmpty)
     }
 
-    func testInvalidDirectionsFutureEventsAndNonMessagesDoNotCreateEdges() throws {
+    func testInvalidDirectionsFutureEventsAndNonMessagesAreIgnored() throws {
         let value = try snapshot("""
-        [{"id":"1","sessionId":"a","ts":10000,"relation":"spawned","direction":"out","peerSessionId":"b"},
-         {"id":"2","sessionId":"a","ts":10000,"relation":"messaged","direction":"unknown","peerSessionId":"b"},
-         {"id":"3","sessionId":"a","ts":100001,"relation":"messaged","direction":"out","peerSessionId":"b"}]
+        [{"id":"1","sessionId":"a","ts":10000,"relation":"spawned","direction":"out","peerSessionId":"b","peerIdentity":"pid"},
+         {"id":"2","sessionId":"a","ts":10000,"relation":"messaged","direction":"unknown","peerSessionId":"b","peerIdentity":"pid"},
+         {"id":"3","sessionId":"a","ts":100001,"relation":"messaged","direction":"out","peerSessionId":"b","peerIdentity":"pid"}]
         """)
-        XCTAssertTrue(CommunicationNetwork.project(snapshot: value, roster: try roster()).links.isEmpty)
-    }
-
-    func testHabitatRequiresTwoVisibleIdentitiesAndFiltersInspectedCreature() throws {
-        let value = try snapshot("""
-        [{"id":"1","sessionId":"a","ts":10000,"relation":"messaged","direction":"out","peerSessionId":"b","peerIdentity":"pid","messageIntent":"request"},
-         {"id":"2","sessionId":"a","ts":20000,"relation":"messaged","direction":"out","peerName":"unknown"}]
-        """)
-        let ids: Set<String> = ["observed:claude:a", "b", "unrelated"]
-        func habitat(_ visible: Set<String>, _ focus: String? = nil) throws -> AquariumCommunications {
-            .project(snapshot: value, roster: try roster(), visibleIDs: visible, focusedID: focus, fresh: true)
-        }
-        XCTAssertEqual(try habitat(ids).currents.map(\.senderID), ["observed:claude:a"])
-        XCTAssertTrue(try habitat(["observed:claude:a"]).currents.isEmpty, "Off-stage peers have no invented position")
-        XCTAssertTrue(try habitat(ids, "unrelated").currents.isEmpty)
-        XCTAssertEqual(try habitat(ids, "b").currents.count, 1)
-        let live = try habitat(ids)
-        let frozen = AquariumCommunications(currents: live.currents, capturedAt: 100000, fresh: false, truncated: false)
-        let later = Date(timeIntervalSince1970: 160)
-        XCTAssertEqual(live.currents[0].status, "Reply request observed")
-        XCTAssertEqual(frozen.clock(later), 100000)
-    }
-
-    @MainActor
-    func test3DCurrentAnchorsFollowResidentParentAndCameraAndDisappearOnRemoval() async throws {
-        let scene = AquariumResidents()
-        scene.loadTemplates(try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource: "3d-residents", withExtension: "usdz"))))
-        var state = TerrariumState()
-        state.creatures = [.init(id: "a", projectName: "A", modelName: nil, state: .working, homeX: 0.5, homeY: 0.5, scale: 1)]
-        scene.sync(state, aspect: 1.6)
-        let camera = PerspectiveCamera()
-        camera.look(at: [0, 2, 0], from: [0, 2, 14], relativeTo: nil)
-        scene.camera = camera
-        let first = try XCTUnwrap(scene.communicationPosition("a", aspect: 1.6))
-        scene.root.position.x += 1
-        let moved = try XCTUnwrap(scene.communicationPosition("a", aspect: 1.6))
-        XCTAssertGreaterThan(moved.x, first.x)
-        camera.position.x += 1
-        XCTAssertEqual(try XCTUnwrap(scene.communicationPosition("a", aspect: 1.6)).x, first.x, accuracy: 0.001)
-        state.creatures = []
-        scene.sync(state, aspect: 1.6)
-        XCTAssertNil(scene.communicationPosition("a", aspect: 1.6))
-        XCTAssertNil(scene.communicationPosition("missing", aspect: 1.6))
+        XCTAssertTrue(CommunicationHistory.project(snapshot: value, roster: try roster()).messages.isEmpty)
     }
 }
 
@@ -194,39 +107,6 @@ final class CommunicationFeedTests: XCTestCase {
         await feed.observe(port: 1, connected: true)
         XCTAssertEqual(feed.state, .unsupported)
         XCTAssertNil(feed.snapshot)
-    }
-
-    func testRenderHistoryWithIdentifiedAndUnidentifiedPeers() async throws {
-        let roster = try JSONDecoder().decode([SessionInfo].self, from: Data("""
-        [{"id":"a","port":0,"alive":true,"projectName":"Implementation","state":"processing"},
-         {"id":"b","port":0,"alive":true,"projectName":"Review","state":"idle"},
-         {"id":"c","port":0,"alive":true,"projectName":"Tests","state":"awaiting_permission"}]
-        """.utf8))
-        let now = Int(Date().timeIntervalSince1970 * 1000)
-        let payload = Data("""
-        {"schema":"agentdeck-communications/v1","capturedAt":\(now),"since":\(now-86400000),"truncated":false,"events":[
-        {"id":"1","sessionId":"a","ts":\(now-180000),"relation":"messaged","direction":"out","peerSessionId":"b","peerIdentity":"pid","peerName":"reviewer","messageIntent":"request","messageFingerprint":"abc","detail":"Please reply with the session identity findings"},
-        {"id":"2","sessionId":"b","ts":\(now-179990),"relation":"messaged","direction":"in","peerSessionId":"a","peerIdentity":"pid","peerName":"builder","messageIntent":"request","messageFingerprint":"abc"},
-        {"id":"3","sessionId":"c","ts":\(now-45000),"relation":"messaged","direction":"out","peerName":"external-peer","detail":"Waiting for the test fixture"}]}
-        """.utf8)
-        let feed = CommunicationFeed(load: { _ in payload }, pause: { throw CancellationError() })
-        await feed.observe(port: 1, connected: true)
-        var selected: String?
-        let view = CommunicationGraphView(feed: feed, roster: roster, selectedID: "a",
-                                          inspect: { selected = $0 })
-            .padding(20).frame(width: 1000, height: 850).aquariumSurface()
-        let hosting = NSHostingView(rootView: view)
-        hosting.frame = NSRect(x: 0, y: 0, width: 1000, height: 850)
-        hosting.layoutSubtreeIfNeeded()
-        let bitmap = try XCTUnwrap(hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds))
-        hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
-        let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
-        try png.write(to: URL(fileURLWithPath: "/tmp/agentdeck-communication-graph.png"))
-        XCTAssertNil(selected, "Rendering a graph must not steer or select an agent")
-        let network = CommunicationNetwork.project(snapshot: feed.snapshot, roster: roster)
-        XCTAssertEqual(network.links.count, 1)
-        XCTAssertEqual(network.links.first?.detail, "Please reply with the session identity findings")
-        XCTAssertEqual(network.unidentified.count, 1)
     }
 }
 
@@ -327,14 +207,13 @@ final class CommunicationPersistenceTests: XCTestCase {
         let snapshot = try JSONDecoder().decode(CommunicationSnapshot.self, from: history)
         XCTAssertEqual(snapshot.schema, "agentdeck-communications/v1")
         XCTAssertFalse(snapshot.truncated)
-        let network = CommunicationNetwork.project(snapshot: snapshot, roster: [])
+        // Only the two PID-identified endpoints become messages; name-only and
+        // legacy-id observations stay out of the history.
+        let projected = CommunicationHistory.project(snapshot: snapshot, roster: [])
         let screen = try XCTUnwrap(fixture["expectedScreen"] as? [String: Any])
-        XCTAssertEqual(network.nodes.map(\.id), screen["nodes"] as? [String])
-        XCTAssertEqual(network.links.count, 1)
-        XCTAssertEqual(network.links.first?.latestSender, screen["latestSender"] as? String)
-        XCTAssertEqual(network.links.first?.latestRecipient, screen["latestRecipient"] as? String)
-        XCTAssertEqual(network.links.first?.status, screen["latestStatus"] as? String)
-        XCTAssertEqual(network.unidentified.map { Int($0.ts) - now }, screen["unidentifiedOffsets"] as? [Int])
+        XCTAssertEqual(projected.names.keys.sorted(), screen["nodes"] as? [String])
+        XCTAssertEqual(projected.messages.first?.sender, screen["latestSender"] as? String)
+        XCTAssertEqual(projected.messages.first?.recipient, screen["latestRecipient"] as? String)
 
         let page = try JSONDecoder().decode(CollaborationTaskPage.self,
             from: await get("/apme/tasks", query: ["session": "a", "limit": "8"]))

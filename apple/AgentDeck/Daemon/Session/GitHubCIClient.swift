@@ -142,6 +142,11 @@ struct GitHubCIClient: Sendable {
         if object["conclusion"] as? String == "success" { return "passed" }
         return ["failure","timed_out","action_required","startup_failure"].contains(object["conclusion"] as? String ?? "") ? "failed" : "unknown"
     }
+    /// A completed check run that neither validates nor blocks its commit.
+    static func nonBlocking(_ object: [String: Any]) -> Bool {
+        object["status"] as? String == "completed"
+            && GitHubCIPolicy.nonBlockingConclusions.contains(object["conclusion"] as? String ?? "")
+    }
     private static func sha(_ value: Any?) -> String? {
         guard let string = value as? String, string.count == 40, string.allSatisfy({ "0123456789abcdef".contains($0) }) else { return nil }
         return string
@@ -211,7 +216,7 @@ struct GitHubCIClient: Sendable {
                     guard !batch.isEmpty, page < GitHubCIPolicy.maxPages else { throw Failure(reason: "incomplete") }
                 }
                 guard rows.count == total else { throw Failure(reason: "incomplete") }
-                phases += rows.map { row in
+                phases += rows.filter { !(checks && Self.nonBlocking($0)) }.map { row in
                     if checks { return Self.phase(row) }
                     switch row["state"] as? String { case "success": return "passed"; case "failure", "error": return "failed"; case "pending": return "queued"; default: return "unknown" }
                 }

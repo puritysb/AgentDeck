@@ -68,8 +68,6 @@ struct SessionListPanel: View {
         let rows = Self.buildDisplayRows(entries)
 
         return VStack(alignment: .leading, spacing: 4) {
-            // The Mac window header carries the brand. The mobile panel
-            // keeps its own wordmark.
             HStack(spacing: 6) {
                 #if os(macOS)
                 Text("Sessions")
@@ -77,10 +75,7 @@ struct SessionListPanel: View {
                     .foregroundStyle(TerrariumHUD.text)
                     .lineLimit(1)
                 #else
-                AgentDeckLogo(size: 20, color: TerrariumHUD.tetraNeon)
-                Text("AgentDeck")
-                    .font(.system(size: 22, weight: .bold, design: .monospaced))
-                    .foregroundStyle(TerrariumHUD.text)
+                AgentDeckWordmark()
                 #endif
                 Spacer(minLength: 4)
                 Text("\(entries.count) \(entries.count == 1 ? "session" : "sessions")")
@@ -90,22 +85,10 @@ struct SessionListPanel: View {
             }
             .frame(maxWidth: .infinity)
 
-            // Neon cyan underline bar (glow + crisp)
-            Canvas { context, size in
-                let barWidth = size.width * 0.8
-                let x = (size.width - barWidth) / 2
-
-                // Glow layer
-                let glowRect = CGRect(x: x, y: 0, width: barWidth, height: 3)
-                context.fill(Path(roundedRect: glowRect, cornerRadius: 1.5),
-                             with: .color(TerrariumHUD.tetraNeon.opacity(0.3)))
-
-                // Crisp bar
-                let barRect = CGRect(x: x, y: 3, width: barWidth, height: 2)
-                context.fill(Path(roundedRect: barRect, cornerRadius: 1),
-                             with: .color(TerrariumHUD.tetraNeon))
-            }
-            .frame(height: 5)
+            // The Mac window header carries the wordmark and its rule.
+            #if !os(macOS)
+            AgentDeckBrandRule()
+            #endif
 
             Spacer().frame(height: 4)
 

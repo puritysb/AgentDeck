@@ -36,3 +36,24 @@ it('reports counts only for complete readable evidence', () => {
   expect(ciCheckCounts({ ...checks, total_count: 3 }, { total_count: 0, statuses: [] })).toBeUndefined();
   expect(ciCheckCounts(checks, { total_count: 1, statuses: [{ state: 'unknown' }] })).toBeUndefined();
 });
+
+it('leaves skipped and neutral check runs out of the commit verdict and counts', () => {
+  const done = (conclusion: string) => ({ status: 'completed', conclusion });
+  const none = { total_count: 0, statuses: [] };
+  // Measured on a real PR: 23 passing, 2 skipped, 1 neutral, 2 still running.
+  const running = { total_count: 4, check_runs: [done('success'), done('skipped'), done('neutral'), { status: 'in_progress' }] };
+  expect(ciPhaseFromCommit(running, none)).toBe('running');
+  expect(ciCheckCounts(running, none)).toEqual({ total: 2, passed: 1, failed: 0, pending: 1 });
+  const settled = { total_count: 3, check_runs: [done('success'), done('skipped'), done('neutral')] };
+  expect(ciPhaseFromCommit(settled, none)).toBe('passed');
+  expect(ciPhaseFromCommit({ total_count: 2, check_runs: [done('failure'), done('skipped')] }, none)).toBe('failed');
+  // Nothing but skipped rows validates nothing; a status may still decide.
+  const onlySkipped = { total_count: 2, check_runs: [done('skipped'), done('neutral')] };
+  expect(ciPhaseFromCommit(onlySkipped, none)).toBe('unknown');
+  expect(ciCheckCounts(onlySkipped, none)).toBeUndefined();
+  expect(ciPhaseFromCommit(onlySkipped, { total_count: 1, statuses: [{}], state: 'success' })).toBe('passed');
+  // Cancelled is not successful validation and still blocks a verdict.
+  expect(ciPhaseFromCommit({ total_count: 2, check_runs: [done('success'), done('cancelled')] }, none)).toBe('unknown');
+  // A single skipped workflow run did not validate anything.
+  expect(ciPhaseFromResponse(done('skipped'))).toBe('unknown');
+});

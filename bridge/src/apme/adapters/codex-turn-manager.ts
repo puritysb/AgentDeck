@@ -9,6 +9,7 @@
 
 import type { AdapterContext, AgentType, TimelineEntry } from '@agentdeck/shared';
 import type { AdapterHookEvent } from '@agentdeck/shared';
+import { normalizeCommandPrompt } from '@agentdeck/shared';
 import {
   cleanRawText,
   prepareMarkdownDetail,
@@ -109,6 +110,8 @@ export class CodexTurnManager {
   }
 
   private openTimelineChatStart(text?: string): number {
+    // A question-reply envelope reads as the answer the user typed.
+    if (text) text = normalizeCommandPrompt(text);
     if (this.chatStart !== null) {
       if (text && !this.lastPromptText) {
         this.lastPromptText = text;

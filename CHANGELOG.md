@@ -45,6 +45,24 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- **macOS Dashboard.** Keep confirmed message deliveries in Work detail and
+  remove the separate message history, graph and aquarium message currents.
+  Dashboard and Work use the shared AgentDeck wordmark and header rule.
+
+- **CI wait.** A pull request whose checks include a skipped or neutral run
+  no longer stays at an unread CI state for as long as the agent watches it.
+  Those runs are left out of the verdict and the passed/total count, as
+  `gh pr checks` does; a cancelled run still withholds a verdict. The Node
+  daemon also reads a full page of checks, so commits with more than 30 are
+  covered. An unread wait now says WAIT in the aquarium as it does on deck
+  keys, without a question mark. Applies to the Node and Mac daemons, and to
+  the Mac and Android aquariums.
+
+- **Timeline.** An answer typed into a Codex question no longer appears as
+  its transport envelope with an internal call id and the question's JSON. The
+  row shows what the user typed. Applies to the Node and Mac daemons; rows
+  already stored keep their old text.
+
 ## 2026-11-11 — npm 2.1.2
 
 - Update the Node daemon's WebSocket dependency to `ws` 8.22.1, which includes

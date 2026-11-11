@@ -1,5 +1,12 @@
 # Dashboard collaboration trial
 
+**Status (2026-11-10): communication graph, message history and habitat
+currents removed.** The sections on them below describe surfaces that no longer
+exist. Both daemons still record `messaged` relations and serve
+`/apme/communications`; Work detail reads it for receipt-confirmed handoffs
+inside a task. Reasons and measurements:
+[devlog](../../docs/devlog/entries/2026-11-10-communication-graph-removed.md).
+
 **Status (2026-09-09): shipped.** The integration branch described below landed
 on `master` as #291 and was released in Apple 1.2.1 / ESP32 1.2.2, so the
 collaboration view is a normal opt-in feature (`dashboardCollaborationEnabled`,

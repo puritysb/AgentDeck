@@ -621,6 +621,20 @@ describe('parseSlashCommandPrompt', () => {
 });
 
 describe('normalizeCommandPrompt', () => {
+  it('shows the typed answer of a Codex question-reply envelope', () => {
+    // Shape recorded from a live timeline: internal call id, question, answer.
+    const row = { questionItemId: '["request_user_input_async","call_ab53",0]', question: '로그인한 뒤 알려 주세요.', answer: ' 로그인 했다 ' };
+    const wrap = (body: string) => `<send_user_message_question_reply>\n${body}\n</send_user_message_question_reply>`;
+    expect(normalizeCommandPrompt(wrap(JSON.stringify([row])))).toBe('로그인 했다');
+    expect(normalizeCommandPrompt(wrap(JSON.stringify([row, { ...row, answer: 'second' }])))).toBe('로그인 했다\nsecond');
+    // Unreadable or answerless envelopes stay as they arrived.
+    for (const body of ['not json', '{}', '[]', JSON.stringify([{ question: 'q' }]), JSON.stringify([{ answer: '  ' }])]) {
+      expect(normalizeCommandPrompt(wrap(body))).toBe(wrap(body));
+    }
+    // The tag inside ordinary prose is not an envelope.
+    expect(normalizeCommandPrompt('about <send_user_message_question_reply> tags')).toBe('about <send_user_message_question_reply> tags');
+  });
+
   it('collapses an XML envelope to "/name args"', () => {
     const xml = '<command-message>merge</command-message>\n<command-name>/merge</command-name>\n<command-args>--squash</command-args>';
     expect(normalizeCommandPrompt(xml)).toBe('/merge --squash');

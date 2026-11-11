@@ -125,6 +125,23 @@ showed its roster. Swift recovered 9120 within four minutes after Node stopped.
 The app showed the recovered roster, Pixoo and 12 serial connections. The
 previous Node-only operating mode was restored.
 
+#### npm 2.1.2 delivery checkpoint (2026-11-11)
+
+[PR #761](https://github.com/puritysb/AgentDeck/pull/761) merged as `67aee161`.
+The [npm Release run](https://github.com/puritysb/AgentDeck/actions/runs/42947773379)
+published all four packages. The [GitHub Release](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.1.2)
+became public on 2026-11-11 at 11:51 KST.
+
+Registry readback verified `latest` at 2.1.2 and `gitHead` at
+`67aee1616174d7a5742f442bb19f2d3901f84b80` for `@agentdeck/hooks`,
+`@agentdeck/shared`, `@agentdeck/bridge` and `@agentdeck/setup`. The setup
+package had a registry README.
+
+After installing the public packages globally, the CLI reported 2.1.2.
+`agentdeck ble status` reported the existing environment ready. The installed
+bridge resolved ws 8.22.2, and the BLE Python loaded cryptography 50.0.2.
+The native SQLite check passed under Node 26.5.0.
+
 ### Apple macOS 2.1.1 release decision — 2026-11-10
 
 | Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
