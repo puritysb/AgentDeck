@@ -268,6 +268,12 @@ with the version set to 2.1.1 (32). The GitHub tag points to release commit
   Each installed APK matched the published SHA-256. Their original install
   times and app data directory identifiers matched the pre-update values, as
   did the daemon's pairing generation and approvals.
+- **Pantone 6 follow-up, November 12.** On build 32, a temporary proxy returned
+  HTTP 401 to the running app's Wi-Fi WebSocket request. The app recorded the
+  refusal and retried USB. A separate command restored the USB tunnel, and
+  the same app process was observed connected over USB four seconds after
+  that command. The app data directory and daemon pairing approvals matched
+  their pre-test values.
 - **All three** reported 2.1.1 (32) and were registered with the Mac daemon
   after installation. Crema S and Pantone 6 used USB. Lenovo Tab used Wi-Fi
   at the final check.
