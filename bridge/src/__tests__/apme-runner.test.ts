@@ -55,23 +55,23 @@ function closeStore(s: ApmeStore) {
 // ─── Pure helpers ──────────────────────────────────────────────────────────────
 
 describe('detectLanguage', () => {
-  it('recognizes TypeScript from package.json', () => {
+  it('recognizes TypeScript from package.json', async () => {
     const dir = tmpProject({ 'package.json': '{"name":"x"}' });
-    try { expect(detectLanguage(dir)).toBe('typescript'); }
+    try { expect(await detectLanguage(dir)).toBe('typescript'); }
     finally { rmSync(dir, { recursive: true, force: true }); }
   });
-  it('recognizes Swift from .xcodeproj', () => {
+  it('recognizes Swift from .xcodeproj', async () => {
     const dir = tmpProject({ 'App.xcodeproj/project.pbxproj': '// fake' });
-    try { expect(detectLanguage(dir)).toBe('swift'); }
+    try { expect(await detectLanguage(dir)).toBe('swift'); }
     finally { rmSync(dir, { recursive: true, force: true }); }
   });
-  it('recognizes Kotlin from build.gradle.kts', () => {
+  it('recognizes Kotlin from build.gradle.kts', async () => {
     const dir = tmpProject({ 'build.gradle.kts': 'plugins {}' });
-    try { expect(detectLanguage(dir)).toBe('kotlin'); }
+    try { expect(await detectLanguage(dir)).toBe('kotlin'); }
     finally { rmSync(dir, { recursive: true, force: true }); }
   });
-  it('returns null for unknown paths', () => {
-    expect(detectLanguage('/nonexistent/xyz')).toBeNull();
+  it('returns null for unknown paths', async () => {
+    expect(await detectLanguage('/nonexistent/xyz')).toBeNull();
   });
 });
 

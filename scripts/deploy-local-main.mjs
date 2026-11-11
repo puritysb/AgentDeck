@@ -53,14 +53,16 @@ export function launchInstalledApp(target, run, env = process.env, probe = execF
  * Poll the restarted daemon until it answers as the installed build. A single
  * 5 s probe right after `daemon restart` raced the daemon's startup work
  * (opening a multi-GB APME store blocks the loop for seconds) and failed a
- * deployment whose daemon was healthy moments later. The registry is re-read
- * each attempt because a supervised restart may still be handing over.
+ * deployment whose daemon was healthy moments later. Require the same
+ * daemon to keep responding through background work that starts after bind.
  */
 export async function waitForDaemonHealth({ readRegistry, build, fetchImpl = fetch,
-  deadlineMs = 90_000, attemptTimeoutMs = 5_000, intervalMs = 1_000, now = Date.now,
+  deadlineMs = 90_000, attemptTimeoutMs = 5_000, intervalMs = 1_000, stableForMs = 0, now = Date.now,
   sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
-  const deadline = now() + deadlineMs;
+  const deadline = now() + deadlineMs + stableForMs;
   let lastError = 'no attempt';
+  let stablePid;
+  let stableSince;
   for (;;) {
     try {
       const registry = readRegistry();
@@ -68,10 +70,19 @@ export async function waitForDaemonHealth({ readRegistry, build, fetchImpl = fet
         { signal: AbortSignal.timeout(attemptTimeoutMs) });
       if (!response.ok) throw new Error(`Health HTTP ${response.status}`);
       const health = await response.json();
-      if (health.pid !== registry.pid) throw new Error(`Health pid ${health.pid} is not registry pid ${registry.pid}`);
+      if (typeof health.pid !== 'number' || health.pid !== registry.pid) {
+        throw new Error(`Health pid ${health.pid} is not registry pid ${registry.pid}`);
+      }
       if (health.build !== build) throw new Error(`Running daemon build ${health.build} differs from installed ${build}`);
-      return { registry, health };
+      const sampledAt = now();
+      if (health.pid !== stablePid) {
+        stablePid = health.pid;
+        stableSince = sampledAt;
+        lastError = 'Daemon did not respond for the full stability window';
+      }
+      if (sampledAt - stableSince >= stableForMs && sampledAt <= deadline) return { registry, health };
     } catch (error) {
+      stablePid = undefined;
       lastError = error instanceof Error ? error.message : String(error);
     }
     if (now() + intervalMs > deadline) throw new Error(`Daemon did not become healthy: ${lastError}`);
@@ -222,7 +233,7 @@ async function deploy() {
     const { computeDistBuildIdentity } = await import(pathToFileURL(join(root, 'bridge/dist/daemon-build-identity.js')));
     const build = computeDistBuildIdentity().id;
     if (!build) throw new Error('Installed daemon build identity is unknown');
-    const { registry, health } = await waitForDaemonHealth({ build,
+    const { registry, health } = await waitForDaemonHealth({ build, stableForMs: 45_000,
       readRegistry: () => JSON.parse(readFileSync(join(homedir(), '.agentdeck/daemon.json'), 'utf8')) });
     let runningAppPid = null;
     try { runningAppPid = execFileSync('pgrep', ['-f', '^/Applications/AgentDeck.app/Contents/MacOS/AgentDeck$'],
