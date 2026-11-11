@@ -13,7 +13,6 @@
 
 import { spawn } from 'child_process';
 import { taskGradeability, notGradeableNotes, type NotGradeableReason } from './task-gradeability.js';
-import { existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { debug, log } from '../logger.js';
 import type { ApmeStore } from './store.js';
@@ -740,10 +739,16 @@ async function detectSwiftScheme(cwd: string): Promise<string | null> {
   }
 }
 
-export function detectLanguage(projectPath: string | null | undefined): Lang | null {
-  if (!projectPath || !existsSync(projectPath)) return null;
+export async function detectLanguage(projectPath: string | null | undefined): Promise<Lang | null> {
+  if (!projectPath) return null;
   try {
-    const entries = readdirSync(projectPath);
+    // macOS can hold a protected-folder read until someone answers its prompt.
+    // Isolate the read in a killable child without using the path as its cwd.
+    const output = await execFileText(process.execPath, [
+      '--input-type=commonjs', '-e', 'process.stdout.write(JSON.stringify(require("node:fs").readdirSync(process.argv[1])))',
+      '--', projectPath,
+    ], { timeout: 3000 });
+    const entries = JSON.parse(output) as string[];
     if (entries.includes('package.json') || entries.some((e) => e.endsWith('.ts') || e.endsWith('.tsx'))) {
       return 'typescript';
     }
@@ -762,7 +767,7 @@ export function detectLanguage(projectPath: string | null | undefined): Lang | n
 export async function runDeterministic(run: ApmeRunRow, cfg: ApmeConfig): Promise<DetStepResult[]> {
   const cwd = run.projectPath;
   if (!cwd) return [];
-  const lang = detectLanguage(cwd);
+  const lang = await detectLanguage(cwd);
   if (!lang) return [];
 
   // Only run deterministic checks when there are actual changes from this run.

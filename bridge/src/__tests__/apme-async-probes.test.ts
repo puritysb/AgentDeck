@@ -19,9 +19,27 @@ function project() { const root = mkdtempSync(join(tmpdir(), 'apme-async-')); ro
 function run(root: string): ApmeRunRow { return { id: 'run', projectPath: root, agentType: 'claude-code', gitBefore: 'a', gitAfter: 'b', startedAt: 1000, endedAt: 5000 } as ApmeRunRow; }
 afterEach(() => { io.pending.length = 0; vi.clearAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 async function timerBeats() { await new Promise(resolve => setTimeout(resolve, 0)); }
+function finishSwiftDirectoryRead() {
+  expect(io.pending[0].file).toBe(process.execPath);
+  io.pending.shift()!.done(null, '["Demo.xcodeproj"]');
+}
 describe('APME background subprocess probes', () => {
+  it('keeps timers running and skips deterministic checks when a protected directory read times out', async () => {
+    const root = project();
+    const result = runDeterministic(run(root), DEFAULT_APME_CONFIG);
+    await timerBeats();
+    expect(execFile).toHaveBeenCalledWith(process.execPath,
+      ['--input-type=commonjs', '-e', expect.stringContaining('readdirSync'), '--', root],
+      expect.objectContaining({ timeout: 3000, killSignal: 'SIGKILL' }), expect.any(Function));
+    expect(vi.mocked(execFile).mock.calls[0][2]).not.toHaveProperty('cwd');
+    io.pending.shift()!.done(Object.assign(new Error('directory read timed out'), { code: 'ETIMEDOUT' }), '');
+    expect(await result).toEqual([]);
+    expect(execFile).toHaveBeenCalledTimes(1);
+  });
   it('yields while Xcode scheme discovery is pending', async () => {
     const result = runDeterministic(run(project()), DEFAULT_APME_CONFIG);
+    await timerBeats();
+    finishSwiftDirectoryRead();
     await timerBeats();
     expect(io.pending[0].file).toBe('xcodebuild');
     expect(execFile).toHaveBeenCalledWith('xcodebuild', expect.any(Array), expect.objectContaining({ timeout: 10_000, killSignal: 'SIGKILL' }), expect.any(Function));
@@ -32,10 +50,12 @@ describe('APME background subprocess probes', () => {
     const row = run(project()); row.gitAfter = row.gitBefore;
     const result = runDeterministic(row, DEFAULT_APME_CONFIG);
     await timerBeats();
+    finishSwiftDirectoryRead();
+    await timerBeats();
     expect(io.pending[0].args).toEqual(['status', '--porcelain']);
     io.pending.shift()!.done(null, '');
     expect(await result).toEqual([]);
-    expect(execFile).toHaveBeenCalledTimes(1);
+    expect(execFile).toHaveBeenCalledTimes(2);
   });
   it('builds the judge prompt after an asynchronous bounded diff', async () => {
     const result = buildJudgePrompt(run(project()), 'rubric', true);

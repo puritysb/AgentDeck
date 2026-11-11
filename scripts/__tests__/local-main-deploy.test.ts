@@ -129,6 +129,25 @@ describe('local deployment runtime handover', () => {
     })).rejects.toThrow('build old differs from installed new');
   });
 
+  it('fails a deployment when the restarted daemon stops responding after its first healthy probe', async () => {
+    let clock = 0;
+    const fetchImpl = vi.fn(async () => {
+      if (clock >= 30_000) throw new Error('Health request timed out');
+      return healthy({ pid: 42, build: 'new' });
+    });
+    await expect(waitForDaemonHealth({
+      build: 'new',
+      readRegistry: () => ({ port: 9120, pid: 42 }),
+      fetchImpl,
+      deadlineMs: 30_000,
+      stableForMs: 45_000,
+      intervalMs: 5000,
+      now: () => clock,
+      sleep: async (ms: number) => { clock += ms; },
+    })).rejects.toThrow('Health request timed out');
+    expect(clock).toBe(75_000);
+  });
+
   it('discards the staged app when a step before the swap fails, and keeps it otherwise', async () => {
     const dir = realpathSync(mkdtempSync(join(tmpdir(), 'agentdeck-staged-')));
     roots.push(dir);
