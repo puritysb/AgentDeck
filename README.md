@@ -25,9 +25,13 @@ Stream Deck, e-ink reader, or small desk display.
 **npm delivery, checked 2026-11-11:** [2.1.2](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.1.2)
 is public for all four packages, with the WebSocket and BLE dependency updates.
 
-**Other 2.1 channels, checked 2026-11-07:** Mac, iPhone/iPad and Google Play list
-2.1.0; Elgato Marketplace lists 2.1. The
-Android/Stream Deck/Ulanzi/ESP32 2.1.0 GitHub downloads are public.
+**Android delivery, checked 2026-11-11:** 2.1.1 is available on
+[Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck) and as a
+[signed GitHub APK](https://github.com/puritysb/AgentDeck/releases/tag/android-v2.1.1).
+
+**Other 2.1 channels, checked 2026-11-07:** Mac and iPhone/iPad list 2.1.0, and
+Elgato Marketplace lists 2.1. The Stream Deck, Ulanzi and ESP32 2.1.0 GitHub
+downloads are public.
 Ulanzi's Workshop update was submitted, but public 2.1.0 availability is not yet verified.
 See the [channel-by-channel delivery record](RELEASING.md#210-delivery-checkpoint-2026-11-06).
 
@@ -349,7 +353,7 @@ for verified publication and Store review status.
 | Product | Install / update | Release tag |
 |---|---|---|
 | Mac · iPhone · iPad | [App Store](https://apps.apple.com/app/id6784822497?pt=128040795&ct=github-readme-202610&mt=8) | `apple-v*` |
-| Android tablets and e-ink | [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck) · [signed GitHub APK](https://github.com/puritysb/AgentDeck/releases?q=android-v&expanded=true) | [`android-v2.1.0`](https://github.com/puritysb/AgentDeck/releases/tag/android-v2.1.0) |
+| Android tablets and e-ink | [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck) · [signed GitHub APK](https://github.com/puritysb/AgentDeck/releases?q=android-v&expanded=true) | [`android-v2.1.1`](https://github.com/puritysb/AgentDeck/releases/tag/android-v2.1.1) |
 | CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | [`npm-v2.1.2`](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.1.2) public |
 | Stream Deck / Mini / XL / Plus / + XL | [Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) | `streamdeck-v*` |
 | Ulanzi D200H / D200X LCD keys | [Ulanzi Marketplace](https://ugc.ulanzistudio.com/contentView/1239890184745660416); D200X encoders are not supported | `ulanzi-v*` |
@@ -362,11 +366,10 @@ version that supports it. To enable this capability after upgrading from an olde
 minor, run `agentdeck daemon install` (or `npx @agentdeck/setup`) once. This capability is separate from
 the native daemon bundled with the Mac App Store app.
 
-**Other 2.1 channels, checked 2026-11-07:**
+**2.1 channel delivery:**
 
 The [ESP32 2.1.0 firmware set](https://github.com/puritysb/AgentDeck/releases/tag/esp32-v2.1.0)
-covers all twelve boards, and the Android APK, Stream Deck and Ulanzi 2.1.0
-packages are on GitHub.
+covers all twelve boards. The Stream Deck and Ulanzi 2.1.0 packages are also on GitHub.
 
 - **Mac:** the [Mac App Store](https://apps.apple.com/us/app/agentdeck-dashboard/id6784822497?platform=mac)
   lists **2.1.0**. It includes a native daemon; no separate Node installation is required.
@@ -374,7 +377,7 @@ packages are on GitHub.
   lists **2.1.0**. These are companion dashboards for a reachable paired Mac or supported daemon,
   not environments that run coding agents themselves.
 - **Android:** [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck)
-  lists **2.1.0**, updated November 6. The [2.1.0 GitHub APK](https://github.com/puritysb/AgentDeck/releases/tag/android-v2.1.0)
+  lists **2.1.1** as of November 11. The [2.1.1 GitHub APK](https://github.com/puritysb/AgentDeck/releases/tag/android-v2.1.1)
   is a separate distribution route. Update through the existing install's signing channel;
   Play and GitHub APK signatures can differ. Android also needs a reachable paired daemon.
 - **Stream Deck:** [Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464)

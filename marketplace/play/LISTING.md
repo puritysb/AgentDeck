@@ -8,6 +8,12 @@ created after 2023-11-13 does not apply — production is reachable directly.
 The APK on GitHub Releases stays; Play is an additional channel, not a
 replacement. Play uses store-managed updates; the sideload APK retains wireless updates.
 
+## 2.1.1 / 32 — public at 100% rollout (2026-11-11)
+
+The internal-test AAB was promoted to production across 178 countries and regions.
+The [delivery record](../../RELEASING.md#android-211-delivery-2026-11-11)
+includes the Play and GitHub artifacts and the three device checks.
+
 ## 2.1.0 / 31 — sent for review (2026-11-06)
 
 The release workflow built `agentdeck-2.1.0-31.aab`: 23,282,442 bytes, SHA-256
