@@ -45,6 +45,14 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+## 2026-11-11 — Android 2.1.1
+
+Google Play production and the signed GitHub APK use build 32.
+
+- Retry USB after an automatically selected Wi-Fi connection refuses
+  authentication. The app can reconnect when the USB tunnel comes back without
+  requiring a restart ([#760](https://github.com/puritysb/AgentDeck/pull/760)).
+
 ## 2026-11-10 — Apple 2.1.1
 
 **macOS Dashboard.** Work opens in the same window and puts sessions that need

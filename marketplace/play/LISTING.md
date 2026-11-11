@@ -8,6 +8,24 @@ created after 2023-11-13 does not apply — production is reachable directly.
 The APK on GitHub Releases stays; Play is an additional channel, not a
 replacement. Play uses store-managed updates; the sideload APK retains wireless updates.
 
+## 2.1.1 / 32 — public at 100% rollout (2026-11-11)
+
+Play Console shows build 32 available in production across 178 countries and
+regions, published at 23:24 KST. The public Korean Play listing shows 2.1.1 and
+the USB reconnect release notes. Production uses the same AAB as internal
+testing (SHA-256
+`fcf71e48fa462c4e6b61337f9cc8052634ea41f759937944ab1a6da020416e36`).
+
+Lenovo Tab updated through the internal track with its app data and pairing
+intact. After a test Wi-Fi authentication refusal, it reconnected 30 seconds
+after USB was restored, with the same app process.
+See [PR #760](https://github.com/puritysb/AgentDeck/pull/760).
+
+The GitHub APK uses the same Android source and version 2.1.1 (32) as Play.
+It updates the signed GitHub APK from 2.1.0 (31) and carries the same USB
+reconnect fix. The GitHub build uses the sideload variant with APK updates
+enabled.
+
 ## 2.1.0 / 31 — sent for review (2026-11-06)
 
 The release workflow built `agentdeck-2.1.0-31.aab`: 23,282,442 bytes, SHA-256
