@@ -78,7 +78,16 @@ Box 86 Usage Update
 
 Box 86 Sessions List
     [Template]    Sessions List Scenario
+    [Teardown]    Disconnect Device
     box_86
+
+T-Embed Sessions List
+    [Teardown]    Disconnect Device
+    ${port}=    Get Inventory Port    t_embed
+    ${available}=    Evaluate    bool($port and os.path.exists($port))    modules=os
+    Skip If    not ${available}    No T-Embed at the inventory port
+    Open ESP32 Serial    ${port}
+    Exercise Sessions List    t_embed    awaiting_option
 
 # ═══════════════════════════════════════════════════════════════════
 # Display Control
@@ -237,8 +246,24 @@ Sessions List Scenario
     [Documentation]    Send multi-session list.
     [Arguments]    ${board}
     Given the ESP32 device "${board}" is connected and booted
-    When I send a sessions list
-    Then the device should still be responsive
+    Exercise Sessions List    86box    processing
+
+Exercise Sessions List
+    [Arguments]    ${expected_board}    ${first_state}
+    ${info}=    Get Device Info
+    Should Be Equal    ${info}[board]    ${expected_board}
+    TRY
+        Wait Until Keyword Succeeds    3x    500ms    Load Test Sessions    ${first_state}
+    FINALLY
+        Wait Until Keyword Succeeds    3x    0s    Clear Test Sessions
+    END
+
+Load Test Sessions
+    [Arguments]    ${first_state}
+    When I send a sessions list    ${first_state}
+    Sleep    500ms
+    ${info}=    Get Device Info
+    Should Be Equal As Integers    ${info}[sessionCount]    2
 
 Display On Off Scenario
     [Documentation]    Toggle display on/off.

@@ -39,6 +39,11 @@ devices:
     max_firmware_bytes: 3500000
     boot_test_env: boot_test_qspi
 
+  t_embed:
+    env: t_embed
+    port: /dev/cu.usbmodem213401
+    board_id: t_embed
+
   ulanzi_tc001:
     env: ulanzi_tc001
     port: /dev/cu.usbserial-211110

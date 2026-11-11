@@ -105,15 +105,26 @@ I send a usage update
 
 I send a sessions list
     [Documentation]    Send sessions_list with multiple sessions.
+    [Arguments]    ${first_state}=processing
     ${s1}=    Create Dictionary
     ...    id=sess-001    projectName=MyApp    agentType=claude-code
-    ...    state=processing    port=${9121}    alive=${True}
+    ...    state=${first_state}    port=${9121}    alive=${True}
     ${s2}=    Create Dictionary
     ...    id=sess-002    projectName=Backend    agentType=claude-code
     ...    state=idle    port=${9122}    alive=${True}
     ${sessions}=    Create List    ${s1}    ${s2}
     ${msg}=    Create Dictionary    type=sessions_list    sessions=${sessions}
-    Send JSON Message    ${msg}
+    ${json}=    Evaluate    json.dumps($msg)    modules=json
+    Send JSON Message    ${json}
+
+Clear Test Sessions
+    [Documentation]    Replace the test roster and verify it cleared on the board.
+    Send JSON Message    {"type":"sessions_list","sessions":[]}
+    # Firmware retains the last nonempty roster for a 2.5 s grace period.
+    Sleep    3s
+    ${info}=    Get Device Info
+    Should Be Equal As Integers    ${info}[sessionCount]    0
+    ...    msg=The device still reports sessions after clearing the test roster.
 
 I send display state "${on_off}"
     [Documentation]    Send display_state on/off message.
