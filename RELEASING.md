@@ -106,6 +106,25 @@ and [#757](https://github.com/puritysb/AgentDeck/pull/757). The BLE regression
 tests exercise managed and legacy virtual environments and `AGENTDECK_BLE_PYTHON`.
 Release verification also checks the installed packages and daemon handoff.
 
+#### npm 2.1.2 pre-tag acceptance (2026-11-11)
+
+Candidate `893fa8c2` passed all 27 automatic release checks. The
+run passed 7,645 Vitest tests, 39 daemon end-to-end tests and clean npm package acceptance
+with a 60-second soak. See the [verification receipt](verification/receipts/2026-11-11-893fa8c.json). The first run used macOS Bash 3 for design lint. The
+rerun used Homebrew Bash and passed.
+
+The installed candidate reported 2.1.2 on Node 26.5.0, loaded the native SQLite
+binding and reported BLE ready with cryptography 50.0.2. The App Store
+counterpart was macOS 2.1.1 build 11401. A directly launched Codex turn
+completed under each daemon in isolation. The Swift app showed the turn, and
+both daemons produced changing Pixoo frames with the display online. The
+Claude CLI returned an authentication error, so Codex supplied the live turns.
+
+With both processes running, Node owned the only listener on 9120 and the app
+showed its roster. Swift recovered 9120 within four minutes after Node stopped.
+The app showed the recovered roster, Pixoo and 12 serial connections. The
+previous Node-only operating mode was restored.
+
 ### Apple macOS 2.1.1 release decision — 2026-11-10
 
 | Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
