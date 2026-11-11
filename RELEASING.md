@@ -95,6 +95,17 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### npm 2.1.2 release decision (2026-11-11)
+
+| Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
+| --- | --- | --- | --- | --- | --- |
+| CLI + Node daemon / npm | 2.1.1 | None for 2.1.2 | 2.1.2 | Patch. Update `ws` for the WebSocket memory exhaustion advisory and enforce the BLE cryptography minimum before reusing Python environments. | Existing CLI, daemon and optional BLE support. |
+
+The npm candidate includes [#747](https://github.com/puritysb/AgentDeck/pull/747)
+and [#757](https://github.com/puritysb/AgentDeck/pull/757). The BLE regression
+tests exercise managed and legacy virtual environments and `AGENTDECK_BLE_PYTHON`.
+Release verification also checks the installed packages and daemon handoff.
+
 ### Apple macOS 2.1.1 release decision — 2026-11-10
 
 | Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
