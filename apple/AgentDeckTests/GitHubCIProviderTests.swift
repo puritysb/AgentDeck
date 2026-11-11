@@ -112,6 +112,31 @@ final class GitHubCIProviderTests: XCTestCase {
             XCTAssertEqual(value.phase,"unknown"); XCTAssertNil(value.total)
         }
     }
+    /// Measured on a real pull request: two skipped compile jobs and a neutral
+    /// CodeQL run kept every watched PR unread while other checks ran or passed.
+    func testSkippedAndNeutralChecksAreLeftOutOfTheCommitVerdict() async throws {
+        let identity = try XCTUnwrap(GitHubCIIdentity(["repo":"owner/repo","ref":"main"]))
+        func probe(_ runs: [(String, String?)]) async throws -> GitHubCIEvidence {
+            let rows: [[String: Any]] = runs.enumerated().map { index, run in
+                ["id":index+1,"head_sha":ciSHA,"status":run.0,"conclusion":run.1 as Any? ?? NSNull()]
+            }
+            let checks = try JSONSerialization.data(withJSONObject:["total_count":rows.count,"check_runs":rows])
+            let stub = CIRequests { r,_ in
+                if r.url!.path.hasSuffix("check-runs") { return .init(status:200,headers:[:],body:checks) }
+                if r.url!.path.hasSuffix("status") { return try ciReply(["sha":ciSHA,"total_count":0,"statuses":[]]) }
+                return try ciReply(["sha":ciSHA])
+            }
+            return await GitHubCIClient(transport:{ request in try await stub.request(request) }).probe(identity,token:nil)
+        }
+        let running = try await probe([("completed","success"),("completed","skipped"),("completed","neutral"),("in_progress",nil)])
+        XCTAssertEqual(running.phase,"running"); XCTAssertEqual(running.total,2); XCTAssertEqual(running.passed,1)
+        let settled = try await probe([("completed","success"),("completed","skipped"),("completed","neutral")])
+        XCTAssertEqual(settled.phase,"passed"); XCTAssertEqual(settled.total,1)
+        let onlySkipped = try await probe([("completed","skipped"),("completed","neutral")])
+        XCTAssertEqual(onlySkipped.phase,"unknown"); XCTAssertNil(onlySkipped.total)
+        let cancelled = try await probe([("completed","success"),("completed","cancelled")])
+        XCTAssertEqual(cancelled.phase,"unknown")
+    }
     func testHTTPAuthPermissionsRateLimitAndOversizeBecomeUnknown() async throws {
         for token in ["ghp_classic", "github_pat_a\0b", "github_pat_a\nb", "github_pat_é"] {
             XCTAssertFalse(GitHubCIClient.validToken(token))

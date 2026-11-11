@@ -10,10 +10,12 @@ enum CiCompanionPresentation {
     return CGImageSourceCreateImageAtIndex(source, 0, nil)
   }()
 
+  /// An unread wait says WAIT, as the deck keys and `ciWaitLabel` do. Unknown is
+  /// "not read yet", not a verdict, so it gets no question mark.
   static func label(_ wait: CiWaitStatus) -> String {
     let phase =
       ["queued", "running", "passed", "failed"].contains(wait.phase)
-      ? wait.phase.uppercased() : "UNKNOWN"
+      ? wait.phase.uppercased() : "WAIT"
     return "CI \(phase)" + (wait.pr.map { " #\($0)" } ?? "")
       + (wait.checks.map { " · \($0.passed)/\($0.total)" } ?? "")
   }
@@ -23,7 +25,7 @@ enum CiCompanionPresentation {
     case "queued": "CI queued"
     case "passed": "CI ✓"
     case "failed": "CI !"
-    default: "CI ?"
+    default: "CI wait"
     }
   }
   static func color(_ wait: CiWaitStatus?) -> Color {

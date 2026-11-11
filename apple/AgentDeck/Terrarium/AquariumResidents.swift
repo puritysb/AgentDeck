@@ -777,7 +777,7 @@ final class AquariumResidents {
                 rebuildLabel(for: item, on: resident, compact: labelCompact[item.id] ?? false)
                 resident.findEntity(named: "ci-cue")?.removeFromParent()
                 if let wait = item.ciWait, item.activity != .waiting {
-                    let mark = wait.phase == "passed" ? "✓" : wait.phase == "failed" ? "!" : wait.phase == "unknown" ? "?" : "CI"
+                    let mark = wait.phase == "passed" ? "✓" : wait.phase == "failed" ? "!" : "CI"
                     let mesh = MeshResource.generateText(mark, extrusionDepth: 0.002,
                         font: .init(name: "IBMPlexSans-Bold",size: 0.22) ?? .systemFont(ofSize: 0.22))
                     let cue = ModelEntity(mesh: mesh, materials: [UnlitMaterial(color: nativeColor(CiCompanionPresentation.color(wait)),applyPostProcessToneMap: false)])

@@ -47,7 +47,7 @@ class EinkPaperBoardTest {
         val row = session("ci","idle","CI QA").copy(waitingOn = wait,activity = null)
         val state = DashboardState(agentType = "daemon",siblingSessions = listOf(row))
         val board = buildPaperBoard(state)
-        assertEquals("CI UNKNOWN #432 · 7/10",paperCiLine(board.quiet.single()))
+        assertEquals("CI WAIT #432 · 7/10",paperCiLine(board.quiet.single()))
         assertEquals("1 CI wait",paperMastheadSummary(board))
         val cleared = buildPaperBoard(state.copy(siblingSessions = listOf(row.copy(waitingOn = null))))
         assertEquals(null,paperCiLine(cleared.quiet.single()))

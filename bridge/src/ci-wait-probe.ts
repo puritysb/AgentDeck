@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { CiWaitStatus } from '@agentdeck/shared';
+import { CI_PROVIDER_POLICY, type CiWaitStatus } from '@agentdeck/shared';
 const execute = promisify(execFile);
 
 /** Only explicit command identity is queried. Never discover a repo by shared
@@ -16,13 +16,23 @@ export function ciWaitProbePath(wait: CiWaitStatus): string | null {
   return null;
 }
 
+/** A completed check run that neither validates nor blocks its commit. */
+export function ciCheckNonBlocking(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const row = value as Record<string, unknown>;
+  return row.status === 'completed' && typeof row.conclusion === 'string' &&
+    (CI_PROVIDER_POLICY.nonBlockingConclusions as readonly string[]).includes(row.conclusion);
+}
+
 export function ciPhaseFromResponse(value: unknown): CiWaitStatus['phase'] {
   if (!value || typeof value !== 'object') return 'unknown';
   const data = value as Record<string, unknown>;
   if (Array.isArray(data.check_runs)) {
     // Truncated check lists cannot prove all passed.
     if (!data.check_runs.length || data.total_count !== data.check_runs.length) return 'unknown';
-    const phases = data.check_runs.map(ciPhaseFromResponse);
+    // Skipped/neutral rows are left out; a list of nothing else proves nothing.
+    const phases = data.check_runs.filter(row => !ciCheckNonBlocking(row)).map(ciPhaseFromResponse);
+    if (!phases.length) return 'unknown';
     if (phases.includes('unknown')) return 'unknown';
     if (phases.includes('running')) return 'running';
     if (phases.includes('queued')) return 'queued';
@@ -34,7 +44,7 @@ export function ciPhaseFromResponse(value: unknown): CiWaitStatus['phase'] {
   if (data.status !== 'completed') return 'unknown';
   if (data.conclusion === 'success') return 'passed';
   if (['failure', 'timed_out', 'action_required', 'startup_failure'].includes(String(data.conclusion))) return 'failed';
-  // Cancellation, skipped and neutral are not successful validation.
+  // A single cancelled, skipped or neutral run is not successful validation.
   return 'unknown';
 }
 
@@ -44,7 +54,7 @@ export function ciPhaseFromCommit(checks: Record<string, unknown>, statuses: Rec
   const phases: CiWaitStatus['phase'][] = [];
   if (!Array.isArray(checks.check_runs) || checks.total_count !== checks.check_runs.length ||
       !Array.isArray(statuses.statuses) || statuses.total_count !== statuses.statuses.length) return 'unknown';
-  if (checks.check_runs.length) phases.push(ciPhaseFromResponse(checks));
+  if (checks.check_runs.some(row => !ciCheckNonBlocking(row))) phases.push(ciPhaseFromResponse(checks));
   if (statuses.statuses.length) {
     phases.push(statuses.state === 'success' ? 'passed' : statuses.state === 'failure' ? 'failed' :
       statuses.state === 'pending' ? 'queued' : 'unknown');
@@ -70,9 +80,12 @@ export async function probeCiWait(wait: CiWaitStatus): Promise<Pick<CiWaitStatus
     if (wait.runId) return { phase: ciPhaseFromResponse(response), runUrl: githubRunUrl(response.html_url) };
     const sha = wait.pr ? (response.head as { sha?: unknown } | undefined)?.sha : response.sha;
     if (typeof sha !== 'string' || !/^[a-f0-9]{40}$/.test(sha)) return { phase: 'unknown' };
+    // One full page each: the default 30 rows would leave a larger commit
+    // permanently unknown through the truncation guard.
+    const page = `per_page=${CI_PROVIDER_POLICY.pageSize}`;
     const [checks, statuses] = await Promise.all([
-      get(`repos/${wait.repo}/commits/${sha}/check-runs`),
-      get(`repos/${wait.repo}/commits/${sha}/status`),
+      get(`repos/${wait.repo}/commits/${sha}/check-runs?${page}`),
+      get(`repos/${wait.repo}/commits/${sha}/status?${page}`),
     ]);
     return { phase: ciPhaseFromCommit(checks, statuses), checks: ciCheckCounts(checks, statuses), runUrl: githubRunUrl(response.html_url) };
   } catch { return { phase: 'unknown' }; }
@@ -86,7 +99,7 @@ function githubRunUrl(value: unknown): string | undefined {
 export function ciCheckCounts(checks: Record<string, unknown>, statuses: Record<string, unknown>): CiWaitStatus['checks'] {
   if (!Array.isArray(checks.check_runs) || checks.total_count !== checks.check_runs.length ||
       !Array.isArray(statuses.statuses) || statuses.total_count !== statuses.statuses.length) return undefined;
-  const phases = checks.check_runs.map(ciPhaseFromResponse);
+  const phases = checks.check_runs.filter(row => !ciCheckNonBlocking(row)).map(ciPhaseFromResponse);
   for (const row of statuses.statuses) {
     const state = row?.state;
     phases.push(state === 'success' ? 'passed' : state === 'failure' ? 'failed' : state === 'pending' ? 'queued' : 'unknown');
