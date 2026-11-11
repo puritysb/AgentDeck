@@ -47,7 +47,9 @@ static constexpr int HEADER_H = 30;
 static constexpr int BODY_Y = HEADER_Y + HEADER_H;
 static constexpr int BODY_H = 222 - BODY_Y - KEY_RAIL_H;
 
-static uint8_t s_page = 0;
+// The strip rests on the session board: every session at once, readable by
+// colour from across the desk. Focus, usage and camera are one tap away.
+static uint8_t s_page = 2;
 static char s_pinId[32]{};
 static char s_pinnedResult[100]{}, s_pinnedResultHm[6]{};
 static bool s_capturePin = false, s_newResult = false;
@@ -72,7 +74,9 @@ static lv_obj_t* s_hintPrimary = nullptr;
 static lv_obj_t* s_hintPrev = nullptr;
 static lv_obj_t* s_hintNext = nullptr;
 static lv_obj_t* s_hintReset = nullptr;
-static char s_sessionRowIds[3][32] = {};
+static constexpr uint8_t LANES = 6;
+static char s_sessionRowIds[LANES][32] = {};
+static int s_laneWidth = 80;
 static uint8_t s_sessionRowCount = 0;
 static uint32_t s_buttonActiveUntil[3] = {0, 0, 0};
 
@@ -198,8 +202,9 @@ static lv_obj_t* makeKeyHint(lv_obj_t* rail, const char* text, int x,
     lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(chip, 3, 0);
 
-    lv_obj_t* hint = makeLabel(chip, &lv_font_montserrat_12, color, text);
-    lv_obj_set_style_text_letter_space(hint, 1, 0);
+    // Five letters at 12 px with tracking are wider than the capsule and lost
+    // their last letter ("USAG", "UNPI"). 10 px fits every label used here.
+    lv_obj_t* hint = makeLabel(chip, &lv_font_montserrat_10, color, text);
     lv_obj_align(hint, LV_ALIGN_CENTER, 0, 0);
     return hint;
 }
@@ -388,7 +393,7 @@ static void renderSessionsPage() {
         char line[100];
         bool focused;
         bool dotPeer;
-    } rows[3];
+    } rows[LANES];
     uint8_t n = 0;
     s_sessionRowCount = 0;
     memset(s_sessionRowIds, 0, sizeof(s_sessionRowIds));
@@ -415,7 +420,7 @@ static void renderSessionsPage() {
     s_sessionTotal = orderCount;
     if (s_sessionOffset >= orderCount) s_sessionOffset = 0;
 
-    for (uint8_t oi = s_sessionOffset; oi < orderCount && n < 3; oi++) {
+    for (uint8_t oi = s_sessionOffset; oi < orderCount && n < LANES; oi++) {
         if(order[oi]==g_state.sessionCount && dotPresent) {
             const uint8_t code=g_state.dot->effectiveCode(millis());
             memset(&rows[n],0,sizeof(rows[n]));rows[n].dotPeer=true;
@@ -444,58 +449,77 @@ static void renderSessionsPage() {
         return;
     }
 
+    // One lane per session. A lane is a column so that six sessions fit where
+    // three rows did, and the top band carries state without reading a word.
+    const bool paged = s_sessionTotal > LANES;
+    const int laneH = BODY_H - (paged ? 18 : 2);
+    s_laneWidth = 480 / n;
     for (uint8_t i = 0; i < n; i++) {
         Utf8::sanitizeLvglText(rows[i].projectName);
         Utf8::sanitizeLvglText(rows[i].line);
-        const int pitch = (BODY_H - 18) / 3;
-        int y = 1 + i * pitch;
+        const bool awaiting = strstr(rows[i].state, "awaiting") != nullptr;
+        const uint32_t stateColor = stateColorOf(rows[i].state);
+        const int x = i * s_laneWidth, w = s_laneWidth - 2;
 
-        if (rows[i].focused || strstr(rows[i].state, "awaiting") != nullptr) {
-            lv_obj_t* rail = lv_obj_create(s_body);
-            lv_obj_remove_style_all(rail);
-            lv_obj_set_size(rail, 4, pitch - 5);
-            lv_obj_set_style_bg_color(
-                rail, lv_color_hex(strstr(rows[i].state, "awaiting") != nullptr
-                                       ? Theme::StatusAmber : Theme::StatusCyan), 0);
-            lv_obj_set_style_bg_opa(rail, LV_OPA_COVER, 0);
-            lv_obj_align(rail, LV_ALIGN_TOP_LEFT, 2, y + 2);
+        lv_obj_t* lane = lv_obj_create(s_body);
+        lv_obj_remove_style_all(lane);
+        lv_obj_set_size(lane, w, laneH);
+        lv_obj_set_pos(lane, x + 1, 0);
+        lv_obj_remove_flag(lane, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_style_bg_color(lane, lv_color_hex(awaiting ? Theme::StatusAmber : Theme::MidWater), 0);
+        lv_obj_set_style_bg_opa(lane, awaiting ? LV_OPA_20 : LV_OPA_40, 0);
+        if (rows[i].focused) {
+            lv_obj_set_style_border_color(lane, lv_color_hex(Theme::StatusCyan), 0);
+            lv_obj_set_style_border_width(lane, 1, 0);
         }
+        lv_obj_t* band = lv_obj_create(lane);
+        lv_obj_remove_style_all(band);
+        lv_obj_set_size(band, w, awaiting ? 8 : 4);
+        lv_obj_set_style_bg_color(band, lv_color_hex(stateColor), 0);
+        lv_obj_set_style_bg_opa(band, LV_OPA_COVER, 0);
 
-        lv_obj_t* dot = lv_obj_create(s_body);
-        lv_obj_remove_style_all(dot);
-        lv_obj_set_size(dot, 10, 10);
-        lv_obj_set_style_bg_color(dot, lv_color_hex(stateColorOf(rows[i].state)), 0);
-        lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
-        lv_obj_set_style_radius(dot, 5, 0);
-        lv_obj_align(dot, LV_ALIGN_TOP_LEFT, 12, y + 8);
-
-        lv_obj_t* brand = makeLabel(s_body, &lv_font_montserrat_14,
-                                    agentColor(rows[i].agentType),
-                                    rows[i].dotPeer ? "Dot" : agentShortLabel(rows[i].agentType));
-        lv_obj_align(brand, LV_ALIGN_TOP_LEFT, 30, y);
-
-        lv_obj_t* proj = makeLabel(s_body, &font_kr_16, Theme::HUDText,
-                                   rows[i].projectName);
-        lv_obj_set_width(proj, 220);
-        lv_label_set_long_mode(proj, LV_LABEL_LONG_DOT);
-        lv_obj_align(proj, LV_ALIGN_TOP_LEFT, 122, y - 1);
-
-        // The third row yields space to the category-specific roster summary.
-        lv_obj_t* line = makeLabel(s_body, &font_kr_16, Theme::HUDDim, rows[i].line);
-        lv_obj_set_size(line, 430, font_kr_16.line_height);
-        lv_label_set_long_mode(line, LV_LABEL_LONG_DOT);
-        lv_obj_align(line, LV_ALIGN_TOP_LEFT, 30, y + 24);
-
-        const char* rowStatus = strstr(rows[i].state, "awaiting") ? "INPUT"
+        const char* rowStatus = awaiting ? "INPUT"
                               : strcmp(rows[i].state, "error") == 0 ? "ERROR"
                               : strcmp(rows[i].state, "processing") == 0 ? "WORK"
                               : "READY";
-        lv_obj_t* st = makeLabel(s_body, &lv_font_montserrat_14,
-                                 stateColorOf(rows[i].state), rowStatus);
-        lv_obj_align(st, LV_ALIGN_TOP_RIGHT, -12, y);
+        lv_obj_t* st = makeLabel(lane, &lv_font_montserrat_14, stateColor, rowStatus);
+        lv_obj_set_pos(st, 6, 13);
+        lv_obj_t* brand = makeLabel(lane, &lv_font_montserrat_12, agentColor(rows[i].agentType),
+                                    rows[i].dotPeer ? "Dot" : agentShortLabel(rows[i].agentType));
+        lv_obj_set_size(brand, w - 12, lv_font_montserrat_12.line_height);
+        lv_label_set_long_mode(brand, LV_LABEL_LONG_DOT);
+        lv_obj_set_pos(brand, 6, 32);
+
+        // A name whose longest word is wider than the lane would break inside
+        // the word ("AgentDec" / "k"). Step down one size instead.
+        const lv_font_t* nameFont = &font_kr_16;
+        {
+            char word[40]; size_t len = 0;
+            for (const char* c = rows[i].projectName;; ++c) {
+                if (*c && *c != ' ' && *c != '-' && len < sizeof(word) - 1) { word[len++] = *c; continue; }
+                word[len] = 0;
+                lv_point_t size;
+                lv_text_get_size(&size, word, &font_kr_16, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+                if (size.x > w - 10) nameFont = &font_kr_12;
+                len = 0;
+                if (!*c) break;
+            }
+        }
+        lv_obj_t* proj = makeLabel(lane, nameFont, Theme::HUDText, rows[i].projectName);
+        lv_obj_set_size(proj, w - 10, font_kr_16.line_height * 2);
+        lv_label_set_long_mode(proj, LV_LABEL_LONG_DOT);
+        lv_obj_set_pos(proj, 6, 50);
+
+        const int lineY = 54 + font_kr_16.line_height * 2;
+        // A wide lane has room to make the request itself the largest text.
+        lv_obj_t* line = makeLabel(lane, w >= 150 ? &font_kr_16 : &font_kr_12,
+                                   awaiting ? Theme::HUDText : Theme::HUDDim, rows[i].line);
+        lv_obj_set_size(line, w - 10, laneH - lineY - 2);
+        lv_label_set_long_mode(line, LV_LABEL_LONG_DOT);
+        lv_obj_set_pos(line, 6, lineY);
     }
 
-    if (s_sessionTotal > 3) {
+    if (paged) {
         char page[64];
         snprintf(page, sizeof(page), "%u-%u / %u   TAP FOR NEXT", s_sessionOffset + 1,
                  s_sessionOffset + n, s_sessionTotal);
@@ -786,11 +810,11 @@ void onTouch(const Input::TouchEvent& event) {
     }
 
     if (s_page == 2) {
-        if (event.y >= BODY_Y + BODY_H - 18) {
-            if (s_sessionTotal > 3) s_sessionOffset = (s_sessionOffset + 3) % s_sessionTotal;
+        if (s_sessionTotal > LANES && event.y >= BODY_Y + BODY_H - 18) {
+            s_sessionOffset = s_sessionOffset + LANES < s_sessionTotal ? s_sessionOffset + LANES : 0;
             s_lastSig[0] = 0; return;
         }
-        int row = (event.y - BODY_Y) / ((BODY_H - 18) / 3);
+        int row = s_laneWidth > 0 ? event.x / s_laneWidth : -1;
         if (row >= 0 && row < s_sessionRowCount && s_sessionRowIds[row][0]) {
             Companion::copy(s_pinId, s_sessionRowIds[row]); s_capturePin = true;
             sendFocusSession(s_pinId);

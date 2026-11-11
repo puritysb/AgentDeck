@@ -76,7 +76,7 @@ paused while Usage is selected. The host display-sleep policy still applies.
 
 ## T-Embed CC1101 (Companion Knob)
 
-**Shipping since 2026-07-25.** The LilyGO T-Embed CC1101 is the fleet's only board with a **rotary encoder**, and the only one you steer with rather than only read from — every other Shipping board is output-only apart from touch. Its UI (`esp32/src/ui/knob/`) starts with the full session roster showing the project and activity or question. Rotate to inspect another session, then press to enter local detail. A waiting-only queue remains available. Opening detail keeps selection local and does not change desktop focus. Detail requires a deliberate turn to select before pressing; changed questions or choices clear the selection. A pending reply stays unconfirmed until a state update is observed; disconnected or stale requests cannot be sent. Holding the encoder is push-to-talk — the board captures voice, the host transcribes, and the reply is spoken back through the board speaker.
+**Shipping since 2026-07-25.** The LilyGO T-Embed CC1101 is the fleet's only board with a **rotary encoder**, and the only one you steer with rather than only read from — every other Shipping board is output-only apart from touch. Its UI (`esp32/src/ui/knob/`) rests on a **pager home** (experimental, 2026-11-10): one headline readable from across the desk — `N NEED YOU` with the oldest request's project and question, `N WORKING` with the working projects, or `ALL CLEAR` — over eight dots in ring-LED order. With a request waiting, one press opens its card; nothing is sent until a choice is turned to and pressed. Turning leaves home for the session roster, and a list left untouched for 20 seconds returns home. In the roster, rotate to inspect another session, then press to enter local detail. A waiting-only queue remains available. Opening detail keeps selection local and does not change desktop focus. Detail requires a deliberate turn to select before pressing; changed questions or choices clear the selection. A pending reply stays unconfirmed until a state update is observed; disconnected or stale requests cannot be sent. Holding the encoder is push-to-talk — the board captures voice, the host transcribes, and the reply is spoken back through the board speaker.
 
 It is a **dual-mode companion**: USB-powered on the desk it is a steering knob; on its 1300 mAh cell it becomes a carry-around pager that chimes when a session starts waiting. The 8× WS2812 ring is a session-status ring (one LED per session, up to eight). The BQ27220 fuel gauge gives it a real state-of-charge readout rather than an inferred one.
 
@@ -98,6 +98,12 @@ each saving the setting and restarting the board:
   hold on the strip's Usage page (`HOLD = PORTRAIT`);
 - from the host: `agentdeck esp32 orientation t_display_pro <auto|portrait|landscape>`
   (Node daemon `POST /esp32/orientation`; USB serial first, WiFi fallback).
+
+The landscape strip rests on a **session board** (experimental, 2026-11-10): one
+column per session, up to six across, each with a state band, state word,
+agent, project and its current line. A waiting session's lane is amber. Tap a
+lane to pin it and open Focus, where permission decisions are made; the board
+itself never answers. More than six sessions page with the bottom strip.
 
 `device_info` reports `layout` (running) and `layoutSetting` (persisted). The
 Swift in-process daemon does not send the command yet; the two on-device paths

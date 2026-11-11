@@ -2563,10 +2563,14 @@ void drawGlanceFace(const Snap& s) {
             if (detail && detail[0]) {
                 const int16_t dx = (int16_t)(14 + smartWidth(name, &FreeSansBold9pt7b) + 10);
                 if (asks && y + rowH <= floorY) {
-                    // A question gets the full width of the next line.
-                    char q[140]; smartFitText(q, sizeof(q), detail, W - 28, &FreeSans9pt7b);
-                    smartTextAt(14, (int16_t)(y + rowH), q, &FreeSans9pt7b);
-                    y += rowH;
+                    // A question gets full-width lines below its name: as many
+                    // as fit while every remaining ranked row keeps its line.
+                    // One clipped line hid the subject of a permission prompt.
+                    const int rowsAfter = (int)eligible - (int)shown - 1;
+                    int lines = (floorY - y) / rowH - rowsAfter;
+                    lines = lines < 1 ? 1 : lines > 3 ? 3 : lines;
+                    const int used = drawParagraph(14, (int16_t)(y + rowH), W - 28, rowH, lines, detail, &FreeSans9pt7b);
+                    y += rowH * (used > 0 ? used : 1);
                 } else {
                     char d[140]; smartFitText(d, sizeof(d), detail, W - 14 - dx, &FreeSans9pt7b);
                     smartTextAt(dx, y, d, &FreeSans9pt7b);
