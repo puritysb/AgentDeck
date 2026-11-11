@@ -45,6 +45,16 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+## 2026-11-11 — npm 2.1.2
+
+- Update the Node daemon's WebSocket dependency to `ws` 8.22.1, which includes
+  the fix for [CVE-2026-62389](https://github.com/advisories/GHSA-73jw-fp74-p77x).
+  [#747](https://github.com/puritysb/AgentDeck/pull/747)
+- Require `cryptography` 50.0.2 or later before reusing a BLE Python environment.
+  Run `agentdeck ble setup` to update the managed environment. If you set
+  `AGENTDECK_BLE_PYTHON`, update the dependencies in that Python environment.
+  [#757](https://github.com/puritysb/AgentDeck/pull/757)
+
 ## 2026-11-10 — Apple 2.1.1
 
 **macOS Dashboard.** Work opens in the same window and puts sessions that need
