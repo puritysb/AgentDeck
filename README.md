@@ -357,6 +357,7 @@ for verified publication and Store review status.
 | CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | [`npm-v2.1.2`](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.1.2) public |
 | Stream Deck / Mini / XL / Plus / + XL | [Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) | `streamdeck-v*` |
 | Ulanzi D200H / D200X LCD keys | [Ulanzi Marketplace](https://ugc.ulanzistudio.com/contentView/1239890184745660416); D200X encoders are not supported | `ulanzi-v*` |
+| Vobot Mini Dock | Read-only session and usage display with [Wi-Fi pairing](integrations/vobot/README.md#pair-over-wi-fi) | [Vobot App Gallery](https://app.myvobot.com/) submission in review |
 | ESP32 panels and TRMNL 7.5" | [Browser flasher](https://puritysb.github.io/AgentDeck/flash/) · [firmware releases](https://github.com/puritysb/AgentDeck/releases?q=esp32-v&expanded=true) | `esp32-v*` |
 
 **npm delivery, checked 2026-11-11:** [npm 2.1.2](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.1.2)
