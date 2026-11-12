@@ -1222,8 +1222,7 @@ def _render_verify(catalog, metadata, workflow_status=None, recorded=None, commi
     snapshot = (f'Workflow snapshot: <time>{_esc(fetched)}</time>.' if fetched
                 else 'Workflow snapshot time unavailable.')
     return f'''{merge_note}<p class="verify-note"><span>{snapshot}</span>
-      <span>This report updates after a successful Pages build on master. Scheduled scans may be newer;
-      follow each workflow link for current results. Workflow success does not mean zero security findings.</span></p>
+      <span>This report updates after a successful Pages build on master. Scheduled scans may be newer; follow each workflow link for current results. Workflow success does not mean zero security findings.</span></p>
       <div class="grid gates">{cards}</div>
       <h3 class="sub-head">Not verified automatically</h3>
       <div class="grid gaps">{gaps}</div>

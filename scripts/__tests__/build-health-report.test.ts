@@ -462,6 +462,15 @@ describe('report Korean locale', () => {
     };
   }
 
+  it('translates the exact generated workflow freshness explanation', () => {
+    const text = /<span>(This report updates[\s\S]*?)<\/span>/.exec(html)?.[1];
+    expect(text).toBeTruthy();
+    const f = localeFixture(false, 'ko', [text!]);
+    expect(f.nodes.at(-1)?.nodeValue).toContain('이 보고서는 master의 Pages 빌드가 성공하면 갱신됩니다.');
+    f.change('en');
+    expect(f.nodes.at(-1)?.nodeValue).toBe(text);
+  });
+
   it('restores Korean, translates counts and accessibility, preserves evidence, and reverses to English', () => {
     const f = localeFixture();
     expect(f.document.documentElement.lang).toBe('ko');
