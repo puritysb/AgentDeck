@@ -22,19 +22,6 @@ projects and tools. Watch them in a living aquarium, follow the timeline, and
 keep usage limits in view. Use your Mac or terminal on its own, or add a tablet,
 Stream Deck, e-ink reader, or small desk display.
 
-**npm delivery, checked 2026-11-11:** [2.1.2](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.1.2)
-is public for all four packages, with the WebSocket and BLE dependency updates.
-
-**Android delivery, checked 2026-11-11:** 2.1.1 is available on
-[Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck) and as a
-[signed GitHub APK](https://github.com/puritysb/AgentDeck/releases/tag/android-v2.1.1).
-
-**Other 2.1 channels, checked 2026-11-07:** Mac and iPhone/iPad list 2.1.0, and
-Elgato Marketplace lists 2.1. The Stream Deck, Ulanzi and ESP32 2.1.0 GitHub
-downloads are public.
-Ulanzi's Workshop update was submitted, but public 2.1.0 availability is not yet verified.
-See the [channel-by-channel delivery record](RELEASING.md#210-delivery-checkpoint-2026-11-06).
-
 <p align="center">
   <a href="docs/media/desk-overview.jpg"><img src="docs/media/setup-full.jpg" width="900" alt="AgentDeck on a real desk, photographed September 28, 2026: iPad and Android dashboards, Stream Deck and Ulanzi controls, e-ink readers, ESP32 panels, and LED matrices"></a>
 </p>
@@ -83,191 +70,6 @@ their channel versions. CloudKit/Watch remains a separate development experiment
 Historical photographs and earlier recordings remain available. The device gallery
 labels its AI-assisted photo composite separately from actual app and firmware captures.
 
-## Choose your view
-
-One local daemon connects your sessions to these screens and controls.
-Pick one or use several together. Click any image to see it at full size.
-
-### Screens and controls
-
-<table>
-<tr>
-<td width="50%" valign="top">
-<a href="docs/media/streamdeck-plus.jpg"><img src="docs/media/streamdeck-plus.jpg" width="440" alt="Stream Deck+ running AgentDeck — Live session keys and physical controls at your fingertips."></a><br>
-<b>Stream Deck+</b><br>
-Live session keys and physical controls at your fingertips.<br>
-<a href="docs/streamdeck-layout.md">Setup guide →</a>
-</td>
-<td width="50%" valign="top">
-<a href="docs/media/tui-dashboard.png"><img src="docs/media/tui-dashboard.png" width="440" alt="Terminal / TUI running AgentDeck — Sessions, a braille aquarium, usage, and timeline. No extra hardware."></a><br>
-<b>Terminal / TUI</b><br>
-Sessions, a braille aquarium, usage, and timeline. No extra hardware.<br>
-<a href="docs/tui-dashboard.md">Setup guide →</a>
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-<a href="docs/media/ipad.jpg"><img src="docs/media/ipad.jpg" width="440" alt="iPad running AgentDeck — A native companion dashboard on your tablet. Also available on iPhone."></a><br>
-<b>iPad</b><br>
-A native companion dashboard on your tablet. Also available on iPhone.<br>
-<a href="docs/apple-app.md">Setup guide →</a>
-</td>
-<td width="50%" valign="top">
-<a href="docs/media/android-tablet.jpg"><img src="docs/media/android-tablet.jpg" width="440" alt="Android tablet running AgentDeck — Give a tablet a place on your desk as a dedicated dashboard."></a><br>
-<b>Android tablet</b><br>
-Give a tablet a place on your desk as a dedicated dashboard.<br>
-<a href="docs/android.md">Setup guide →</a>
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-<a href="docs/media/d200h.jpg"><img src="docs/media/d200h.jpg" width="440" alt="Ulanzi D200H running AgentDeck — Physical session keys. D200X LCD keys are also supported."></a><br>
-<b>Ulanzi D200H</b><br>
-Physical session keys. D200X LCD keys are also supported.<br>
-<a href="docs/devices.md">Setup guide →</a>
-</td>
-<td width="50%" valign="top">
-<a href="docs/media/android-eink.jpg"><img src="docs/media/android-eink.jpg" width="440" alt="Android e-ink reader running AgentDeck — A quiet view of your sessions beside your work."></a><br>
-<b>Android e-ink reader</b><br>
-A quiet view of your sessions beside your work.<br>
-<a href="docs/android.md">Setup guide →</a>
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-<a href="docs/media/vobot-mini-dock.jpg"><img src="docs/media/vobot-mini-dock.jpg" width="440" alt="Vobot Mini Dock showing AgentDeck session cards and usage beside the clock"></a><br>
-<b>Vobot Mini Dock</b><br>
-A dock app that shows live sessions and usage and lights up when an agent needs input.<br>
-<a href="integrations/vobot/README.md">Vobot setup guide →</a>
-</td>
-<td width="50%" valign="top">
-<a href="docs/media/hagibis-macos-display.jpg"><img src="docs/media/hagibis-macos-display.jpg" width="440" alt="Detail of the native AgentDeck Mac dashboard on a Hagibis mini monitor"></a><br>
-<b>Mac dashboard on a second display</b><br>
-Move the native dashboard onto an extended macOS display. The Hagibis mini monitor is one example.<br>
-<a href="docs/apple-app.md">Mac app guide →</a>
-</td>
-</tr>
-</table>
-
-### Small displays, different shapes
-
-<table>
-<tr>
-<td width="50%" valign="top">
-<a href="docs/media/round-amoled.jpg"><img src="docs/media/round-amoled.jpg" width="440" alt="Round AMOLED running AgentDeck — A circular ESP32 display with an aquarium and usage gauges."></a><br>
-<b>Round AMOLED</b><br>
-A circular ESP32 display with an aquarium and usage gauges.<br>
-<a href="docs/esp32.md">Setup guide →</a>
-</td>
-<td width="50%" valign="top">
-<a href="docs/media/trmnl_75.jpg"><img src="docs/media/trmnl_75.jpg" width="440" alt="TRMNL 7.5-inch running AgentDeck — A large e-ink status board running AgentDeck firmware."></a><br>
-<b>TRMNL 7.5-inch</b><br>
-A large e-ink status board running AgentDeck firmware.<br>
-<a href="docs/esp32.md">Setup guide →</a>
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-<a href="docs/media/t-embed.jpg"><img src="docs/media/t-embed.jpg" width="440" alt="LilyGo T-Embed running AgentDeck — A compact session display with a rotary dial."></a><br>
-<b>LilyGo T-Embed</b><br>
-A compact session display with a rotary dial.<br>
-<a href="docs/esp32.md">Setup guide →</a>
-</td>
-<td width="50%" valign="top">
-<a href="docs/media/t-display-pro.jpg"><img src="docs/media/t-display-pro.jpg" width="440" alt="LilyGo T-Display-S3-Pro running AgentDeck — A small touch display for sessions and usage."></a><br>
-<b>LilyGo T-Display-S3-Pro</b><br>
-A small touch display for sessions and usage.<br>
-<a href="docs/esp32.md">Setup guide →</a>
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-<a href="docs/media/epd47.jpg"><img src="docs/media/epd47.jpg" width="440" alt="LilyGo EPD47 running AgentDeck — A grayscale e-ink panel showing focused work and usage."></a><br>
-<b>LilyGo EPD47</b><br>
-A grayscale e-ink panel showing focused work and usage.<br>
-<a href="docs/esp32.md">Setup guide →</a>
-</td>
-<td width="50%" valign="top">
-<a href="docs/media/ips35.jpg"><img src="docs/media/ips35.jpg" width="440" alt="ESP32 IPS 3.5-inch running AgentDeck — A compact aquarium with session and usage panels."></a><br>
-<b>ESP32 IPS 3.5-inch</b><br>
-A compact aquarium with session and usage panels.<br>
-<a href="docs/esp32.md">Setup guide →</a>
-</td>
-</tr>
-</table>
-
-### Pixel displays
-
-<table>
-<tr>
-<td width="50%" valign="top">
-<a href="docs/media/pixoo64.jpg"><img src="docs/media/pixoo64.jpg" width="440" alt="Divoom Pixoo64 running AgentDeck — A 64 × 64 pixel-art aquarium."></a><br>
-<b>Divoom Pixoo64</b><br>
-A 64 × 64 pixel-art aquarium.<br>
-<a href="docs/devices.md">Setup guide →</a>
-</td>
-<td width="50%" valign="top">
-<a href="docs/media/tc001.jpg"><img src="docs/media/tc001.jpg" width="440" alt="Ulanzi TC001 running AgentDeck — Agent creatures across a wide LED clock display."></a><br>
-<b>Ulanzi TC001</b><br>
-Agent creatures across a wide LED clock display.<br>
-<a href="docs/devices.md">Setup guide →</a>
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-<a href="docs/media/timebox.jpg"><img src="docs/media/timebox.jpg" width="440" alt="Divoom Timebox Mini running AgentDeck — Agent status on a tiny 11 × 11 pixel display."></a><br>
-<b>Divoom Timebox Mini</b><br>
-Agent status on a tiny 11 × 11 pixel display.<br>
-<a href="docs/devices.md">Setup guide →</a>
-</td>
-<td width="50%" valign="top">
-<a href="docs/media/idotmatrix.jpg"><img src="docs/media/idotmatrix.jpg" width="440" alt="iDotMatrix running AgentDeck — A 32 × 32 LED view of your agents."></a><br>
-<b>iDotMatrix</b><br>
-A 32 × 32 LED view of your agents.<br>
-<a href="docs/devices.md">Setup guide →</a>
-</td>
-</tr>
-</table>
-
-**[Explore all supported devices and live previews →](https://puritysb.github.io/AgentDeck/hardware/)**
-
-Mobile apps and hardware connect to a daemon on your computer. Controls are
-available when the session exposes a supported control path; other surfaces
-show status. See the [hardware compatibility matrix](docs/hardware-compatibility.md)
-for model-specific capabilities, including D200X encoder limitations.
-
-## A dashboard that feels alive
-
-**On your Mac, no extra hardware required.** Watch the native app in action below.
-
-<p align="center">
-  <a href="https://puritysb.github.io/AgentDeck/#current-habitat"><img src="docs/media/aquarium-preview.gif" width="720" alt="Native 3D aquarium in motion — agent creatures and schooling fish; click to watch the current recording"></a>
-</p>
-
-Choose the familiar dashboard or the **native 3D aquarium** on Mac, iPhone/iPad,
-and Android LCD devices. Each session becomes a creature; its activity changes
-its movement, and nearby fish react. On mobile, tap empty water to hide the
-panels and move closer. Tap again to return. Existing preferences are preserved.
-
-The preview above shows fictional activity in the real native app; no private
-workspace data is shown. [Watch the current aquarium recording](https://puritysb.github.io/AgentDeck/#current-habitat)
-or take the [hardware desk tour](https://youtu.be/s-f8ICBcC4o).
-
-## What it does
-
-- **Follow parallel work.** Session names, current tools, and a shared timeline
-  explain what each agent is doing. Collaboration shows reported subagents,
-  task relationships, and recent task history.
-- **Notice when you are needed.** Permission and input requests stand out.
-  Answer or interrupt from supported surfaces when the session provides a real
-  control path; otherwise prompts are display-only.
-- **Keep usage visible.** Claude, Codex, and z.ai/GLM gauges appear where the
-  connected provider supplies usage data. Agent identity and model provider
-  remain separate.
-- **Choose your display.** The 3D scene keeps up to eight foreground residents
-  readable while the roster retains every session. E-ink uses a static rendered
-  backdrop and restrained motion; compact panels keep their focused layouts.
-
 ## Start here
 
 **No extra hardware required.** Choose a native dashboard or the terminal path.
@@ -280,11 +82,6 @@ integrations in Settings, then run your agents normally. iPhone/iPad pair with
 an AgentDeck daemon on your network.
 
 Requires macOS 26+ or iOS/iPadOS 17+. See the [Apple guide](docs/apple-app.md).
-
-**Planned, not available yet:** a [CloudKit remote-observation PoC](docs/apple-remote-observation.md)
-will test selected Mac updates on iPhone and forwarded Apple Watch notifications.
-The running Mac remains the observation source; phone/Watch widgets and remote
-approvals are outside the first experiment. [Preview and limits](docs/marketing/apple-remote-observation.md).
 
 ### Terminal, Windows, Linux, and external integrations
 
@@ -324,6 +121,59 @@ experimental). Immediate terminal steering stays managed-only. See the
 
 </details>
 
+## Choose your view
+
+Start with your Mac or terminal; add screens and controls as needed.
+Mobile apps and hardware connect to a daemon on your computer.
+
+| Surface | What it offers | Setup |
+|---|---|---|
+| Mac · iPhone · iPad | Native dashboard and 3D aquarium; Mac includes the daemon | [Apple guide](docs/apple-app.md) |
+| Terminal | Sessions, braille aquarium, usage and timeline | [TUI guide](docs/tui-dashboard.md) |
+| Android tablet or e-ink reader | A dedicated companion dashboard | [Android guide](docs/android.md) |
+| Stream Deck · Ulanzi | Physical session keys and supported controls | [Stream Deck](docs/streamdeck-layout.md) · [Ulanzi](docs/devices.md) |
+| ESP32 · TRMNL | Compact panels, rotary controls and e-ink status boards | [Firmware guide](docs/esp32.md) |
+| Pixoo · TC001 · Timebox · iDotMatrix | Agent status on pixel displays | [Device guide](docs/devices.md) |
+| Vobot Mini Dock | Read-only sessions and usage | [Vobot guide](integrations/vobot/README.md) |
+
+Controls require a supported session control path; other surfaces show status.
+D200X support covers LCD keys, not encoders. See the
+[hardware compatibility matrix](docs/hardware-compatibility.md) for model-specific limits.
+
+[**Browse device photos and live previews →**](https://puritysb.github.io/AgentDeck/hardware/)
+
+## A dashboard that feels alive
+
+**On your Mac, no extra hardware required.** Watch the native app in action below.
+
+<p align="center">
+  <a href="https://puritysb.github.io/AgentDeck/#current-habitat"><img src="docs/media/aquarium-preview.gif" width="720" alt="Native 3D aquarium in motion — agent creatures and schooling fish; click to watch the current recording"></a>
+</p>
+
+Choose the familiar dashboard or the **native 3D aquarium** on Mac, iPhone/iPad,
+and Android LCD devices. Each session becomes a creature; its activity changes
+its movement, and nearby fish react. On mobile, tap empty water to hide the
+panels and move closer. Tap again to return. Existing preferences are preserved.
+
+The preview above shows fictional activity in the real native app; no private
+workspace data is shown. [Watch the current aquarium recording](https://puritysb.github.io/AgentDeck/#current-habitat)
+or take the [hardware desk tour](https://youtu.be/s-f8ICBcC4o).
+
+## What it does
+
+- **Follow parallel work.** Session names, current tools, and a shared timeline
+  explain what each agent is doing. Collaboration shows reported subagents,
+  task relationships, and recent task history.
+- **Notice when you are needed.** Permission and input requests stand out.
+  Answer or interrupt from supported surfaces when the session provides a real
+  control path; otherwise prompts are display-only.
+- **Keep usage visible.** Claude, Codex, and z.ai/GLM gauges appear where the
+  connected provider supplies usage data. Agent identity and model provider
+  remain separate.
+- **Choose your display.** The 3D scene keeps up to eight foreground residents
+  readable while the roster retains every session. E-ink uses a static rendered
+  backdrop and restrained motion; compact panels keep their focused layouts.
+
 ## Agents
 
 AgentDeck is growing beyond coding workflows: **Hermes Agent** is supported as an
@@ -349,73 +199,28 @@ a one-time folder grant for its transcripts. Detailed setup and limitations:
 
 ## Releases
 
-[npm 2.1.2](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.1.2) is public for all four packages.
-This patch updates the Node WebSocket dependency and checks the BLE cryptography minimum
-before reusing a Python environment. See the [delivery readback](RELEASING.md#npm-212-delivery-checkpoint-2026-11-11).
-
 ### Compatibility and delivery channels
 
 Use the channel for your device. Components with the same major version work
-together: a 1.0 device can connect to a 1.5 daemon. Minor and patch versions
-use the same meaning across stores: minor versions identify a shared feature
-milestone, while target-specific patches fix or complete existing behavior.
-Targets can ship at different times; you do not need to update every device
-together. See the [version decision policy](RELEASING.md#choosing-a-version).
-Release tags identify source versions; check the [delivery records](RELEASING.md)
-for verified publication and Store review status.
+together; target-specific updates can ship at different times.
+[Delivery records](RELEASING.md) distinguish published downloads, Store listings
+and pending review, with the date each was checked.
 
 | Product | Install / update | Release tag |
 |---|---|---|
 | Mac · iPhone · iPad | [App Store](https://apps.apple.com/app/id6784822497?pt=128040795&ct=github-readme-202610&mt=8) | `apple-v*` |
-| Android tablets and e-ink | [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck) · [signed GitHub APK](https://github.com/puritysb/AgentDeck/releases?q=android-v&expanded=true) | [`android-v2.1.1`](https://github.com/puritysb/AgentDeck/releases/tag/android-v2.1.1) |
-| CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | [`npm-v2.1.2`](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.1.2) public |
+| Android tablets and e-ink | [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck) · [signed GitHub APK](https://github.com/puritysb/AgentDeck/releases?q=android-v&expanded=true) | `android-v*` |
+| CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | `npm-v*` |
 | Stream Deck / Mini / XL / Plus / + XL | [Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) | `streamdeck-v*` |
 | Ulanzi D200H / D200X LCD keys | [Ulanzi Marketplace](https://ugc.ulanzistudio.com/contentView/1239890184745660416); D200X encoders are not supported | `ulanzi-v*` |
 | Vobot Mini Dock | Read-only session and usage display with [Wi-Fi pairing](integrations/vobot/README.md#pair-over-wi-fi) | [Vobot App Gallery](https://app.myvobot.com/) submission in review |
 | ESP32 panels and TRMNL 7.5" | [Browser flasher](https://puritysb.github.io/AgentDeck/flash/) · [firmware releases](https://github.com/puritysb/AgentDeck/releases?q=esp32-v&expanded=true) | `esp32-v*` |
 
-**npm delivery, checked 2026-11-11:** [npm 2.1.2](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.1.2)
-is public for all four packages. The 2.1 Node daemon on macOS lets dictated prompts
-reach Claude Code in any terminal through the peer inbox, with a Claude Code
-version that supports it. To enable this capability after upgrading from an older
-minor, run `agentdeck daemon install` (or `npx @agentdeck/setup`) once. This capability is separate from
-the native daemon bundled with the Mac App Store app.
-
-**2.1 channel delivery:**
-
-The [ESP32 2.1.0 firmware set](https://github.com/puritysb/AgentDeck/releases/tag/esp32-v2.1.0)
-covers all twelve boards. The Stream Deck and Ulanzi 2.1.0 packages are also on GitHub.
-
-- **Mac:** the [Mac App Store](https://apps.apple.com/us/app/agentdeck-dashboard/id6784822497?platform=mac)
-  lists **2.1.0**. It includes a native daemon; no separate Node installation is required.
-- **iPhone / iPad:** the [App Store](https://apps.apple.com/us/app/agentdeck-dashboard/id6784822497)
-  lists **2.1.0**. These are companion dashboards for a reachable paired Mac or supported daemon,
-  not environments that run coding agents themselves.
-- **Android:** [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck)
-  lists **2.1.1** as of November 11. The [2.1.1 GitHub APK](https://github.com/puritysb/AgentDeck/releases/tag/android-v2.1.1)
-  is a separate distribution route. Update through the existing install's signing channel;
-  Play and GitHub APK signatures can differ. Android also needs a reachable paired daemon.
-- **Stream Deck:** [Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464)
-  lists **2.1** for macOS and Windows, with Stream Deck 6.9 or later and an AgentDeck daemon.
-- **Ulanzi D200H / D200X LCD keys:** the [2.1.0 GitHub package](https://github.com/puritysb/AgentDeck/releases/tag/ulanzi-v2.1.0)
-  is public. The Workshop update was submitted November 6; public Marketplace 2.1.0 availability
-  remains **unverified** because its listing could not be read in this check. D200X encoders are not supported.
-
-These are public listing observations, not confirmation that every region or
-installed device has updated. See the
-[2.1.0 delivery record](RELEASING.md#210-delivery-checkpoint-2026-11-06).
-
-**Earlier deliveries:** 2.0 (2026-11-02) and the 1.9.x rounds are recorded in the
-[release history](RELEASING.md#readme-delivery-history-2026-10-12-to-2026-11-04) and the
-[2.0 delivery record](RELEASING.md#20-delivery-checkpoint-2026-11-02).
-
-Mobile apps and hardware are companion surfaces: keep a daemon running on your
-computer. Supported ESP32 boards offer Wi-Fi OTA after the first USB flash;
-GitHub Android APKs offer wireless updates from Settings. Pixoo, TC001, Timebox,
-and iDotMatrix setup is covered in the [device guide](docs/devices.md).
-
-[Changelog](CHANGELOG.md) · [All releases](https://github.com/puritysb/AgentDeck/releases)
-· [Release policy](RELEASING.md)
+Update Android through your existing signing channel: Play and GitHub APK
+signatures can differ. Supported ESP32 boards offer Wi-Fi OTA after the first
+USB flash. See the [changelog](CHANGELOG.md),
+[all releases](https://github.com/puritysb/AgentDeck/releases), and
+[version policy](RELEASING.md#choosing-a-version).
 
 ## Compatible Companion Projects
 
@@ -448,23 +253,21 @@ build health.
 
 ## Automated security checks
 
-GitHub Actions runs dependency and token checks on pull requests, pushes to
-`master`, and daily. The checks compare npm, Python, Rust, and Android runtime
-dependencies with published advisories and look for AgentDeck pairing tokens in
-tracked text. Dependency review checks for newly introduced high or critical
-advisories on pull requests. CI also records the ESP32 packages resolved by
-PlatformIO. A monthly Snyk scan adds a separate set of findings for review.
+[![Security scan](https://github.com/puritysb/AgentDeck/actions/workflows/security-scan.yml/badge.svg?branch=master)](https://github.com/puritysb/AgentDeck/actions/workflows/security-scan.yml?query=branch%3Amaster)
+[![CodeQL analysis](https://github.com/puritysb/AgentDeck/actions/workflows/codeql.yml/badge.svg?branch=master)](https://github.com/puritysb/AgentDeck/actions/workflows/codeql.yml?query=branch%3Amaster)
+[![Snyk monthly comparison](https://github.com/puritysb/AgentDeck/actions/workflows/snyk-monthly.yml/badge.svg?branch=master)](https://github.com/puritysb/AgentDeck/actions/workflows/snyk-monthly.yml)
+[![Security pipeline health](https://github.com/puritysb/AgentDeck/actions/workflows/security-health.yml/badge.svg?branch=master)](https://github.com/puritysb/AgentDeck/actions/workflows/security-health.yml?query=branch%3Amaster)
 
-CodeQL analyzes source on pull requests, pushes to `master`, and weekly.
-The Kotlin and Swift jobs build their targets before analysis. Required checks
-gate merges to `master`. A separate hourly check verifies that the scheduled
-scans are still running and that their results are recent.
+Dependency audits and pairing-token detection run on PRs, `master` pushes and
+daily. CodeQL adds source analysis; Snyk provides a monthly comparison, and an
+hourly watchdog checks scan freshness. PR dependency review flags newly
+introduced high/critical advisories.
 
-Build Health links to the hosted runs and explains what each check covers.
-Maintainers review findings in context. Passing checks give evidence about the
-code and dependencies scanned, within the scope of each tool.
+**Badges show workflow status, not a vulnerability-free certification.** CodeQL
+can complete with alerts; Snyk can complete with findings recorded for review.
+The report preserves each run's commit, date, scope and limitations.
 
-[Verification results and scope](https://puritysb.github.io/AgentDeck/reports/#verify) ·
+[Results and coverage](https://puritysb.github.io/AgentDeck/reports/#verify) ·
 [Security scanning runbook](docs/security-scanning.md) ·
 [Report a vulnerability privately](SECURITY.md)
 

@@ -195,3 +195,18 @@ candidate metadata remain indexed in `docs/media/current/manifest.json`.
 Store candidates are local preparation files, not uploaded previews or release approval.
 The longer aquarium recording stays a development detail, and dated 1.x footage
 remains intact.
+
+## Verification report layout and freshness
+
+The verification catalog renders as full-width rows. Each row keeps the gate
+name, merge policy and available run evidence visible; a native disclosure
+contains scope, limitations, local tiers and the reproduction command. On small
+screens the disclosure sits below the overview. No JavaScript is needed to read
+these details.
+
+Hosted results are a snapshot collected during the Pages build, not a live feed.
+The report shows the collection time when available and links each workflow for
+newer runs. Pages updates on successful master-push builds; daily and monthly
+security scans do not themselves republish it. README workflow badges link to
+current Actions results. A successful CodeQL analysis or Snyk comparison can
+still contain findings; neither is a zero-vulnerability badge.
