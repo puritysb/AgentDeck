@@ -45,6 +45,11 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- **Session activity.** A command run from a path under a session-id directory
+  no longer shows as `Running` followed by a fragment of that id. The line
+  reads `Running`, or names the script when the path is complete. Node daemon;
+  the Mac daemon never included the path.
+
 - **macOS Dashboard.** Keep confirmed message deliveries in Work detail and
   remove the separate message history, graph and aquarium message currents.
   Dashboard and Work use the shared AgentDeck wordmark and header rule.
