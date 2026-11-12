@@ -87,9 +87,9 @@ def _load_json(path, default):
         return default
 
 def load_workflow_status():
-    """{workflow path: latest completed run} — empty when it was not fetched."""
+    """Workflow snapshot with collection time — empty when it was not fetched."""
     data = _load_json(WORKFLOW_STATUS_JSON, {})
-    return data.get("workflows", {}) if isinstance(data, dict) else {}
+    return data if isinstance(data, dict) else {}
 
 def load_recorded_receipt():
     """The newest committed pre-release receipt, or None."""
@@ -1035,7 +1035,7 @@ def _steps_by_gate(catalog):
 
 def _hosted_run(workflow_status, gate):
     wf = gate.get("workflow") if gate else None
-    return workflow_status.get(wf) if wf else None
+    return workflow_status.get("workflows", {}).get(wf) if wf else None
 
 def _hosted_line(run, commit):
     """One line naming the latest completed hosted run of a gate's workflow."""
@@ -1193,16 +1193,21 @@ def _render_verify(catalog, metadata, workflow_status=None, recorded=None, commi
             evidence = (f'<p class="hosted"><span class="dot {st}"></span>Last pre-release check: {_esc(_RECEIPT_VERB.get(attested.get("status"), ""))}'
                         f' · <code>{_esc((recorded.get("commit") or "")[:7])}</code> · {_esc((recorded.get("finished_at") or "")[:10])}</p>')
         cards += f'''<article class="card gate">
+          <div class="gate-overview">
           <div class="card-top"><div class="tags">{tags}</div>{badge}</div>
           <h3>{_esc(gate["name"])}</h3>
           <p class="sub">{_esc(gate.get("trigger", ""))} · {_esc(gate.get("where", ""))}</p>
+          <div class="card-foot">{evidence}<p>{link}</p></div>
+          </div>
+          <details class="gate-details">
+          <summary>Scope, limits and command</summary>
           <div class="two">
             <div><p class="label">Proves</p><ul class="ticks">{proves}</ul></div>
             <div><p class="label">Does not prove</p><ul class="ticks no">{not_proves}</ul></div>
           </div>
           <p class="cmd"><code>{_esc(gate.get("command", ""))}</code></p>
           <p class="tierline"><span class="label">Local tiers</span>{tier_tags}</p>
-          <div class="card-foot">{evidence}<p>{link}</p></div>
+          </details>
         </article>'''
     gaps = "".join(f'''<article class="card gap">
         <h3>{_esc(g["what"])}</h3>
@@ -1213,7 +1218,12 @@ def _render_verify(catalog, metadata, workflow_status=None, recorded=None, commi
     policy = catalog.get("merge_policy") or {}
     merge_note = (f'<div class="card legend"><p class="kicker">Merge policy · checked {_esc(policy.get("as_of", ""))}</p>'
                   f'<p>{_esc(policy["summary"])}</p></div>' if policy.get("summary") else "")
-    return f'''{merge_note}<div class="grid gates">{cards}</div>
+    fetched = (workflow_status or {}).get("fetched_at")
+    snapshot = (f'Workflow snapshot: <time>{_esc(fetched)}</time>.' if fetched
+                else 'Workflow snapshot time unavailable.')
+    return f'''{merge_note}<p class="verify-note"><span>{snapshot}</span>
+      <span>This report updates after a successful Pages build on master. Scheduled scans may be newer; follow each workflow link for current results. Workflow success does not mean zero security findings.</span></p>
+      <div class="grid gates">{cards}</div>
       <h3 class="sub-head">Not verified automatically</h3>
       <div class="grid gaps">{gaps}</div>
       <div class="card legend"><p class="kicker">Evidence levels</p><dl>{legend}</dl></div>'''
@@ -1390,7 +1400,7 @@ def _render_coverage(cov_total, pkg_cov):
 # --- Page --------------------------------------------------------------------
 
 def _apple_elsewhere(workflow_status, commit):
-    run = workflow_status.get(".github/workflows/apple-test.yml")
+    run = workflow_status.get("workflows", {}).get(".github/workflows/apple-test.yml")
     if not run:
         return None
     st = _RUN_STATE.get(run.get("conclusion"), "off")
@@ -1574,7 +1584,19 @@ h2 {{ font-size:clamp(30px,4vw,var(--t-h2)); letter-spacing:var(--tr-h2); line-h
 .tiles.four {{ grid-template-columns:repeat(4,minmax(0,1fr)); }}
 .tiles.three {{ grid-template-columns:repeat(3,minmax(0,1fr)); }}
 .suites {{ grid-template-columns:repeat(5,minmax(0,1fr)); margin-top:var(--s-4); }}
-.gates, .domains, .platforms {{ grid-template-columns:repeat(3,minmax(0,1fr)); }}
+.domains, .platforms {{ grid-template-columns:repeat(3,minmax(0,1fr)); }}
+.gates {{ grid-template-columns:1fr; }}
+.card.gate {{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:var(--s-6); align-items:start; }}
+.gate-overview, .gate-details, .gate .two > div {{ min-width:0; overflow-wrap:anywhere; }}
+.gate .card-top {{ flex-wrap:wrap; }}
+.gate .two {{ grid-template-columns:1fr; gap:var(--s-3); }}
+.gate-details {{ border-left:1px solid var(--tide-200); padding-left:var(--s-6); }}
+.gate-details > summary {{ padding:var(--s-2) 0; color:var(--kelp-700); font-weight:600; }}
+.verify-note {{ color:var(--ink-700); margin:var(--s-4) 0; overflow-wrap:anywhere; }}
+@media (max-width:640px) {{
+  .card.gate {{ grid-template-columns:1fr; gap:var(--s-3); }}
+  .gate-details {{ border-left:0; border-top:1px solid var(--tide-200); padding:var(--s-2) 0 0; }}
+}}
 .gaps {{ grid-template-columns:repeat(3,minmax(0,1fr)); }}
 .card {{ display:flex; flex-direction:column; background:var(--tide-100); border:1px solid var(--tide-200); border-radius:var(--r-2xl); padding:var(--s-4); box-shadow:var(--sh-card); min-width:0; }}
 .card.flush {{ padding:0; overflow:hidden; }}
@@ -1685,7 +1707,7 @@ footer {{ max-width:var(--container-max); margin:0 auto; padding:var(--s-10) var
   .legend dl {{ grid-template-columns:repeat(2,minmax(0,1fr)); }}
 }}
 @media (max-width:900px) {{
-  .gates, .domains, .platforms, .gaps, .tiles.four, .tiles.three {{ grid-template-columns:repeat(2,minmax(0,1fr)); }}
+  .domains, .platforms, .gaps, .tiles.four, .tiles.three {{ grid-template-columns:repeat(2,minmax(0,1fr)); }}
   .receipts {{ grid-template-columns:1fr; }}
   .section-head {{ grid-template-columns:1fr; gap:var(--s-2); }}
 }}
@@ -1694,7 +1716,7 @@ footer {{ max-width:var(--container-max); margin:0 auto; padding:var(--s-10) var
      are applied to the elements with the 16px spacing token instead. */
   .wrap {{ padding:var(--s-12) var(--s-4) var(--s-16); }}
   footer {{ padding-left:var(--s-4); padding-right:var(--s-4); }}
-  .tiles, .suites, .gates, .domains, .platforms, .gaps, .tiles.four, .tiles.three, .two, .legend dl {{ grid-template-columns:1fr; }}
+  .tiles, .suites, .domains, .platforms, .gaps, .tiles.four, .tiles.three, .two, .legend dl {{ grid-template-columns:1fr; }}
   .specs {{ grid-template-columns:1fr 1fr; }}
 }}
 </style>
