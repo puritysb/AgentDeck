@@ -1404,8 +1404,20 @@ void drawSessionCard(const Snap& s, const RowSnap& r, bool firstAwaiting,
     // Detail: awaiting question (wrapped) or the TIMELINE-grade work summary.
     int16_t dy = sy + 24;
     if (awaiting && r.question[0]) {
-        // wrap up to 2 lines (3 on tall cards) — UTF-8/한글 safe
-        int maxLines = tall ? 3 : (h >= 130 ? 2 : 1);
+        // wrap up to 2 lines on short cards — UTF-8/한글 safe. A tall card is
+        // mostly empty under a 9 pt question, and the question is the reason
+        // the card took the panel: set it in 12 pt bold and give it the lines
+        // that fit above the options and the model tag.
+        const bool showsOptions = strcmp(r.agentType,"dot") && firstAwaiting && s.optionCount > 0 && tall;
+        const GFXfont* questionFont = tall ? &FreeSansBold12pt7b : &FreeSans9pt7b;
+        const int16_t questionLineH = tall ? 26 : 20;
+        if (tall) dy += 6;
+        int maxLines = h >= 130 ? 2 : 1;
+        if (tall) {
+            const int room = (y + h - 34) - dy - (showsOptions ? s.optionCount * 20 : 0);
+            maxLines = room / questionLineH;
+            maxLines = maxLines < 3 ? 3 : maxLines > 6 ? 6 : maxLines;
+        }
         const char* p = r.question;
         for (int line = 0; line < maxLines && *p && dy < y + h - 8; line++) {
             char buf[112];
@@ -1414,20 +1426,20 @@ void drawSessionCard(const Snap& s, const RowSnap& r, bool firstAwaiting,
             take = utf8Boundary(p, take);
             while (take > 0) {
                 strncpy(buf, p, take); buf[take] = '\0';
-                if (smartWidth(buf, &FreeSans9pt7b) <= maxTextW) break;
+                if (smartWidth(buf, questionFont) <= maxTextW) break;
                 // back off to previous space if any, else previous UTF-8 char
                 size_t sp = take - 1;
                 while (sp > 0 && p[sp] != ' ') sp--;
                 take = sp > 0 ? sp : utf8Boundary(p, take - 1);
             }
             strncpy(buf, p, take); buf[take] = '\0';
-            smartTextAt(tx, dy, buf, &FreeSans9pt7b);
+            smartTextAt(tx, dy, buf, questionFont);
             p += take;
             while (*p == ' ') p++;
-            dy += 20;
+            dy += questionLineH;
         }
         // Options (focused/global) on the first awaiting card
-        if (strcmp(r.agentType,"dot") && firstAwaiting && s.optionCount > 0 && tall) {
+        if (showsOptions) {
             for (uint8_t i = 0; i < s.optionCount && dy < y + h - 10; i++) {
                 char opt[48], oa[40];
                 ascii(oa, sizeof(oa), s.options[i]);

@@ -45,6 +45,10 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- **TRMNL 7.5-inch e-ink.** When one waiting session takes the whole panel,
+  its question is set in 12 pt bold on up to six lines. It was three lines of
+  9 pt at the top of a mostly empty card.
+
 - **macOS Dashboard.** Keep confirmed message deliveries in Work detail and
   remove the separate message history, graph and aquarium message currents.
   Dashboard and Work use the shared AgentDeck wordmark and header rule.
