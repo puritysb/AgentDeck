@@ -17,6 +17,8 @@ export interface HermesDiagnostic {
   discovery: 'explicit' | 'registry' | 'missing' | 'invalid' | 'unknown';
   port?: number;
   receiver: 'supported' | 'unsupported' | 'unreachable' | 'unknown' | 'not-probed';
+  /** Receiver capability only, not proof of hooks loaded by running Hermes. */
+  attention: 'supported' | 'activity-only' | 'unknown' | 'not-probed';
   nextSteps: string[];
   scope: string;
 }
@@ -32,12 +34,12 @@ async function read(path: string): Promise<{ text?: string; status: 'readable' |
 
 /** Read health only, with an absolute deadline and size cap. No redirects,
  * proxy, credentials, session reads or diagnostic POSTs. */
-async function receiver(port: number, timeoutMs: number): Promise<HermesDiagnostic['receiver']> {
+async function receiver(port: number, timeoutMs: number): Promise<{ status: HermesDiagnostic['receiver']; attention: HermesDiagnostic['attention'] }> {
   return new Promise(resolve => {
     let done = false;
-    const finish = (status: HermesDiagnostic['receiver']) => {
+    const finish = (status: HermesDiagnostic['receiver'], attention: HermesDiagnostic['attention'] = 'unknown') => {
       if (done) return;
-      done = true; clearTimeout(timer); req.destroy(); resolve(status);
+      done = true; clearTimeout(timer); req.destroy(); resolve({ status, attention });
     };
     const req = http.get({ hostname: '127.0.0.1', port, path: '/health' }, res => {
       if (res.statusCode !== 200) { res.resume(); finish('unknown'); return; }
@@ -47,7 +49,9 @@ async function receiver(port: number, timeoutMs: number): Promise<HermesDiagnost
       res.on('end', () => {
         try {
           const data = JSON.parse(body);
-          finish(data?.mode !== 'daemon' ? 'unknown' : data.hermesObserver === 1 ? 'supported' : 'unsupported');
+          const supported = data?.mode === 'daemon' && data.hermesObserver === 1;
+          finish(data?.mode !== 'daemon' ? 'unknown' : supported ? 'supported' : 'unsupported',
+            supported ? data.hermesAttention === 1 ? 'supported' : 'activity-only' : 'unknown');
         } catch { finish('unknown'); }
       });
     });
@@ -70,7 +74,7 @@ export async function collectHermesDiagnostic(opts: { home?: string; dataDir?: s
   const report: HermesDiagnostic = {
     ok: false, plugin: 'unknown', enablement: 'unknown',
     hooks: process.env.AGENTDECK_NO_HERMES_HOOKS === '1' || hermesSafeMode() ? 'disabled' : 'allowed',
-    discovery: 'unknown', receiver: 'not-probed', nextSteps: [],
+    discovery: 'unknown', receiver: 'not-probed', attention: 'not-probed', nextSteps: [],
     scope: 'Checks this profile and CLI environment, not the running Hermes process. Restart Hermes after changes; verify a real turn appears in AgentDeck. No events were sent.',
   };
   const files = await Promise.all(['__init__.py', 'plugin.yaml', 'ci-wait-rules.json'].map(file => read(join(plugin, file))));
@@ -104,7 +108,11 @@ export async function collectHermesDiagnostic(opts: { home?: string; dataDir?: s
       if (isHermesPort(port)) report.port = port;
     } catch { report.discovery = 'invalid'; }
   }
-  if (report.port !== undefined) report.receiver = await receiver(report.port, opts.timeoutMs ?? 1500);
+  if (report.port !== undefined) {
+    const capability = await receiver(report.port, opts.timeoutMs ?? 1500);
+    report.receiver = capability.status;
+    report.attention = capability.attention;
+  }
   report.ok = report.plugin === 'installed' && report.enablement === 'enabled' && report.hooks === 'allowed' && report.receiver === 'supported';
   if (report.plugin !== 'installed') report.nextSteps.push('Install/update the observer with agentdeck hermes-observer --home <profile>.');
   if (report.enablement !== 'enabled') report.nextSteps.push('In that same Hermes profile, inspect configuration and run hermes plugins enable agentdeck-observer.');
@@ -119,5 +127,6 @@ export function formatHermesDiagnostic(report: HermesDiagnostic): string {
   return [`Hermes observer setup: ${report.ok ? 'ready for a live-turn check' : 'incomplete or unconfirmed'}`,
     `Plugin: ${report.plugin}; enablement: ${report.enablement}; hooks: ${report.hooks}`,
     `Discovery: ${report.discovery}${report.port === undefined ? '' : ` (127.0.0.1:${report.port})`}; receiver: ${report.receiver}`,
+    `Human-input receiver: ${report.attention} (Node-only status pilot; answer in Hermes)`,
     ...report.nextSteps, report.scope].join('\n');
 }
