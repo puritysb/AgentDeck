@@ -41,7 +41,7 @@
 // Device Preview draws BACK itself and carries the label (D200HLayoutModel).
 // Ported 2026-10-28: the state and tool labels pass `backgroundStandbyCount`
 // to the background compact label (STBY n for standby-only work).
-// SYNC-HASH shared/src/svg-renderers/session-slot-renderer.ts 9f6055843cda537168fa150940b6bd4dbf7dfcf8
+// SYNC-HASH shared/src/svg-renderers/session-slot-renderer.ts 87d38227a26926fec9acf8b027f1c915faa6c1ff
 //
 // Pin reviewed 2026-11-02: option/detail typography and controller labels changed
 // outside this session-card-only mirror; its 144-unit canvas is unchanged.
@@ -137,7 +137,7 @@ struct SessionSlotView: View {
     private var nameLines: [String] {
         SessionSlotText.wrapSessionName(
             nameForDisplay,
-            maxChars: lowResolutionKey ? 11 : 15
+            maxChars: lowResolutionKey ? 11 : 13
         )
     }
     private var nameStartBaseline: CGFloat {
@@ -246,7 +246,8 @@ struct SessionSlotView: View {
 
             // Top-right badge: teal RUN pill while working, bold amber PERM pill
             // while awaiting, faint ACT pill only when idle (TS badgeObj).
-            if mode == .working && session.waitingOn == nil {
+            // RUNNING already says it in the state row (TS: no pill then).
+            if mode == .working && session.waitingOn == nil && stateLabelText != "RUNNING" {
                 runBadge
                     .offset(x: 42, y: -50)
             }
@@ -269,7 +270,10 @@ struct SessionSlotView: View {
                 .frame(width: 104, alignment: .leading)
                 .position(x: 72, y: SessionSlotText.centerY(svgBaseline: 32, fontSize: stateFontSize))
 
-            let nameFontSize: CGFloat = lowResolutionKey ? 20 : 16
+            // TS: 14 pt when a line is wider than 97 units at 16 pt (0.55 em
+            // per Latin character, 1 em per wide one).
+            let nameFontSize: CGFloat = lowResolutionKey ? 20
+                : nameLines.contains { SessionSlotText.estimatedWidth($0, fontSize: 16) > 97 } ? 14 : 16
             ForEach(Array(nameLines.enumerated()), id: \.offset) { index, line in
                 Text(line)
                     .font(.system(size: nameFontSize, weight: lowResolutionKey ? .bold : .semibold))
@@ -355,6 +359,18 @@ enum SessionSlotText {
     }
 
     /// Swift mirror of the TS renderer's space/camelCase wrapper.
+    /// Mirror of `measureTextWidth` (shared/src/svg-renderers/text-utils.ts).
+    static func estimatedWidth(_ text: String, fontSize: CGFloat) -> CGFloat {
+        text.unicodeScalars.reduce(0) { width, scalar in
+            if scalar.properties.generalCategory == .nonspacingMark || scalar.properties.generalCategory == .spacingMark
+                || scalar.properties.generalCategory == .enclosingMark { return width }
+            let v = scalar.value
+            let wide = (v >= 0x1100 && v <= 0x11FF) || (v >= 0x2E80 && v <= 0x9FFF) || (v >= 0xAC00 && v <= 0xD7AF)
+                || (v >= 0xF900 && v <= 0xFAFF) || (v >= 0xFF00 && v <= 0xFF60) || (v >= 0xFFE0 && v <= 0xFFE6)
+            return width + (wide ? fontSize : fontSize * 0.55)
+        }
+    }
+
     static func wrapSessionName(_ name: String, maxChars: Int, maxLines: Int = 4) -> [String] {
         if name.count <= maxChars { return [name] }
         var lines: [String] = []

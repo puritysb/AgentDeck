@@ -39,6 +39,8 @@ import {
   renderDisconnectedSlot,
   renderSessionSlot,
   renderStatusCard,
+  renderOptionButton,
+  renderDetailInfo,
 } from '../renderers/session-slot-renderer.js';
 
 // ===== display-tile (non-interactive readouts) =====
@@ -367,6 +369,30 @@ describe('usage-encoder level-fill (SD+ 200x100) snapshots', () => {
 // ===================================================================
 
 describe('session-slot-renderer snapshots', () => {
+  // Found on rendered D200H keys: the RUN pill sat on RUNNING's last letter, a
+  // 13-character name ran off the key, INFO's pill covered an 8-character
+  // title, and a long word in an option label was broken inside itself.
+  it('keeps key text clear of its badges and inside the key', () => {
+    const working = renderSessionSlot(makeSession({ state: 'processing', projectName: 'Documentation' }), false, 4);
+    expect(working).toContain('>RUNNING<');
+    expect(working).not.toContain('>RUN<');
+    expect(working).toMatch(/font-size="14"[^>]*>Documentation</);
+    const jobs = renderSessionSlot(makeSession({ state: 'processing', backgroundTaskCount: 2 }), false, 4);
+    expect(jobs).toContain('>RUN<'); // the state row shows the job count instead
+    expect(renderSessionSlot(makeSession({ state: 'processing', projectName: 'Dashboard' }), false, 4))
+      .toMatch(/font-size="16"[^>]*>Dashboard</);
+
+    const option = renderOptionButton({ index: 0, label: 'Skip verification' } as PromptOption, 0);
+    expect(option).toContain('>verification<');
+    expect(option).not.toContain('>verificati<');
+    expect(option).toContain('font-size="22"'); // the option face stays one size
+    // A word that truly cannot fit still breaks rather than leaving the key.
+    expect(renderOptionButton({ index: 0, label: 'WWWWWWWWWWWWWW' } as PromptOption, 0)).not.toContain('>WWWWWWWWWWWWWW<');
+
+    expect(renderDetailInfo(makeSession({ projectName: 'OpenClaw' }), State.IDLE)).not.toContain('>INFO<');
+    expect(renderDetailInfo(makeSession({ projectName: 'api' }), State.IDLE)).toContain('>INFO<');
+  });
+
   it('disconnected hero is icon-rich', () => {
     expect(renderDisconnectedSlot({ kind: 'open-app' })).toMatchSnapshot();
   });

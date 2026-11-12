@@ -45,6 +45,13 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- **Deck keys (Stream Deck, D200H).** Four legibility fixes found on rendered
+  keys. A working session's key no longer draws a `RUN` pill over the last
+  letter of `RUNNING`. A long session name steps down a size instead of
+  running off the key. The detail view's `INFO` pill no longer covers a title
+  of eight or more characters. An option label wraps between words when the
+  words fit, instead of breaking inside one that only looked too wide.
+
 - **macOS Dashboard.** Keep confirmed message deliveries in Work detail and
   remove the separate message history, graph and aquarium message currents.
   Dashboard and Work use the shared AgentDeck wordmark and header rule.
