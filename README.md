@@ -133,6 +133,20 @@ A quiet view of your sessions beside your work.<br>
 <a href="docs/android.md">Setup guide →</a>
 </td>
 </tr>
+<tr>
+<td width="50%" valign="top">
+<a href="docs/media/vobot-mini-dock.jpg"><img src="docs/media/vobot-mini-dock.jpg" width="440" alt="Vobot Mini Dock showing AgentDeck session cards and usage beside the clock"></a><br>
+<b>Vobot Mini Dock</b><br>
+A dock app that shows live sessions and usage and lights up when an agent needs input.<br>
+<a href="integrations/vobot/README.md">Vobot setup guide →</a>
+</td>
+<td width="50%" valign="top">
+<a href="docs/media/hagibis-macos-display.jpg"><img src="docs/media/hagibis-macos-display.jpg" width="440" alt="Detail of the native AgentDeck Mac dashboard on a Hagibis mini monitor"></a><br>
+<b>Mac dashboard on a second display</b><br>
+Move the native dashboard onto an extended macOS display. The Hagibis mini monitor is one example.<br>
+<a href="docs/apple-app.md">Mac app guide →</a>
+</td>
+</tr>
 </table>
 
 ### Small displays, different shapes
@@ -431,6 +445,28 @@ build health.
 | **Evaluation** | [Why APME](docs/why-apme.md) · [APME](docs/apme.md) · [Pipeline](docs/apme-pipeline.md) |
 | **Design** | [DESIGN.md](DESIGN.md) · [Tokens](design/tokens.css) · [Resource map](design/RESOURCES.md) |
 | **Project** | [Roadmap](docs/roadmap.md) · [Releasing](RELEASING.md) · [Changelog](CHANGELOG.md) · [Agent harness](docs/agent-harness.md) · [AI-assisted maintenance](docs/ai-assisted-maintenance.md) |
+
+## Automated security checks
+
+GitHub Actions runs dependency and token checks on pull requests, pushes to
+`master`, and daily. The checks compare npm, Python, Rust, and Android runtime
+dependencies with published advisories and look for AgentDeck pairing tokens in
+tracked text. Dependency review checks for newly introduced high or critical
+advisories on pull requests. CI also records the ESP32 packages resolved by
+PlatformIO. A monthly Snyk scan adds a separate set of findings for review.
+
+CodeQL analyzes source on pull requests, pushes to `master`, and weekly.
+The Kotlin and Swift jobs build their targets before analysis. Required checks
+gate merges to `master`. A separate hourly check verifies that the scheduled
+scans are still running and that their results are recent.
+
+Build Health links to the hosted runs and explains what each check covers.
+Maintainers review findings in context. Passing checks give evidence about the
+code and dependencies scanned, within the scope of each tool.
+
+[Verification results and scope](https://puritysb.github.io/AgentDeck/reports/#verify) ·
+[Security scanning runbook](docs/security-scanning.md) ·
+[Report a vulnerability privately](SECURITY.md)
 
 ## Development
 
