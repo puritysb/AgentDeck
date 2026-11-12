@@ -1,0 +1,23 @@
+application:
+  name: AgentDeck
+  version: 0.3.0
+  description: See coding sessions and usage on the Vobot Mini Dock.
+  author: SerendipityBound
+  repository: https://github.com/puritysb/AgentDeck
+  bugs: https://github.com/puritysb/AgentDeck/issues
+  licenses: MIT
+
+system_requirements:
+  minimum_version: 1.2.6
+  compatible_devices:
+    - MiniDock
+
+files:
+  include:
+    - __init__.py
+    - pairing.py
+    - palette.py
+    - transport.py
+    - usage.py
+    - LICENSE
+    - resources

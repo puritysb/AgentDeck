@@ -493,7 +493,7 @@ html body :target { scroll-margin-block-start: 0; }
       <div>
     <p class="kicker" data-i18n="hero.kicker">AgentDeck · Surface catalog</p>
     <h1 data-i18n="hero.h1">Every surface,<br>made physical.</h1>
-    <p class="lede" data-i18n="hero.lede">Current captures and renderer previews appear first; the device cards retain the original September 28 desk photographs. Each new image states how it was made. Board specifications live in the compatibility matrix.</p>
+    <p class="lede" data-i18n="hero.lede">See current captures, renderer previews, and photographs of AgentDeck on real desks. Image captions identify the source. Board specifications live in the compatibility matrix.</p>
     <div class="hero-actions">
       <a class="btn primary" href="../demo/" data-i18n="hero.demo">Try the interactive preview</a>
       <a class="btn secondary" href="../design-system/#hardware.compatibility" data-i18n="hero.matrix">Read the full spec matrix</a>
@@ -564,6 +564,13 @@ html body :target { scroll-margin-block-start: 0; }
         <p class="sub" data-i18n="d.macos">SwiftUI desktop dashboard with the in-process daemon hub — the App Store app.</p>
         <div class="specs"><div class="spec"><span>Role</span><strong>Dashboard + hub</strong></div><div class="spec"><span>Daemon</span><strong>In process</strong></div></div>
       </article>
+      <article id="mac-secondary-display" class="device">
+        <figure class="shot"><a href="../media/hagibis-macos-display.jpg"><img src="../media/hagibis-macos-display.jpg" alt="Detail of the native AgentDeck dashboard on a Hagibis mini monitor" loading="lazy"></a></figure>
+        <div class="device-top"><h3 data-i18n="desk.mac.h">Mac dashboard on a second display</h3><span class="badge native" data-i18n="desk.mac.b">Extended display</span></div>
+        <p class="sub" data-i18n="desk.mac.p">Extend your Mac desktop and move the native AgentDeck dashboard onto a second screen, such as a Hagibis mini monitor. The dashboard runs on the Mac.</p>
+        <p class="sub" data-i18n="desk.photo">Desk photo · November 12, 2026</p>
+        <a href="https://github.com/puritysb/AgentDeck/blob/master/docs/apple-app.md" data-i18n="desk.mac.guide">Mac app guide</a>
+      </article>
       <article class="device">
         <figure class="shot" style="margin:0 0 var(--s-4)"><img src="../media/ipad.jpg" alt="iPad running the AgentDeck companion app" loading="lazy" onerror="this.parentNode.classList.add('missing')"></figure>
         <div class="device-top"><h3>iOS / iPadOS</h3><span class="badge native" data-i18n="b.native">Native</span></div>
@@ -588,6 +595,13 @@ html body :target { scroll-margin-block-start: 0; }
         <div class="device-top"><h3>TUI Dashboard</h3><span class="badge bridge">Terminal</span></div>
         <p class="sub" data-i18n="d.tui"><code>agentdeck dashboard</code> — the same sessions in truecolor ANSI, over SSH if you like.</p>
         <div class="specs"><div class="spec"><span>Render</span><strong>Truecolor ANSI</strong></div><div class="spec"><span>Layout</span><strong>Adaptive</strong></div></div>
+      </article>
+      <article id="vobot-mini-dock" class="device">
+        <figure class="shot"><a href="../media/vobot-mini-dock.jpg"><img src="../media/vobot-mini-dock.jpg" alt="Vobot Mini Dock with AgentDeck session cards and usage alongside its clock" loading="lazy"></a></figure>
+        <div class="device-top"><h3>Vobot Mini Dock</h3><span class="badge bridge" data-i18n="desk.vobot.b">Dock app</span></div>
+        <p class="sub" data-i18n="desk.vobot.p">A read-only app on the dock’s stock firmware shows live sessions and Claude and Codex usage. The light pulses amber when an agent needs input.</p>
+        <p class="sub" data-i18n="desk.photo">Desk photo · November 12, 2026</p>
+        <a href="https://github.com/puritysb/AgentDeck/blob/master/integrations/vobot/README.md" data-i18n="desk.vobot.guide">Vobot setup guide</a>
       </article>
     </div>
   </section>
@@ -832,7 +846,7 @@ html body :target { scroll-margin-block-start: 0; }
 
         'hero.kicker': 'AgentDeck · 서피스 카탈로그',
         'hero.h1': '모든 서피스를,<br>실물로.',
-        "hero.lede": "최신 캡처와 렌더 프리뷰를 먼저 소개합니다. 기존 기기 카드에는 9월 28일의 원본 책상 사진을 보존하며, 새 이미지는 제작 방식을 명시합니다. 보드 사양은 호환성 매트릭스에 있습니다.",
+        "hero.lede": "AgentDeck의 최신 화면 캡처, 렌더 미리보기, 실제 책상 사진을 볼 수 있습니다. 이미지 설명에서 출처를 확인할 수 있으며, 보드 사양은 호환성 표에 있습니다.",
         'hero.demo': '인터랙티브 프리뷰 열기',
         'hero.matrix': '전체 스펙 매트릭스 보기',
         'jump.controls': '컨트롤 데크',
@@ -863,6 +877,14 @@ html body :target { scroll-margin-block-start: 0; }
         'photo.usage': '사용량 화면 · 사진',
         'd.android.eink': 'Crema·Onyx·Kobo·Bigme에 맞춘 리더 전용 Compose 레이아웃 — 흑백과 Kaleido 3 컬러.',
         'd.tui': '<code>agentdeck dashboard</code> — 같은 세션을 truecolor ANSI로, 원하면 SSH 너머에서도.',
+        'desk.mac.h': '보조 화면에 띄운 Mac 대시보드',
+        'desk.mac.b': '확장 디스플레이',
+        'desk.mac.p': 'Mac 화면을 확장한 뒤 AgentDeck 대시보드 창을 Hagibis 미니 모니터 같은 보조 화면으로 옮깁니다. 대시보드는 Mac에서 실행됩니다.',
+        'desk.mac.guide': 'Mac 앱 안내',
+        'desk.vobot.b': '도크 앱',
+        'desk.vobot.p': 'Vobot 순정 펌웨어에서 동작하는 읽기 전용 앱입니다. 세션과 Claude·Codex 사용량을 표시하고, 입력 요청이 오면 조명이 호박색으로 점멸합니다.',
+        'desk.vobot.guide': 'Vobot 설정 안내',
+        'desk.photo': '실제 책상 사진 · 2026년 11월 12일',
         'd.ips35': '480×320 IPS 패널의 가로형 LVGL 테라리움 + HUD (JC3248W535).',
         'd.box86': 'GT911 터치를 갖춘 4인치 480×480 월박스 (ESP32-S3-4848S040).',
         'd.round': '1.8인치 360×360 원형 AMOLED — 컴팩트 테라리움 (JC3636W518).',
@@ -907,7 +929,7 @@ html body :target { scroll-margin-block-start: 0; }
 
         'hero.kicker': 'AgentDeck · サーフェスカタログ',
         'hero.h1': 'すべてのサーフェスを、<br>実機で。',
-        "hero.lede": "最新キャプチャとレンダープレビューを先に紹介します。デバイスカードには9月28日の元のデスク写真を残し、新しい画像には制作方法を明記しています。仕様は互換性表をご覧ください。",
+        "hero.lede": "AgentDeck の最新キャプチャ、レンダープレビュー、実際のデスクで撮影した写真を紹介します。画像の出典はキャプションに、ボードの仕様は互換性表に記載しています。",
         'hero.demo': 'インタラクティブプレビューを開く',
         'hero.matrix': 'フル仕様マトリクスを読む',
         'jump.controls': 'コントロールデッキ',
@@ -938,6 +960,14 @@ html body :target { scroll-margin-block-start: 0; }
         'photo.usage': '使用量画面 · 写真',
         'd.android.eink': 'Crema・Onyx・Kobo・Bigme向けのリーダー専用Composeレイアウト — 白黒とKaleido 3カラー。',
         'd.tui': '<code>agentdeck dashboard</code> — 同じセッションをtruecolor ANSIで、SSH越しでも。',
+        'desk.mac.h': 'サブディスプレイの Mac ダッシュボード',
+        'desk.mac.b': '拡張ディスプレイ',
+        'desk.mac.p': 'Mac のデスクトップを拡張し、AgentDeck のダッシュボードを Hagibis ミニモニターなどのサブ画面に移動します。ダッシュボードは Mac 上で動作します。',
+        'desk.mac.guide': 'Mac アプリの手順',
+        'desk.vobot.b': 'ドックアプリ',
+        'desk.vobot.p': '純正ファームウェアで動く閲覧専用アプリです。セッションと Claude・Codex の使用量を表示し、入力が必要になると照明がアンバーに点滅します。',
+        'desk.vobot.guide': 'Vobot セットアップガイド',
+        'desk.photo': '実際のデスク写真 · 2026年11月12日',
         'd.ips35': '480×320 IPSパネルの横型LVGLテラリウム + HUD (JC3248W535)。',
         'd.box86': 'GT911タッチ付き4インチ480×480ウォールボックス (ESP32-S3-4848S040)。',
         'd.round': '1.8インチ360×360円形AMOLED — コンパクトテラリウム (JC3636W518)。',

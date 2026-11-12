@@ -310,10 +310,15 @@ first.
 
 | Item | What to do | When |
 |---|---|---|
-| Weekly CodeQL schedule | Confirm the first scheduled run analysed all eight categories, including Kotlin and both Swift targets. PR and push runs do not count. | By 2026-11-11 |
 | resvg 2.6.2 maintenance notices (RUSTSEC-2025-0056, RUSTSEC-2026-0206, RUSTSEC-2026-0192) | When upstream releases, move the Rust, JS and WASM renderers to one revision together and rerun the pixel, wire and native gates. | The OSV exceptions expire 2026-12-01 |
 | Deferred majors: Bleak 3 (#691), Anthropic SDK 1.x (#696), TypeScript 7 (#697), Android Kotlin/AGP 9/serialization/Robolectric (#699, #701–#703), Rust 1.120 (#708) | Treat as normal compatibility upgrades, each with its own build and device checks. They are not security fixes. | Next maintenance pass |
 | CodeQL exception review | Re-review the recorded per-alert decisions when an authentication or trust-boundary file changes. | When those files change |
+
+The weekly CodeQL follow-up was verified on November 13, 2026:
+[the November 10 scheduled run](https://github.com/puritysb/AgentDeck/actions/runs/42810271838)
+completed all eight analysis jobs successfully, including Java/Kotlin and both
+Swift targets. This confirms scheduled analysis execution, not the absence of
+alerts. The hourly freshness watchdog continues to check subsequent runs.
 
 ## Snyk trial 2026-11-08
 

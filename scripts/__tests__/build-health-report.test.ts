@@ -67,7 +67,7 @@ beforeAll(() => {
   }));
   // Evidence recorded elsewhere: the Apple workflow's last hosted run, and a
   // committed pre-release receipt with an attested lab gate.
-  writeFileSync(join(report, 'workflow-status.json'), JSON.stringify({ workflows: {
+  writeFileSync(join(report, 'workflow-status.json'), JSON.stringify({ fetched_at: '2026-10-06T03:00:00Z', workflows: {
     '.github/workflows/apple-test.yml': { scope: 'master', conclusion: 'success', event: 'push', head_branch: 'master',
       head_sha: 'feedface00', created_at: '2026-10-06T02:21:02Z', html_url: 'https://github.com/x/y/actions/runs/1' },
     '.github/workflows/esp32-sim.yml': { scope: 'latest', conclusion: 'failure', event: 'pull_request', head_branch: 'feature',
@@ -145,6 +145,7 @@ describe('QA decision and accounting', () => {
       expect(page).toContain(`<span class="dot ${decision}">`);
       expect(page).toContain(`<dd>${executed} / ${executed + skipped}</dd>`);
       expect(page).not.toContain('href="#coverage"');
+      expect(page).toContain('Workflow snapshot time unavailable.');
       const ids = new Set([...page.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
       for (const [, target] of page.matchAll(/href="#([^"]+)"/g)) expect(ids.has(target), target).toBe(true);
       if (all) {
@@ -318,6 +319,23 @@ describe('Build Health page — what it states', () => {
     for (const d of catalog.domains) expect(text, d.name).toContain(`<h3>${d.name}</h3>`);
   });
 
+  it('keeps evidence visible when scope details are collapsed', () => {
+    const rows = [...html.matchAll(/<article class="card gate">([\s\S]*?)<\/article>/g)];
+    expect(rows.length).toBeGreaterThan(0);
+    for (const [, row] of rows) {
+      const [overview, details] = row.split('<details class="gate-details">');
+      expect(overview).toContain('<h3>');
+      expect(overview).toContain('class="card-foot"');
+      expect(details).toContain('<summary>Scope, limits and command</summary>');
+      expect(details).toContain('Does not prove');
+      expect(details).toContain('class="cmd"');
+      expect(details).not.toContain('class="hosted"');
+    }
+    expect(html).toContain('Workflow snapshot: <time>2026-10-06T03:00:00Z</time>.');
+    expect(html).toContain('Scheduled scans may be newer;');
+    expect(html).toContain('Workflow success does not mean zero security findings.');
+  });
+
   it('calls only a branch-protection-required gate a merge blocker', () => {
     const catalog = JSON.parse(readFileSync(join(ROOT, 'scripts/verification-catalog.json'), 'utf8')) as {
       gates: Array<{ required?: boolean; report_suite?: string }>;
@@ -443,6 +461,15 @@ describe('report Korean locale', () => {
       stored: () => stored,
     };
   }
+
+  it('translates the exact generated workflow freshness explanation', () => {
+    const text = /<span>(This report updates[\s\S]*?)<\/span>/.exec(html)?.[1];
+    expect(text).toBeTruthy();
+    const f = localeFixture(false, 'ko', [text!]);
+    expect(f.nodes.at(-1)?.nodeValue).toContain('이 보고서는 master의 Pages 빌드가 성공하면 갱신됩니다.');
+    f.change('en');
+    expect(f.nodes.at(-1)?.nodeValue).toBe(text);
+  });
 
   it('restores Korean, translates counts and accessibility, preserves evidence, and reverses to English', () => {
     const f = localeFixture();
