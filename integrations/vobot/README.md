@@ -2,9 +2,12 @@
 
 A stock-firmware app for Vobot Mini Dock. It connects to a paired AgentDeck daemon
 using the [read-only Surface profile](../../docs/surface-protocol.md). The LCD
-shows up to six live sessions with AgentDeck creature icons and puts input
-requests first. The ambient strip pulses amber for permission, question, or
-review requests and turns off when the roster has no waiting session. The dock
+shows up to six live sessions with AgentDeck creature icons. When a live session
+needs approval, an answer, or a review, a full-screen alert shows its animated
+creature and session name. The dock keeps the first wait it saw on screen and
+shows how many others are waiting as `+N`. When that session clears, the next
+waiting session takes its place. The dashboard returns when none are left. The
+rear light pulses amber while the alert is active. The dock
 resumes control of the light when the app pauses, closes, or loses its connection.
 
 Claude shows the reported quota windows and up to three readings, including
@@ -57,8 +60,11 @@ pairing files outside the folder used for packaging.
 
 Open the app and compare its session names and states against the daemon. While
 keeping the app visible, make a disposable agent session ask for input. Check
-that the waiting session moves to the top and the strip turns amber. Resolve the
-request and check that the strip goes dark. Leave the app and check that the
-dock resumes its ambient light setting.
+that the session name and animated creature fill the LCD and the strip pulses
+amber. Add a second waiting session and check that the first remains on screen
+with `+1`. Resolve the first to reveal the second, then resolve the second to
+restore the dashboard and turn the strip off. In a brightly lit room, check
+whether the pulse is visible from your usual viewing position. Leave the app
+and check that the dock resumes its ambient light setting.
 
 Regenerate the bundled LCD icons and palette with `python3 integrations/vobot/generate_assets.py` from the repository root after changing their AgentDeck sources.

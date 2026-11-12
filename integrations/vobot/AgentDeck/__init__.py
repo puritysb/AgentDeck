@@ -34,6 +34,7 @@ VISIBLE_ROWS = 6
 
 _manager = None
 _task = None
+_motion_task = None
 _screen = None
 _status = None
 _rows = []
@@ -46,6 +47,11 @@ _pulse_start = 0
 _pulse_brightness = None
 _light_owned = False
 _light_waiting = None
+_waiting_ids = []
+_attention = None
+_attention_session = None
+_attention_agent = None
+_attention_started = 0
 
 
 async def on_boot(apm):
@@ -75,9 +81,10 @@ def _animate_attention():
     global _pulse_brightness
     if _light_owned and _light_waiting:
         elapsed = time.ticks_diff(time.ticks_ms(), _pulse_start) % PULSE_MS
-        brightness = int(60 + 35 * math.cos(2 * math.pi * elapsed / PULSE_MS))
-        if brightness != _pulse_brightness:
-            peripherals.ambient_light.brightness(brightness)
+        # Hold the peak longer so the rear strip reads in bright rooms.
+        wave = math.cos(2 * math.pi * elapsed / PULSE_MS)
+        brightness = min(100, int(88 + 30 * wave))
+        if brightness != _pulse_brightness and peripherals.ambient_light.brightness(brightness):
             _pulse_brightness = brightness
 
 
@@ -128,15 +135,37 @@ def _show(status, rows=(), attention=False):
         tile.set_style_border_color(_color(ATTENTION_RGB if state in WAITING else BORDER_RGB), 0)
 
 
+def _session_name(row):
+    name = row.get("displayName") or row.get("projectName") or "Session"
+    return "".join(c if " " <= c <= "~" else "?" for c in name[:64])
+
+
+def _waiting_sessions(live):
+    # The daemon can reorder the roster as sessions update. Keep the order in
+    # which this dock first saw each continuous wait, with roster order for ties.
+    waiting = {}
+    arriving = []
+    for row in live:
+        if row.get("state") in WAITING:
+            key = row["id"]
+            if key not in waiting:
+                arriving.append(key)
+            waiting[key] = row
+    _waiting_ids[:] = [key for key in _waiting_ids if key in waiting]
+    for key in arriving:
+        if key not in _waiting_ids:
+            _waiting_ids.append(key)
+    return [waiting[key] for key in _waiting_ids]
+
+
 def _show_sessions(sessions):
     live = [row for row in sessions if row.get("alive")]
-    waiting = [row for row in live if row.get("state") in WAITING]
+    waiting = _waiting_sessions(live)
     others = [row for row in live if row.get("state") not in WAITING]
-    lines = []
-    for row in (waiting + others)[:VISIBLE_ROWS]:
-        name = row.get("displayName") or row.get("projectName") or "Session"
-        name = "".join(c if " " <= c <= "~" else "?" for c in name[:32])
-        lines.append((_creature(row.get("agentType")), name, row.get("state")))
+    lines = [
+        (_creature(row.get("agentType")), _session_name(row), row.get("state"))
+        for row in (waiting + others)[:VISIBLE_ROWS]
+    ]
     if waiting:
         summary = "%d waiting / %d" % (len(waiting), len(live))
     elif len(live) > VISIBLE_ROWS:
@@ -144,7 +173,67 @@ def _show_sessions(sessions):
     else:
         summary = "%d %s" % (len(live), "session" if len(live) == 1 else "sessions")
     _show(summary, lines, attention=bool(waiting))
+    _show_attention(waiting[0] if waiting else None, len(waiting) - 1)
     _light(bool(waiting))
+
+
+def _show_attention(row=None, extra=0):
+    global _attention, _attention_session, _attention_agent, _attention_started
+    if row is None:
+        if _attention_session is not None:
+            _attention[0].add_flag(lv.obj.FLAG.HIDDEN)
+            _attention_session = None
+        return
+    if _attention is None:
+        _attention = _new_attention_panel()
+    panel, creature, fallback, name, status, more = _attention
+    agent = _creature(row.get("agentType"))
+    if agent != _attention_agent:
+        if agent:
+            creature.set_src("A:apps/AgentDeck/resources/" + agent + ".png")
+        _attention_agent = agent
+    if agent:
+        creature.remove_flag(lv.obj.FLAG.HIDDEN)
+        fallback.add_flag(lv.obj.FLAG.HIDDEN)
+    else:
+        creature.add_flag(lv.obj.FLAG.HIDDEN)
+        fallback.remove_flag(lv.obj.FLAG.HIDDEN)
+    name.set_text(_session_name(row))
+    status.set_text({
+        "awaiting_permission": "Approval needed",
+        "awaiting_option": "Answer needed",
+        "awaiting_diff": "Review needed",
+    }[row["state"]])
+    more.set_text("+%d" % extra if extra else "")
+    if _attention_session != row["id"]:
+        _attention_session = row["id"]
+        _attention_started = time.ticks_ms()
+        _animate_creature()
+    panel.remove_flag(lv.obj.FLAG.HIDDEN)
+
+
+def _reset_attention():
+    _waiting_ids.clear()
+    _show_attention()
+    _release_light()
+
+
+def _animate_creature():
+    _, creature, fallback, _, _, _ = _attention
+    elapsed = time.ticks_diff(time.ticks_ms(), _attention_started) % PULSE_MS
+    lift = int(7 * math.sin(2 * math.pi * elapsed / PULSE_MS))
+    if _attention_agent:
+        creature.set_pos(136, 79 + lift)
+    else:
+        fallback.set_pos(0, 70 + lift)
+
+
+async def _animate():
+    while True:
+        if _attention_session is not None:
+            _animate_creature()
+            _animate_attention()
+        await asyncio.sleep_ms(60)
 
 
 def _paint_usage(cells, readings):
@@ -242,13 +331,13 @@ async def _listen():
         except (OSError, EOFError, ValueError, KeyError, MemoryError, asyncio.TimeoutError):
             _show("Offline - reconnecting")
             _clear_usage()
-            _release_light()
+            _reset_attention()
         except Exception as error:
             # Keep the pairing credential out of diagnostics.
             print("AgentDeck runtime error:", type(error).__name__)
             _show("Runtime error: " + type(error).__name__)
             _clear_usage()
-            _release_light()
+            _reset_attention()
             return
         finally:
             await connection.close()
@@ -274,6 +363,34 @@ def _panel(x, y, width, height):
     panel.set_style_radius(8, 0)
     panel.remove_flag(lv.obj.FLAG.SCROLLABLE)
     return panel
+
+
+def _new_attention_panel():
+    panel = _panel(0, 0, 320, 240)
+    panel.add_flag(lv.obj.FLAG.HIDDEN)
+    panel.set_style_radius(0, 0)
+    panel.set_style_border_width(0, 0)
+    panel.set_style_bg_color(_color(BACKGROUND_RGB), 0)
+    title = _label(panel, 12, 12, lv.font_ascii_18, ATTENTION_RGB)
+    title.set_text("WAITING FOR YOU")
+    more = _label(panel, 236, 9, lv.font_ascii_bold_28, ATTENTION_RGB)
+    more.set_width(72)
+    more.set_style_text_align(lv.TEXT_ALIGN.RIGHT, 0)
+    creature = lv.image(panel)
+    creature.set_pivot(24, 24)
+    creature.set_scale(768)  # LVGL's 256-unit scale: 48 px glyph → 144 px.
+    fallback = _label(panel, 0, 70, lv.font_ascii_bold_48, ATTENTION_RGB)
+    fallback.set_width(320)
+    fallback.set_style_text_align(lv.TEXT_ALIGN.CENTER, 0)
+    fallback.set_text("!")
+    name = _label(panel, 12, 179, lv.font_ascii_bold_22)
+    name.set_size(296, 28)
+    name.set_style_text_align(lv.TEXT_ALIGN.CENTER, 0)
+    name.set_long_mode(lv.label.LONG.DOT)
+    status = _label(panel, 12, 210, lv.font_ascii_18, ATTENTION_RGB)
+    status.set_width(296)
+    status.set_style_text_align(lv.TEXT_ALIGN.CENTER, 0)
+    return panel, creature, fallback, name, status, more
 
 
 def _new_tile(x, y):
@@ -332,29 +449,32 @@ async def on_start():
 
 
 async def on_running_foreground():
-    _animate_attention()
     if _codex_usage and _usage_tick is not None and time.ticks_diff(time.ticks_ms(), _usage_tick) >= 10000:
         _show_usage()
 
 
 async def on_resume():
-    global _task
+    global _task, _motion_task
     if _task is None:
         _show("Connecting...")
         _task = asyncio.create_task(_listen())
+        _motion_task = asyncio.create_task(_animate())
 
 
 async def on_pause():
-    global _task
-    if _task is not None:
-        task = _task
-        _task = None
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-    _release_light()
+    global _task, _motion_task
+    tasks = (_task, _motion_task)
+    _task = _motion_task = None
+    for task in tasks:
+        if task is not None:
+            task.cancel()
+    _reset_attention()
+    for task in tasks:
+        if task is not None:
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
 
 async def on_stop():
