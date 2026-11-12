@@ -67,7 +67,7 @@ beforeAll(() => {
   }));
   // Evidence recorded elsewhere: the Apple workflow's last hosted run, and a
   // committed pre-release receipt with an attested lab gate.
-  writeFileSync(join(report, 'workflow-status.json'), JSON.stringify({ workflows: {
+  writeFileSync(join(report, 'workflow-status.json'), JSON.stringify({ fetched_at: '2026-10-06T03:00:00Z', workflows: {
     '.github/workflows/apple-test.yml': { scope: 'master', conclusion: 'success', event: 'push', head_branch: 'master',
       head_sha: 'feedface00', created_at: '2026-10-06T02:21:02Z', html_url: 'https://github.com/x/y/actions/runs/1' },
     '.github/workflows/esp32-sim.yml': { scope: 'latest', conclusion: 'failure', event: 'pull_request', head_branch: 'feature',
@@ -145,6 +145,7 @@ describe('QA decision and accounting', () => {
       expect(page).toContain(`<span class="dot ${decision}">`);
       expect(page).toContain(`<dd>${executed} / ${executed + skipped}</dd>`);
       expect(page).not.toContain('href="#coverage"');
+      expect(page).toContain('Workflow snapshot time unavailable.');
       const ids = new Set([...page.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
       for (const [, target] of page.matchAll(/href="#([^"]+)"/g)) expect(ids.has(target), target).toBe(true);
       if (all) {
@@ -316,6 +317,23 @@ describe('Build Health page — what it states', () => {
     const text = html.replace(/&amp;/g, '&');
     for (const g of catalog.gates) expect(text, g.name).toContain(`<h3>${g.name}</h3>`);
     for (const d of catalog.domains) expect(text, d.name).toContain(`<h3>${d.name}</h3>`);
+  });
+
+  it('keeps evidence visible when scope details are collapsed', () => {
+    const rows = [...html.matchAll(/<article class="card gate">([\s\S]*?)<\/article>/g)];
+    expect(rows.length).toBeGreaterThan(0);
+    for (const [, row] of rows) {
+      const [overview, details] = row.split('<details class="gate-details">');
+      expect(overview).toContain('<h3>');
+      expect(overview).toContain('class="card-foot"');
+      expect(details).toContain('<summary>Scope, limits and command</summary>');
+      expect(details).toContain('Does not prove');
+      expect(details).toContain('class="cmd"');
+      expect(details).not.toContain('class="hosted"');
+    }
+    expect(html).toContain('Workflow snapshot: <time>2026-10-06T03:00:00Z</time>.');
+    expect(html).toContain('Scheduled scans may be newer;');
+    expect(html).toContain('Workflow success does not mean zero security findings.');
   });
 
   it('calls only a branch-protection-required gate a merge blocker', () => {
