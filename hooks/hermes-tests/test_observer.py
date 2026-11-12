@@ -186,6 +186,77 @@ class ObserverTests(unittest.TestCase):
         with patch.object(self.module, '_handle', side_effect=RuntimeError('offline')):
             self.emit('pre_tool_call')
 
+    def test_human_wait_export_is_correlated_and_status_only(self):
+        for kind in ('clarify', 'approval', 'sudo'):
+            for event in ('on_human_input_request', 'on_human_input_resolved'):
+                self.emit(event, kind=kind, request_id='native-id', prompt='PRIVATE PROMPT',
+                          answers='PRIVATE ANSWER', outcome='PRIVATE OUTCOME', options=['allow'])
+            start, end = [row for row in self.events if row[0] != self.module._ATTENTION_SNAPSHOT][-2:]
+            self.assertEqual(start[0], 'hermes_human_input_request')
+            self.assertEqual(end[0], 'hermes_human_input_resolved')
+            self.assertEqual(start[1]['attention_id'], end[1]['attention_id'])
+            self.assertRegex(start[1]['attention_id'], r'^hermes-input-[a-f0-9]{32}$')
+            self.assertEqual(start[1]['kind'], kind)
+            exported = json.dumps([start, end])
+            for secret in ('native-id', 'PRIVATE', 'allow'):
+                self.assertNotIn(secret, exported)
+
+    def test_human_wait_invalid_ids_and_children_claim_nothing(self):
+        for request_id in (None, 1, '', ' ', 'x' * 257):
+            self.emit('on_human_input_request', kind='clarify', request_id=request_id)
+        self.emit('on_human_input_request', kind='smart', request_id='id')
+        self.emit('on_human_input_request', kind='clarify', request_id='id', parent_session_id='parent')
+        self.assertEqual(self.events, [])
+        self.assertNotEqual(self.module._attention_id('one', 'same'), self.module._attention_id('two', 'same'))
+
+    def test_attention_delivery_requires_separate_receiver_capability(self):
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        received = []
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args): pass
+            def do_GET(self):
+                body = json.dumps({'mode': 'daemon', 'hermesObserver': 1,
+                                   'hermesAttention': self.server.attention,
+                                   'hermesAttentionSnapshot': self.server.snapshot}).encode()
+                self.send_response(200); self.send_header('Content-Length', str(len(body)))
+                self.end_headers(); self.wfile.write(body)
+            def do_POST(self):
+                received.append(self.path)
+                self.server.payload = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                self.send_response(200); self.send_header('Content-Length', '0'); self.end_headers()
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        server.snapshot = None
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            with tempfile.TemporaryDirectory() as home, patch.object(self.module, '__file__', str(Path(home) / '__init__.py')):
+                (Path(home) / 'connection.json').write_text(json.dumps({'port': server.server_port}))
+                for capability in (None, True, '1', 1):
+                    server.attention = capability
+                    received.clear()
+                    self.module._deliver('hermes_human_input_request', {})
+                    self.module._deliver('hermes_human_input_resolved', {})
+                    self.module._deliver('hermes_stop', {})
+                    self.assertEqual(received, ([
+                        '/hooks/hermes_human_input_request', '/hooks/hermes_human_input_resolved',
+                    ] if type(capability) is int and capability == 1 else []) + ['/hooks/hermes_stop'])
+                server.snapshot = 1
+                received.clear()
+                self.emit('on_human_input_request', kind='approval', request_id='native-id', prompt='PRIVATE')
+                marker = self.events[-1][1]
+                self.module._deliver('hermes_human_input_request', {})
+                self.module._deliver(self.module._ATTENTION_SNAPSHOT, marker)
+                self.assertEqual(received, ['/hooks/hermes_human_input_snapshot'])
+                self.assertEqual(set(server.payload), {'session_id', 'inputs'})
+                self.assertEqual(server.payload['inputs'][0]['kind'], 'approval')
+                self.assertNotIn('native-id', json.dumps(server.payload))
+                self.emit('on_human_input_resolved', kind='approval', request_id='native-id')
+                # Even an old queued marker projects the current, cleared state.
+                self.module._deliver(self.module._ATTENTION_SNAPSHOT, marker)
+                self.assertEqual(server.payload['inputs'], [])
+        finally:
+            server.shutdown(); server.server_close()
+
     def test_tracking_is_bounded(self):
         for i in range(600): self.module._remember(self.module._TURNS, str(i), True)
         self.assertEqual(len(self.module._TURNS), 512)
