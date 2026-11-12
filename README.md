@@ -9,6 +9,7 @@
   <a href="https://play.google.com/store/apps/details?id=dev.agentdeck"><img src="https://img.shields.io/badge/Google%20Play-Android-1f6157.svg?logo=googleplay" alt="Google Play — Android"></a>
   <a href="https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464"><img src="https://img.shields.io/badge/Elgato%20Marketplace-Stream%20Deck%20plugin-1f6157.svg" alt="Elgato Marketplace"></a>
   <a href="https://ugc.ulanzistudio.com/contentView/1239890184745660416"><img src="https://img.shields.io/badge/Ulanzi%20Marketplace-Studio%20plugin-1f6157.svg" alt="Ulanzi Marketplace"></a>
+  <a href="integrations/vobot/README.md#gallery-release"><img src="https://img.shields.io/badge/Vobot%20Mini%20Dock-Gallery%20review-1f6157.svg" alt="Vobot Mini Dock app — Gallery review pending"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
   <a href="https://www.npmjs.com/package/@agentdeck/setup"><img src="https://img.shields.io/npm/v/@agentdeck/setup.svg" alt="npm version"></a>
   <a href="https://github.com/puritysb/AgentDeck/actions/workflows/ci.yml"><img src="https://github.com/puritysb/AgentDeck/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -134,7 +135,7 @@ Mobile apps and hardware connect to a daemon on your computer.
 | Stream Deck · Ulanzi | Physical session keys and supported controls | [Stream Deck](docs/streamdeck-layout.md) · [Ulanzi](docs/devices.md) |
 | ESP32 · TRMNL | Compact panels, rotary controls and e-ink status boards | [Firmware guide](docs/esp32.md) |
 | Pixoo · TC001 · Timebox · iDotMatrix | Agent status on pixel displays | [Device guide](docs/devices.md) |
-| Vobot Mini Dock | Read-only sessions and usage | [Vobot guide](integrations/vobot/README.md) |
+| Vobot Mini Dock | Read-only live sessions and Claude and Codex usage. The development build adds full-screen input alerts and a pulsing rear LED | [Vobot guide](integrations/vobot/README.md) · [Device photo](https://puritysb.github.io/AgentDeck/hardware/#vobot-mini-dock) |
 
 Controls require a supported session control path; other surfaces show status.
 D200X support covers LCD keys, not encoders. See the
@@ -213,7 +214,7 @@ and pending review, with the date each was checked.
 | CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | `npm-v*` |
 | Stream Deck / Mini / XL / Plus / + XL | [Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) | `streamdeck-v*` |
 | Ulanzi D200H / D200X LCD keys | [Ulanzi Marketplace](https://ugc.ulanzistudio.com/contentView/1239890184745660416); D200X encoders are not supported | `ulanzi-v*` |
-| Vobot Mini Dock | Read-only session and usage display with [Wi-Fi pairing](integrations/vobot/README.md#pair-over-wi-fi) | [Vobot App Gallery](https://app.myvobot.com/) submission in review |
+| Vobot Mini Dock | [Wi-Fi pairing](integrations/vobot/README.md#pair-over-wi-fi) on stock firmware 1.2.6 or later | [Gallery review pending](integrations/vobot/README.md#gallery-release) |
 | ESP32 panels and TRMNL 7.5" | [Browser flasher](https://puritysb.github.io/AgentDeck/flash/) · [firmware releases](https://github.com/puritysb/AgentDeck/releases?q=esp32-v&expanded=true) | `esp32-v*` |
 
 Update Android through your existing signing channel: Play and GitHub APK

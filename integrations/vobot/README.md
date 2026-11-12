@@ -36,9 +36,13 @@ session traffic use a trusted LAN because the transport does not use TLS.
 
 ## Gallery release
 
-Version 0.3.0 is the first Vobot Gallery submission and adds Wi-Fi pairing to
-the USB-installed prototype. This is the Vobot package version; it does not
-change the AgentDeck daemon or Surface protocol version.
+Version 0.3.0, the first Gallery submission with Wi-Fi pairing, is in review.
+Public installation is pending. The 0.3.1 package adds full-screen input alerts
+and is ready to submit once the Gallery finishes reviewing 0.3.0.
+
+Use the development install below to try the current source on Mini Dock
+firmware 1.2.6 or later. The Vobot app has its own package version and uses the
+existing AgentDeck Surface protocol.
 
 ## Install a development build
 
