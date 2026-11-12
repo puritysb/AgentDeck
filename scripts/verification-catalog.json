@@ -1412,6 +1412,7 @@
         "bridge/src/__tests__/codex-rollout-response.test.ts",
         "bridge/src/__tests__/codex-turn-manager.test.ts",
         "bridge/src/__tests__/kiro-*.test.ts",
+        "bridge/src/__tests__/hermes-attention.test.ts",
         "bridge/src/__tests__/hermes-sessions.test.ts",
         "bridge/src/__tests__/opencode-*.test.ts",
         "bridge/src/__tests__/observed-*.test.ts",

@@ -11,3 +11,5 @@ provides_hooks:
   - pre_tool_call
   - post_tool_call
   - subagent_start
+  - on_human_input_request
+  - on_human_input_resolved

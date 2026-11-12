@@ -286,7 +286,7 @@ html body :target { scroll-margin-block-start: 0; }
   }
   .get-started h2 { margin: 0 0 var(--s-2); font-size: clamp(26px, 3vw, 34px); }
   .get-started-head p:last-child { margin: 0; color: var(--ink-500); }
-  .access-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-3); }
+  .access-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s-3); }
   .access-card {
     display: flex; min-width: 0; flex-direction: column; padding: var(--s-5);
     background: var(--tide-100); border: 1px solid var(--tide-200); border-radius: var(--r-2xl);
@@ -376,6 +376,9 @@ html body :target { scroll-margin-block-start: 0; }
 
   footer { max-width: var(--container-max); margin: 0 auto; padding: var(--s-10) var(--container-pad) var(--s-16); color: var(--ink-500); font-size: 13px; text-align: center; }
   .disclaimer { max-width: 70ch; margin: var(--s-3) auto 0; color: var(--ink-300); }
+  @media (max-width: 980px) {
+    .access-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
   @media (max-width: 720px) {
     /* GNB responsive rules live in the canonical GNB-CSS block above. */
     .wrap { padding: var(--s-12) var(--s-4) var(--s-16); }
@@ -659,6 +662,14 @@ html body :target { scroll-margin-block-start: 0; }
             <a class="btn btn-ghost" href="https://ugc.ulanzistudio.com/contentView/1239890184745660416" data-i18n="hardware.ulanzi">Ulanzi Marketplace</a>
           </div>
         </article>
+        <article class="access-card">
+          <span class="access-role" data-i18n="vobot.role">Optional · Desk display</span>
+          <h3 data-i18n="vobot.h">Vobot Mini Dock</h3>
+          <p data-i18n="vobot.p">See live sessions, usage, and requests for input on your dock. Pair over Wi-Fi. Vobot App Gallery submission is in review.</p>
+          <div class="access-actions">
+            <a class="btn btn-ghost" href="https://github.com/puritysb/AgentDeck/blob/master/integrations/vobot/README.md" data-i18n="vobot.guide">Vobot setup guide</a>
+          </div>
+        </article>
       </div>
     </section>
     <div class="stats">
@@ -894,6 +905,10 @@ html body :target { scroll-margin-block-start: 0; }
         'hardware.p': 'Stream Deck 또는 Ulanzi D200H/D200X를 각 제조사의 마켓플레이스에서 추가하세요.',
         'hardware.streamdeck': 'Elgato 마켓플레이스',
         'hardware.ulanzi': 'Ulanzi 마켓플레이스',
+        'vobot.role': '선택 · 데스크 디스플레이',
+        'vobot.h': 'Vobot Mini Dock',
+        'vobot.p': '도크에서 실시간 세션, 사용량, 입력 요청을 확인하세요. Wi-Fi로 페어링합니다. Vobot App Gallery에서 심사 중입니다.',
+        'vobot.guide': 'Vobot 설정 안내',
         'stat.surfaces': '디스플레이 서피스',
         'hero.caption': '하나의 데몬으로 연결된 책상. 2026년 9월 28일 촬영. 사진을 열면 전체 구성을 볼 수 있습니다.',
         'explore.h': 'AgentDeck 둘러보기',
@@ -989,6 +1004,10 @@ html body :target { scroll-margin-block-start: 0; }
         'hardware.p': 'Stream DeckまたはUlanzi D200H/D200Xを各メーカーのマーケットプレイスから追加できます。',
         'hardware.streamdeck': 'Elgato Marketplace',
         'hardware.ulanzi': 'Ulanzi Marketplace',
+        'vobot.role': 'オプション · デスクディスプレイ',
+        'vobot.h': 'Vobot Mini Dock',
+        'vobot.p': 'ドックでセッション、使用量、入力リクエストを確認できます。Wi-Fiでペアリングします。Vobot App Galleryで審査中です。',
+        'vobot.guide': 'Vobotセットアップガイド',
         'stat.surfaces': 'ディスプレイサーフェス',
         'hero.caption': 'ひとつのdaemonでつながるデスク。2026年9月28日撮影。写真を開くと全体をご覧いただけます。',
         'explore.h': 'AgentDeckを見る',
