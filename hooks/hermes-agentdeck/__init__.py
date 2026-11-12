@@ -29,6 +29,9 @@ _WORKER = None
 _CHILDREN = OrderedDict()
 _TURNS = OrderedDict()
 _CONTEXT = OrderedDict()
+_ATTENTION = OrderedDict()
+_ATTENTION_POLL_SECONDS = 3
+_ATTENTION_SNAPSHOT = "hermes_human_input_snapshot"
 _MAX_TRACKED = 512
 _CI_RULES = json.loads((Path(__file__).parent / "ci-wait-rules.json").read_text())
 # Ignore proxy env vars and redirects: observation must stay on loopback.
@@ -89,6 +92,13 @@ def _tool_id(sid, value):
     if not isinstance(value, str) or not value or len(value) > _CI_RULES["maxCommandChars"]:
         return None
     return "hermes-tool-" + hashlib.sha256((sid + "\0" + value).encode()).hexdigest()[:32]
+
+
+def _attention_id(sid, value):
+    # Correlate a wait without exporting a native request ID, prompt or answer.
+    if not isinstance(value, str) or not value.strip() or len(value) > 256:
+        return None
+    return "hermes-input-" + hashlib.sha256((sid + "\0" + value).encode()).hexdigest()[:32]
 
 
 def _ci_intent(tool, args):
@@ -201,6 +211,22 @@ def _deliver(event, payload):
         health = json.loads(response.read(65536))
     if health.get("mode") != "daemon" or health.get("hermesObserver") != 1:
         return
+    snapshot_cap = health.get("hermesAttentionSnapshot")
+    supports_snapshot = type(snapshot_cap) is int and snapshot_cap == 1
+    if event == _ATTENTION_SNAPSHOT:
+        if not supports_snapshot:
+            return
+        sid = payload["session_id"]
+        # Queue only an identity. An outage must never replay an old wait.
+        with _LOCK:
+            waits = list(_ATTENTION.get(sid, {}).items())
+        payload = {"session_id": sid, "inputs": [
+            {"attention_id": request_id, "kind": kind} for request_id, kind in waits
+        ]}
+    elif event in ("hermes_human_input_request", "hermes_human_input_resolved"):
+        capability = health.get("hermesAttention")
+        if supports_snapshot or type(capability) is not int or capability != 1:
+            return  # Snapshot receivers use one source of truth; Swift gets neither.
     request = urllib.request.Request(
         base + "/hooks/" + event,
         data=json.dumps(payload).encode(),
@@ -211,8 +237,20 @@ def _deliver(event, payload):
 
 
 def _run():
+    next_refresh = time.monotonic() + _ATTENTION_POLL_SECONDS
     while True:
-        created, event, payload = _QUEUE.get()
+        now = time.monotonic()
+        if now >= next_refresh:
+            next_refresh = now + _ATTENTION_POLL_SECONDS
+            with _LOCK:
+                for sid in _ATTENTION:
+                    if _QUEUE.qsize() >= 64:
+                        break  # Leave room for real lifecycle callbacks.
+                    _post(_ATTENTION_SNAPSHOT, {"session_id": sid})
+        try:
+            created, event, payload = _QUEUE.get(timeout=max(0, next_refresh - time.monotonic()))
+        except queue.Empty:
+            continue
         try:
             # A congested/dead daemon must not replay old working states later.
             if time.monotonic() - created < 5:
@@ -250,6 +288,11 @@ _TASKS = OrderedDict()       # identity -> Hermes task_id (tool hooks carry it)
 _BACKGROUND = OrderedDict()  # identity -> background process ids last posted
 _POLLER = None
 _BACKGROUND_POLL_SECONDS = 3
+
+
+def _clear_attention(sid):
+    if _ATTENTION.pop(sid, None):
+        _post(_ATTENTION_SNAPSHOT, {"session_id": sid})
 
 
 def _background_items(task_id):
@@ -346,6 +389,7 @@ def _handle_locked(event, **kwargs):
             # close a row here. CLI already emits finalize for the old one.
             old = kwargs.get("old_session_id")
             if old:
+                _clear_attention(_identity(old))
                 _post("hermes_session_end", _payload(kwargs, old))
                 _CONTEXT.pop(_identity(old), None)
                 _TASKS.pop(_identity(old), None)
@@ -355,9 +399,33 @@ def _handle_locked(event, **kwargs):
         if payload is None:
             return
         sid = payload["session_id"]
-        if event == "on_session_start":
+        if event in ("on_human_input_request", "on_human_input_resolved"):
+            kind = kwargs.get("kind")
+            attention_id = _attention_id(sid, kwargs.get("request_id"))
+            if kind not in ("clarify", "approval", "sudo") or attention_id is None:
+                return
+            # Status only: no prompt, options, command, response or outcome.
+            payload.update(kind=kind, attention_id=attention_id)
+            _post("hermes_" + event.removeprefix("on_"), payload)
+            if event == "on_human_input_request":
+                if sid not in _ATTENTION and len(_ATTENTION) >= 32:
+                    return
+                waits = _ATTENTION.setdefault(sid, {})
+                if len(waits) >= 32 and attention_id not in waits:
+                    return
+                waits[attention_id] = kind
+            else:
+                waits = _ATTENTION.get(sid)
+                if waits is None or waits.get(attention_id) != kind:
+                    return
+                del waits[attention_id]
+                if not waits:
+                    del _ATTENTION[sid]
+            _post(_ATTENTION_SNAPSHOT, {"session_id": sid})
+        elif event == "on_session_start":
             _post("hermes_session_start", payload)
         elif event == "pre_llm_call":
+            _clear_attention(sid)
             _remember(_TURNS, sid, {"response": ""})
             payload["prompt"] = _text(kwargs.get("user_message"))
             _post("hermes_user_prompt_submit", payload)
@@ -384,6 +452,7 @@ def _handle_locked(event, **kwargs):
             # authoritative run outcome before claiming a successful Stop.
             _remember(_TURNS, sid, {"response": _text(kwargs.get("assistant_response"))})
         elif event == "on_session_end":
+            _clear_attention(sid)
             # RUN scoped, never session teardown. Exactly one Stop with the
             # actual final response AND authoritative interrupted/failed flag.
             turn = _TURNS.pop(sid, None)
@@ -393,6 +462,7 @@ def _handle_locked(event, **kwargs):
                 payload["aborted"] = bool(kwargs.get("failed")) or (not kwargs.get("completed", False) and not payload["interrupted"])
                 _post("hermes_stop", payload)
         elif event == "on_session_finalize":
+            _clear_attention(sid)
             _TURNS.pop(sid, None)
             _post("hermes_session_end", payload)
             _CONTEXT.pop(sid, None)
@@ -405,6 +475,7 @@ def register(ctx):
         "on_session_start", "pre_llm_call", "post_llm_call", "on_session_end",
         "on_session_finalize", "on_session_reset", "pre_tool_call", "post_tool_call",
         "subagent_start",
+        "on_human_input_request", "on_human_input_resolved",
     ):
         def callback(_event=event, **kwargs):
             try:

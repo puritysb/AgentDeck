@@ -48,6 +48,10 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 - **TTGO T-Display.** The usage page's heading turns amber and reads
   `N NEED YOU` while a session waits for an answer. The page showed nothing
   for a waiting session before.
+- **Session activity.** A command run from a path under a session-id directory
+  no longer shows as `Running` followed by a fragment of that id. The line
+  reads `Running`, or names the script when the path is complete. Node daemon;
+  the Mac daemon never included the path.
 
 - **macOS Dashboard.** Keep confirmed message deliveries in Work detail and
   remove the separate message history, graph and aquarium message currents.

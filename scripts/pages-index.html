@@ -286,7 +286,7 @@ html body :target { scroll-margin-block-start: 0; }
   }
   .get-started h2 { margin: 0 0 var(--s-2); font-size: clamp(26px, 3vw, 34px); }
   .get-started-head p:last-child { margin: 0; color: var(--ink-500); }
-  .access-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-3); }
+  .access-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s-3); }
   .access-card {
     display: flex; min-width: 0; flex-direction: column; padding: var(--s-5);
     background: var(--tide-100); border: 1px solid var(--tide-200); border-radius: var(--r-2xl);
@@ -346,6 +346,8 @@ html body :target { scroll-margin-block-start: 0; }
   /* ── Nav cards ── */
   .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: var(--s-4); }
   .cards > *, .access-grid > * { min-width:0; }
+  .security-cards { grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); }
+  .security-links { margin-top: var(--s-4); }
   .card {
     display: block; text-decoration: none; color: var(--ink-900);
     background: var(--tide-100); border: 1px solid var(--tide-200); border-radius: var(--r-2xl);
@@ -376,6 +378,9 @@ html body :target { scroll-margin-block-start: 0; }
 
   footer { max-width: var(--container-max); margin: 0 auto; padding: var(--s-10) var(--container-pad) var(--s-16); color: var(--ink-500); font-size: 13px; text-align: center; }
   .disclaimer { max-width: 70ch; margin: var(--s-3) auto 0; color: var(--ink-300); }
+  @media (max-width: 980px) {
+    .access-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
   @media (max-width: 720px) {
     /* GNB responsive rules live in the canonical GNB-CSS block above. */
     .wrap { padding: var(--s-12) var(--s-4) var(--s-16); }
@@ -638,6 +643,7 @@ html body :target { scroll-margin-block-start: 0; }
           <div class="access-actions">
             <a class="btn btn-primary" href="https://apps.apple.com/app/id6784822497?pt=128040795&amp;ct=website-202610&amp;mt=8" data-i18n="hub.appstore">Mac App Store</a>
             <a class="btn btn-ghost" href="https://www.npmjs.com/package/@agentdeck/setup" data-i18n="hub.npm">CLI · macOS / Windows / Linux</a>
+            <a class="btn btn-ghost" href="hardware/#mac-secondary-display" data-i18n="hub.display">Mac dashboard on a second display</a>
           </div>
         </article>
         <article class="access-card">
@@ -657,6 +663,15 @@ html body :target { scroll-margin-block-start: 0; }
           <div class="access-actions">
             <a class="btn btn-ghost" href="https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464" data-i18n="hardware.streamdeck">Elgato Marketplace</a>
             <a class="btn btn-ghost" href="https://ugc.ulanzistudio.com/contentView/1239890184745660416" data-i18n="hardware.ulanzi">Ulanzi Marketplace</a>
+          </div>
+        </article>
+        <article class="access-card">
+          <span class="access-role" data-i18n="vobot.role">Optional · Desk display</span>
+          <h3 data-i18n="vobot.h">Vobot Mini Dock</h3>
+          <p data-i18n="vobot.p">See live sessions, usage, and requests for input on your dock. Pair over Wi-Fi. Vobot App Gallery submission is in review.</p>
+          <div class="access-actions">
+            <a class="btn btn-ghost" href="https://github.com/puritysb/AgentDeck/blob/master/integrations/vobot/README.md" data-i18n="vobot.guide">Vobot setup guide</a>
+            <a class="btn btn-ghost" href="hardware/#vobot-mini-dock" data-i18n="vobot.photo">See the dock</a>
           </div>
         </article>
       </div>
@@ -697,6 +712,29 @@ html body :target { scroll-margin-block-start: 0; }
       <p data-i18n="voice.p">Speak a prompt from your deck and it reaches Claude Code in Ghostty, WezTerm, kitty, SSH or an editor terminal. The VOICE key shows whether the session received it, is holding it or refused it. Requires the CLI daemon.</p>
     </a>
   </div>
+
+  <section id="security-checks" aria-labelledby="security-title">
+    <h2 id="security-title" data-i18n="security.h">Automated security checks</h2>
+    <p class="section-lede" data-i18n="security.p">GitHub Actions checks changes to AgentDeck and reruns security scans on a schedule. Required checks gate merges to master.</p>
+    <div class="cards security-cards">
+      <a class="card" href="https://github.com/puritysb/AgentDeck/actions/workflows/security-scan.yml">
+        <h3 data-i18n="security.deps.h">Dependencies and tokens</h3>
+        <p data-i18n="security.deps.p">Daily scans check npm, Python, Rust, and Android runtime dependencies for known advisories and tracked text for AgentDeck pairing tokens. Dependency review checks new high or critical advisories on pull requests.</p>
+      </a>
+      <a class="card" href="https://github.com/puritysb/AgentDeck/actions/workflows/codeql.yml">
+        <h3 data-i18n="security.code.h">Source analysis</h3>
+        <p data-i18n="security.code.p">CodeQL analyzes source on pull requests, pushes to master, and weekly. The Kotlin and Swift jobs build their targets before analysis.</p>
+      </a>
+      <a class="card" href="reports/#verify">
+        <h3 data-i18n="security.health.h">Scan freshness</h3>
+        <p data-i18n="security.health.p">An hourly check verifies that scans are current and their scheduled runs still happen. Build Health shows run results, coverage, and limits.</p>
+      </a>
+    </div>
+    <p class="section-lede security-links">
+      <a href="https://github.com/puritysb/AgentDeck/blob/master/docs/security-scanning.md" data-i18n="security.guide">Security scanning guide</a> ·
+      <a href="https://github.com/puritysb/AgentDeck/blob/master/SECURITY.md" data-i18n="security.policy">Report a vulnerability privately</a>
+    </p>
+  </section>
 
   <h2 data-i18n="explore.h">Explore AgentDeck</h2>
   <p class="section-lede" data-i18n="explore.p">Five focused views: what runs where, how to put firmware on it, how it looks, how it works, and whether the tests pass.</p>
@@ -894,6 +932,22 @@ html body :target { scroll-margin-block-start: 0; }
         'hardware.p': 'Stream Deck 또는 Ulanzi D200H/D200X를 각 제조사의 마켓플레이스에서 추가하세요.',
         'hardware.streamdeck': 'Elgato 마켓플레이스',
         'hardware.ulanzi': 'Ulanzi 마켓플레이스',
+        'vobot.role': '선택 · 데스크 디스플레이',
+        'vobot.h': 'Vobot Mini Dock',
+        'vobot.p': '도크에서 실시간 세션, 사용량, 입력 요청을 확인하세요. Wi-Fi로 페어링합니다. Vobot App Gallery에서 심사 중입니다.',
+        'vobot.guide': 'Vobot 설정 안내',
+        'vobot.photo': 'Vobot 사진 보기',
+        'hub.display': '보조 화면에 띄운 Mac 대시보드',
+        'security.h': '자동 보안 검사',
+        'security.p': 'GitHub Actions는 AgentDeck 변경 사항을 검사하고, 정해진 주기에 따라 검사를 다시 실행합니다. 필수 검사를 충족해야 master에 머지할 수 있습니다.',
+        'security.deps.h': '의존성과 토큰',
+        'security.deps.p': '매일 npm, Python, Rust, Android 런타임 의존성의 알려진 취약점과 저장소가 추적하는 텍스트의 AgentDeck 페어링 토큰을 검사합니다. PR에서는 새로 도입된 심각도 높음 또는 치명적 취약점도 확인합니다.',
+        'security.code.h': '소스 코드 분석',
+        'security.code.p': 'CodeQL은 PR, master 푸시, 주간 일정에 맞춰 소스를 분석합니다. Kotlin과 Swift는 분석 전에 대상 앱을 빌드합니다.',
+        'security.health.h': '검사 실행 상태',
+        'security.health.p': '매시간 최근 검사 결과와 예약 실행 여부를 확인합니다. Build Health에서 실행 결과, 검사 범위, 한계를 볼 수 있습니다.',
+        'security.policy': '취약점 비공개 제보',
+        'security.guide': '보안 검사 안내',
         'stat.surfaces': '디스플레이 서피스',
         'hero.caption': '하나의 데몬으로 연결된 책상. 2026년 9월 28일 촬영. 사진을 열면 전체 구성을 볼 수 있습니다.',
         'explore.h': 'AgentDeck 둘러보기',
@@ -989,6 +1043,22 @@ html body :target { scroll-margin-block-start: 0; }
         'hardware.p': 'Stream DeckまたはUlanzi D200H/D200Xを各メーカーのマーケットプレイスから追加できます。',
         'hardware.streamdeck': 'Elgato Marketplace',
         'hardware.ulanzi': 'Ulanzi Marketplace',
+        'vobot.role': 'オプション · デスクディスプレイ',
+        'vobot.h': 'Vobot Mini Dock',
+        'vobot.p': 'ドックでセッション、使用量、入力リクエストを確認できます。Wi-Fiでペアリングします。Vobot App Galleryで審査中です。',
+        'vobot.guide': 'Vobotセットアップガイド',
+        'vobot.photo': 'Vobot の写真を見る',
+        'hub.display': 'サブディスプレイの Mac ダッシュボード',
+        'security.h': '自動セキュリティチェック',
+        'security.p': 'GitHub Actions は AgentDeck の変更を検査し、定期的にスキャンを再実行します。必須チェックを満たすと master にマージできます。',
+        'security.deps.h': '依存関係とトークン',
+        'security.deps.p': '毎日、npm、Python、Rust、Android の実行時依存関係を既知のアドバイザリと照合し、追跡対象のテキストから AgentDeck のペアリングトークンを検出します。PR では新たに追加された重大度 High または Critical の問題も確認します。',
+        'security.code.h': 'ソースコード分析',
+        'security.code.p': 'CodeQL は PR、master へのプッシュ、週次スケジュールでソースを分析します。Kotlin と Swift は対象をビルドしてから分析します。',
+        'security.health.h': 'スキャンの実行状況',
+        'security.health.p': '1 時間ごとに、最新の結果と定期実行の記録を確認します。Build Health で実行結果、検査範囲、制約を確認できます。',
+        'security.policy': '脆弱性を非公開で報告',
+        'security.guide': 'セキュリティスキャンの手順',
         'stat.surfaces': 'ディスプレイサーフェス',
         'hero.caption': 'ひとつのdaemonでつながるデスク。2026年9月28日撮影。写真を開くと全体をご覧いただけます。',
         'explore.h': 'AgentDeckを見る',
