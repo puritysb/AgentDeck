@@ -1417,6 +1417,7 @@
         "bridge/src/__tests__/opencode-*.test.ts",
         "bridge/src/__tests__/observed-*.test.ts",
         "bridge/src/__tests__/passive-observer.test.ts",
+        "bridge/src/__tests__/session-activity.test.ts",
         "bridge/src/__tests__/session-display-name.test.ts",
         "bridge/src/__tests__/cmux-titles.test.ts",
         "bridge/src/__tests__/claude-inbox.test.ts",

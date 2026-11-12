@@ -18,9 +18,16 @@ import { stripUnsafeText, ciWaitDetail } from '@agentdeck/shared';
 import { debug } from './logger.js';
 import type { EnrichedSession } from './session-aggregator.js';
 
-/** "Edit /a/b/c.ts" → "Edit c.ts"; "Bash cd /x; rm…" → "Bash cd…". Mirrors
- *  cleanAction in shared/src/trmnl-layout.ts (kept local to avoid a cross-package
- *  export churn while that file is under active concurrent edit). */
+/** A path segment that names nothing to a reader: a UUID or a fragment of one,
+ *  or a long hex run. The observer cuts a tool argument at 80 characters, and
+ *  a scratchpad path under a session-id directory is cut inside that id, so the
+ *  "last segment" was 23 characters of the session's own id. */
+function isOpaqueSegment(segment: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f-]*$/i.test(segment) || /^[0-9a-f]{12,}$/i.test(segment);
+}
+
+/** "Edit /a/b/c.ts" → "Edit c.ts"; "Bash cd /x; rm…" → "Bash cd…". A path that
+ *  ends in an opaque id gives the verb alone, as the Swift daemon always does. */
 function cleanAction(raw: string): string {
   const s = raw.trim();
   if (!s) return '';
@@ -31,7 +38,7 @@ function cleanAction(raw: string): string {
   const firstTok = rest.split(/\s+/)[0] || '';
   if (firstTok.includes('/')) {
     const base = firstTok.split('/').filter(Boolean).pop() || firstTok;
-    return `${verb} ${base}`;
+    return isOpaqueSegment(base) ? verb : `${verb} ${base}`;
   }
   return rest.length > 22 ? `${verb} ${rest.slice(0, 21)}…` : `${verb} ${rest}`;
 }
@@ -61,7 +68,7 @@ export function quickActivity(s: EnrichedSession): string | undefined {
     // If it's "Verb basename", prefer the present-continuous verb.
     const sp = cleaned.indexOf(' ');
     if (sp > 0) return `${verbForm(cleaned.slice(0, sp))} ${cleaned.slice(sp + 1)}`;
-    return cleaned;
+    return verbForm(cleaned);
   }
   if (s.currentTool && s.currentTool.trim()) return verbForm(stripUnsafeText(s.currentTool.trim()));
   if (s.goal && s.goal.trim()) return cleanAction(stripUnsafeText(s.goal.trim()));
