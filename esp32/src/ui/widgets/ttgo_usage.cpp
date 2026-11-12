@@ -107,9 +107,26 @@ void update() {
     lv_obj_clear_flag(root, LV_OBJ_FLAG_HIDDEN);
     // Bounded snapshot (a few hundred bytes); never the whole dashboard.
     UsageRows::Group groups[UsageRows::MAX_GROUPS];
+    uint8_t waiting = 0;
     lockState();
     const uint8_t groupCount = UsageRows::build(g_state, groups);
+    for (uint8_t i = 0; i < g_state.sessionCount; ++i)
+        if (strstr(g_state.sessions[i].state, "awaiting")) waiting++;
     unlockState();
+    // The meter is this board's resting page, and it showed nothing when a
+    // session needed an answer. The heading says so in amber. It is the root's
+    // first child and its own text is the change check, so this adds no static
+    // state to a board with a few bytes of DRAM headroom.
+    {
+        char needs[16];
+        snprintf(needs, sizeof(needs), "%u NEED%s YOU", (unsigned)waiting, waiting == 1 ? "S" : "");
+        const char* want = waiting ? needs : UsagePresentation::Heading;
+        lv_obj_t* heading = lv_obj_get_child(root, 0);
+        if (strcmp(lv_label_get_text(heading), want) != 0) {
+            lv_label_set_text(heading, want);
+            lv_obj_set_style_text_color(heading, lv_color_hex(waiting ? Theme::StatusAmber : Theme::HUDDim), 0);
+        }
+    }
     UsageRows::Tile tiles[CARD_CAP];
     const uint8_t count = UsageRows::tiles(groups, groupCount, tiles, CARD_CAP);
     if (count) lv_obj_add_flag(empty, LV_OBJ_FLAG_HIDDEN);

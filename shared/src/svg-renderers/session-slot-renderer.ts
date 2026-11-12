@@ -14,7 +14,7 @@ import { State } from '../states.js';
 import { stateColor } from '../state-colors.js';
 import { PASSIVE_OFFLINE_LABEL, OPEN_AGENTDECK_LABEL } from '../connection-status.js';
 import { agentLogoIcon } from './agent-logos.js';
-import { wrapTextByWidth, sliceByPx, escSvgText } from './text-utils.js';
+import { wrapTextByWidth, sliceByPx, escSvgText, measureTextWidth } from './text-utils.js';
 import { DEVICE_CONTROLLER_RULES } from '../device-controller.js';
 
 const SIZE = DEVICE_CONTROLLER_RULES.key.canvas;
@@ -235,6 +235,11 @@ export function agentSlotAccent(agentType: string | undefined | null): string {
     default:                          return '#B8BEC8';
   }
 }
+
+/** Session-name fit on a 144-unit key. The width estimate is 0.55 em per Latin
+ *  character, so 97 units is 11 characters at 16 px. */
+export const SESSION_NAME_MAX_CHARS = 13;
+export const SESSION_NAME_FULL_SIZE_PX = 97;
 
 function wrapSessionName(name: string, maxChars: number, maxLines = 4): string[] {
   if (name.length <= maxChars) return [name];
@@ -518,7 +523,12 @@ export function renderSessionSlot(
   const lowResolutionKey = options?.lowResolutionKey === true;
   const stateLbl = isAsking ? 'PERMIT?' : session.state === 'error' ? 'ERROR' : session.waitingOn ? `CI ${session.waitingOn.phase === 'unknown' ? 'WAIT' : session.waitingOn.phase.toUpperCase()}` : backgroundCompact(session.backgroundTaskCount, session.backgroundStandbyCount) ?? (isWorking ? 'RUNNING' : 'IDLE');
   const colorText = isWorking ? '#CCFBF1' : isAsking ? '#FCD34D' : p1;
-  const nameLines = wrapSessionName(nameForDisplay, lowResolutionKey ? 11 : 15);
+  // The 16 px name has room for about 11 Latin characters before the key's
+  // border; a 13-character line ("Documentation") ran off the edge. Wrap at 13
+  // and step the face down to 14 px when a line needs the extra room.
+  const nameLines = wrapSessionName(nameForDisplay, lowResolutionKey ? 11 : SESSION_NAME_MAX_CHARS);
+  const nameFontSize = lowResolutionKey ? 20
+    : nameLines.some(line => measureTextWidth(line, 16) > SESSION_NAME_FULL_SIZE_PX) ? 14 : 16;
   const nameStartY = nameLines.length === 1 ? (lowResolutionKey ? 60 : 54)
     : nameLines.length === 2 ? (lowResolutionKey ? 56 : 53)
       : nameLines.length === 3 ? (lowResolutionKey ? 53 : 52)
@@ -527,7 +537,7 @@ export function renderSessionSlot(
     ? (lowResolutionKey ? 18 : 15)
     : (lowResolutionKey ? 20 : 18);
   const nameText = nameLines.map((line, index) =>
-    `<text x="20" y="${nameStartY + index * nameLineHeight}" font-size="${lowResolutionKey ? '20' : '16'}" font-weight="${lowResolutionKey ? '700' : '600'}" text-anchor="start" fill="#E2E8F0" font-family="${fontFam}">${escXml(line)}</text>`,
+    `<text x="20" y="${nameStartY + index * nameLineHeight}" font-size="${nameFontSize}" font-weight="${lowResolutionKey ? '700' : '600'}" text-anchor="start" fill="#E2E8F0" font-family="${fontFam}">${escXml(line)}</text>`,
   ).join('');
   const gradId = `sd-bg-${agent}-${session.state || 'idle'}`;
   const filterId = `pg-${animFrame}`;
@@ -597,7 +607,9 @@ export function renderSessionSlot(
     `<defs>${defs}</defs>`,
     `<rect width="${SIZE}" height="${SIZE}" rx="16" fill="url(#${gradId})"/>`,
     `<rect x="8" y="8" width="128" height="128" rx="12" fill="#2C2C2E" opacity="0.8"/>`,
-    stateBorder, activeRing, watermark, askDot, session.waitingOn ? '' : runBadge, badgeObj,
+    // RUNNING already says it in the state row, and the pill sat on the word's
+    // last letter. The pill stays for a background count, which does not.
+    stateBorder, activeRing, watermark, askDot, session.waitingOn || stateLbl === 'RUNNING' ? '' : runBadge, badgeObj,
     `<text x="20" y="32" font-size="${lowResolutionKey ? '18' : '17'}" font-weight="800" text-anchor="start" fill="${colorText}" font-family="${fontFam}">${escXml(stateLbl)}</text>`,
     nameText,
     `<text x="20" y="${lowResolutionKey ? '128' : '120'}" font-size="${lowResolutionKey ? '15' : (isWorking ? '13' : '14')}" font-weight="500" text-anchor="start" fill="${colorText}" opacity="0.8" font-family="${fontFam}">${escXml(toolStr)}</text>`,
@@ -735,7 +747,10 @@ export function renderDetailInfo(
   const taggedTitle = Boolean(displayName?.includes(' #'));
   const titleFit = taggedTitle ? ' textLength="104" lengthAdjust="spacingAndGlyphs"' : '';
   const watermark = `<g transform="translate(92, 80)" opacity="0.42">${agentLogoIcon(agent, 48, 1, 0, 0)}</g>`;
-  const badgeObj = taggedTitle ? '' : `<rect x="100" y="14" width="28" height="16" rx="8" fill="#ffffff" opacity="0.1" /><text x="114" y="25" font-size="10" font-weight="700" text-anchor="middle" fill="#A1A1AA" font-family="${fontFam}">INFO</text>`;
+  // The pill starts at x=100 and the 18 px title at x=20, so a title wider than
+  // about seven characters ran under it ("OpenClaw"). The title is the content.
+  const titleReachesPill = measureTextWidth(truncate(nameForDisplay, 10), 18) > 72;
+  const badgeObj = taggedTitle || titleReachesPill ? '' : `<rect x="100" y="14" width="28" height="16" rx="8" fill="#ffffff" opacity="0.1" /><text x="114" y="25" font-size="10" font-weight="700" text-anchor="middle" fill="#A1A1AA" font-family="${fontFam}">INFO</text>`;
   const toolDisplay = !effectiveState?.startsWith('awaiting') && session.waitingOn
     ? ciWaitDetail(session.waitingOn)! : !effectiveState?.startsWith('awaiting') && backgroundCompact(session.backgroundTaskCount, session.backgroundStandbyCount) ? backgroundCompact(session.backgroundTaskCount, session.backgroundStandbyCount)! : tool ? `▶ ${truncate(tool, 18)}` : stateLbl;
   // An awaiting session's INFO cell must state WHAT is being asked. This cell
@@ -789,21 +804,80 @@ function optionVisual(label: string): { icon: StatusIconKind; tone: StatusCardTo
   return { icon: 'option', tone: 'purple' };
 }
 
+/** Advance of one glyph in the bold option face, in em. Narrow and wide Latin
+ *  letters differ by more than 2x, which a flat average hides. */
+function optionGlyphEm(ch: string): number {
+  if (measureTextWidth(ch, 1) >= 1) return 1;            // CJK and fullwidth
+  if (measureTextWidth(ch, 1) === 0) return 0;           // combining marks
+  if ('iljI.,:;!\'|'.includes(ch)) return 0.3;
+  if ('ftr()[]- '.includes(ch)) return 0.38;
+  // Bundled IBM Plex Sans KR Bold advances: W=0.973 em, ellipsis=0.897 em.
+  if (ch === 'W') return 0.98;
+  if (ch === '…') return 0.9;
+  if ('mwM@%'.includes(ch)) return 0.9;
+  return ch >= 'A' && ch <= 'Z' ? 0.66 : 0.56;
+}
+function optionTextPx(text: string, fontSize: number): number {
+  let em = 0;
+  for (const ch of text) em += optionGlyphEm(ch);
+  return em * fontSize;
+}
+/** Split with the same glyph advances used for whole-word wrapping. */
+function sliceOptionText(text: string, maxPx: number, fontSize: number): [string, string] {
+  let width = 0;
+  let end = 0;
+  for (const ch of text) {
+    const advance = optionGlyphEm(ch) * fontSize;
+    if (width + advance > maxPx) break;
+    width += advance;
+    end += ch.length;
+  }
+  return [text.slice(0, end), text.slice(end)];
+}
+
+/** Greedy whole-word wrap, splitting only words wider than the key. */
+function wrapOptionWords(label: string, maxPx: number, fontSize: number): string[] {
+  const words = label.trim().split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = '';
+  for (let word of words) {
+    if (current && optionTextPx(`${current} ${word}`, fontSize) <= maxPx) {
+      current += ` ${word}`;
+      continue;
+    }
+    if (current) lines.push(current);
+    while (optionTextPx(word, fontSize) > maxPx) {
+      const [chunk, rest] = sliceOptionText(word, maxPx, fontSize);
+      lines.push(chunk);
+      word = rest;
+    }
+    current = word;
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
 export function renderOptionButton(option: PromptOption, index: number): string {
   const label = option.label || `Option ${index + 1}`;
   const { icon, tone } = optionVisual(label);
   const colors = toneColors(tone);
   const fontFam = 'IBM Plex Sans KR, IBM Plex Sans, -apple-system, system-ui, sans-serif';
   const key = DEVICE_CONTROLLER_RULES.key;
-  const wrapped = wrapTextByWidth(label, key.optionWidth, key.optionFont);
+  // The option face is a fixed size. The shared width estimate is a flat 0.55 em
+  // per Latin character, which calls "verification" wider than the key and
+  // broke it inside the word ("verificati" / "on") although it fits as drawn.
+  // Use the same per-glyph estimate for whole words, oversized words and
+  // ellipsis, so a wide word cannot put the entire label on the old estimate.
+  const optionFont = key.optionFont;
+  const wrapped = wrapOptionWords(label, key.optionWidth, optionFont);
   const lines = wrapped.slice(0, key.optionLines);
   if (wrapped.length > key.optionLines) {
     const last = lines.length - 1;
-    lines[last] = sliceByPx(lines[last], key.optionWidth - key.optionFont, key.optionFont)[0].trimEnd() + '…';
+    lines[last] = sliceOptionText(lines[last], key.optionWidth - optionTextPx('…', optionFont), optionFont)[0].trimEnd() + '…';
   }
   const startY = lines.length === 1 ? 100 : lines.length === 2 ? 88 : 70;
   const slotNum = `<circle cx="119" cy="23" r="12" fill="${colors.panel}" stroke="${colors.accent}" stroke-width="1" opacity="0.9"/><text x="119" y="28" text-anchor="middle" font-family="${fontFam}" font-size="12" font-weight="800" fill="${colors.text}" opacity="0.8">${index + 1}</text>`;
-  const textEls = lines.map((line, i) => `<text x="72" y="${startY + i * key.optionLine}" text-anchor="middle" font-family="${fontFam}" font-size="${key.optionFont}" font-weight="800" fill="${colors.text}">${escXml(line)}</text>`).join('');
+  const textEls = lines.map((line, i) => `<text x="72" y="${startY + i * key.optionLine}" text-anchor="middle" font-family="${fontFam}" font-size="${optionFont}" font-weight="800" fill="${colors.text}">${escXml(line)}</text>`).join('');
   return svgFrame(
     colors.bg,
     `<rect x="50" y="14" width="44" height="36" rx="10" fill="${colors.panel}" opacity="0.58" stroke="${colors.accent}" stroke-width="1.2" stroke-opacity="0.26"/>`

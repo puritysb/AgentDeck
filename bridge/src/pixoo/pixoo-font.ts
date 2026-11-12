@@ -32,7 +32,8 @@ const GLYPHS: Record<string, number[]> = {
   'T': [0b111, 0b010, 0b010, 0b010, 0b010],
   'U': [0b101, 0b101, 0b101, 0b101, 0b010],
   'V': [0b101, 0b101, 0b101, 0b010, 0b010],
-  'W': [0b101, 0b101, 0b111, 0b111, 0b101],
+  // One low bar, not two rows: at 3 px the old W read as H ("HORK", "HAIT").
+  'W': [0b101, 0b101, 0b101, 0b111, 0b101],
   'X': [0b101, 0b101, 0b010, 0b101, 0b101],
   'Y': [0b101, 0b101, 0b010, 0b010, 0b010],
   'Z': [0b111, 0b001, 0b010, 0b100, 0b111],
