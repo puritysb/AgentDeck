@@ -253,6 +253,17 @@ export async function startDashboard(opts: DashboardOptions): Promise<void> {
         view.detail = !view.detail;
         if (narrow) view.tab = 'sessions';
         break;
+      case 'n': {
+        // Next session that needs the operator, wrapping, with its detail open.
+        const cards = buildRoster(state);
+        const waiting = cards.filter(c => c.tone === 'awaiting');
+        if (waiting.length) {
+          const at = waiting.findIndex(c => c.id === view.selectedId);
+          view.selectedId = waiting[(at + 1) % waiting.length]!.id;
+          view.detail = true; view.focus = 'roster'; view.tab = 'sessions';
+        }
+        break;
+      }
       case 'f':
         view.follow = !view.follow;
         scrollOffset = 0;

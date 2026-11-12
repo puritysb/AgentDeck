@@ -241,7 +241,20 @@ export function buildRoster(state: DashboardState): RosterCard[] {
       focus: { kind: 'activity', text: phase.label }, subagents: 0,
     });
   }
-  return cards;
+  // Who needs the operator comes first, then who is working, as on the Work
+  // screen. Hotkeys were numbered above, in the daemon's stable order, so a
+  // session keeps its number when its state moves it between groups.
+  return cards
+    .map((card, index) => ({ card, index }))
+    .sort((a, b) => ROSTER_GROUP_ORDER.indexOf(rosterGroup(a.card)) - ROSTER_GROUP_ORDER.indexOf(rosterGroup(b.card)) || a.index - b.index)
+    .map(entry => entry.card);
+}
+
+export type RosterGroup = 'needs' | 'working' | 'quiet';
+export const ROSTER_GROUP_ORDER: readonly RosterGroup[] = ['needs', 'working', 'quiet'];
+export const ROSTER_GROUP_LABELS: Record<RosterGroup, string> = { needs: 'NEEDS YOU', working: 'WORKING', quiet: 'IDLE' };
+export function rosterGroup(card: Pick<RosterCard, 'tone'>): RosterGroup {
+  return card.tone === 'awaiting' ? 'needs' : card.tone === 'working' ? 'working' : 'quiet';
 }
 
 export interface RosterCounts {
@@ -494,6 +507,13 @@ export function buildTimelineRows(
         if (d.taskOutcome) line += formatTaskEvalSuffix(d.taskScore, d.taskOutcome);
       }
       return { entry: e, text: line.replace(/\s+/g, ' ').trim(), pending: e.status === 'pending' };
+    })
+    // A task whose title is its first prompt printed the same sentence twice
+    // in a row, once as the task header and once as the prompt.
+    .filter((row, i, list) => {
+      const before = list[i - 1];
+      return !(row.entry.type === 'chat_start' && before?.entry.type === 'task_start'
+        && before.text === row.text && sameSession(before.entry.sessionId, row.entry.sessionId ?? ''));
     });
 }
 

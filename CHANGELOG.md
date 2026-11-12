@@ -45,6 +45,14 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- **Terminal dashboard.** The session list now leads with sessions that need
+  you, then working, then idle, with a caption per group, as the Work screen
+  does. It opens on the first request, and `n` jumps to the next one with its
+  detail open. Cards show model, activity and context whenever the column has
+  room, and a waiting session always shows its question. A task title and its
+  identical first prompt no longer appear as two activity rows. Hotkeys `1-9`
+  keep their numbers.
+
 - **macOS Dashboard.** Keep confirmed message deliveries in Work detail and
   remove the separate message history, graph and aquarium message currents.
   Dashboard and Work use the shared AgentDeck wordmark and header rule.
