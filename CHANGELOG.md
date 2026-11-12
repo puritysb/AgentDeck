@@ -45,6 +45,21 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- **TTGO T-Display.** The usage page's heading turns amber and reads
+  `N NEED YOU` while a session waits for an answer. The page showed nothing
+  for a waiting session before.
+
+- **Pixel displays (iDotMatrix, Pixoo, TC001).** The 3×5 `W` now has one low
+  bar. With two filled rows it read as `H`, so captions showed `HORK` and
+  `HAIT`.
+
+- **Deck keys (Stream Deck, D200H).** Four legibility fixes found on rendered
+  keys. A working session's key no longer draws a `RUN` pill over the last
+  letter of `RUNNING`. A long session name steps down a size instead of
+  running off the key. The detail view's `INFO` pill no longer covers a title
+  of eight or more characters. An option label wraps between words when the
+  words fit, instead of breaking inside one that only looked too wide.
+
 - **Session activity.** A command run from a path under a session-id directory
   no longer shows as `Running` followed by a fragment of that id. The line
   reads `Running`, or names the script when the path is complete. Node daemon;

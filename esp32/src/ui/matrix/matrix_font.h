@@ -61,8 +61,8 @@ static const uint16_t PROGMEM GLYPHS[] = {
     G(0b101, 0b101, 0b101, 0b101, 0b010),
     // V
     G(0b101, 0b101, 0b101, 0b101, 0b010),
-    // W
-    G(0b101, 0b101, 0b111, 0b111, 0b101),
+    // W: one low bar. Two filled rows read as H at this size.
+    G(0b101, 0b101, 0b101, 0b111, 0b101),
     // X
     G(0b101, 0b101, 0b010, 0b101, 0b101),
     // Y
