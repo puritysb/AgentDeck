@@ -45,6 +45,9 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- **TRMNL 7.5-inch e-ink.** When one waiting session takes the whole panel,
+  its question is set in 12 pt bold on up to six lines. It was three lines of
+  9 pt at the top of a mostly empty card.
 - **TTGO T-Display.** The usage page's heading turns amber and reads
   `N NEED YOU` while a session waits for an answer. The page showed nothing
   for a waiting session before.

@@ -52,7 +52,7 @@
 // schematic's geometry and sample content are unchanged. No Swift code change.
 // 2026-11-03: confirmed auth-refusal copy is a firmware-only connection state;
 // this preview samples ordinary OFFLINE, with unchanged dashboard geometry.
-// SYNC-HASH esp32/src/ui/eink/eink_display.cpp d6190c0fe64176fefd42ec2e45f4b38d655832b7
+// SYNC-HASH esp32/src/ui/eink/eink_display.cpp 23411bd14d6f3f23bb501ae76db91ec3e03252fe
 // SYNC-HASH esp32/src/ui/eink/eink_dashboard_layout.h 97b1d2a6f5c84e9cf733b3e5b3145ad45f3136e7
 
 import SwiftUI
@@ -266,7 +266,8 @@ struct Trmnl75Preview: View {
                     ForEach(rows, id: \.first!.offset) { rowEntries in
                         HStack(spacing: 6) {
                             ForEach(rowEntries, id: \.offset) { entry in
-                                sessionCard(session: entry.element)
+                                // Firmware: a card taller than 200 px, which is one card row.
+                                sessionCard(session: entry.element, tall: rows.count == 1)
                             }
                         }
                     }
@@ -308,7 +309,7 @@ struct Trmnl75Preview: View {
         .padding(.bottom, 4)
     }
 
-    private func sessionCard(session: PreviewDisplaySession) -> some View {
+    private func sessionCard(session: PreviewDisplaySession, tall: Bool = false) -> some View {
         let state = session.state
         let awaiting = state == .awaitingPrompt
         let cardInk = awaiting ? paper : ink
@@ -334,10 +335,12 @@ struct Trmnl75Preview: View {
                 // work summary ("HH:MM · task · text") — NOT the live activity,
                 // which already rides the state line above. The model tag sits
                 // bottom-right (below), not on this line.
+                // Firmware sets a tall card's awaiting question in 12 pt bold on
+                // up to six lines; every other detail keeps the 9 pt body.
                 Text(detail + detailLine(for: state))
-                    .font(.system(size: 8))
-                    .foregroundStyle(cardInk.opacity(0.6))
-                    .lineLimit(2)
+                    .font(.system(size: tall && awaiting ? 10.5 : 8, weight: tall && awaiting ? .bold : .regular))
+                    .foregroundStyle(cardInk.opacity(tall && awaiting ? 1 : 0.6))
+                    .lineLimit(tall && awaiting ? 6 : 2)
             }
             Spacer(minLength: 0)
             // Subagent orbit, reserving the right strip the firmware takes out
