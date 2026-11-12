@@ -45,6 +45,10 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- **Pixel displays (iDotMatrix, Pixoo, TC001).** The 3×5 `W` now has one low
+  bar. With two filled rows it read as `H`, so captions showed `HORK` and
+  `HAIT`.
+
 - **macOS Dashboard.** Keep confirmed message deliveries in Work detail and
   remove the separate message history, graph and aquarium message currents.
   Dashboard and Work use the shared AgentDeck wordmark and header rule.
