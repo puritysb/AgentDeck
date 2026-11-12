@@ -45,6 +45,10 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- **TTGO T-Display.** The usage page's heading turns amber and reads
+  `N NEED YOU` while a session waits for an answer. The page showed nothing
+  for a waiting session before.
+
 - **macOS Dashboard.** Keep confirmed message deliveries in Work detail and
   remove the separate message history, graph and aquarium message currents.
   Dashboard and Work use the shared AgentDeck wordmark and header rule.
