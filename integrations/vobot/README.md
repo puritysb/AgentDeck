@@ -154,8 +154,10 @@ been published. The first submission adds Wi-Fi pairing to the USB prototype.
 This is the Vobot package version; it does not change the AgentDeck daemon or
 Surface protocol version.
 
-Use the development install below to try the current source on Mini Dock
-firmware 1.2.6 or later, subject to the security limitations above.
+The full-screen input alerts described above are available in development
+builds. Use the development install below to try the current source on Mini
+Dock firmware 1.2.6 or later. Follow the [security limitations](#security-limitations)
+when pairing either build.
 
 ## Install a development build
 
