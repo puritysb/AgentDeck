@@ -1,4 +1,11 @@
 {
+  "Vobot pairing and attention": "Vobot 페어링 및 주의 알림",
+  "Vobot pairing and attention regressions": "Vobot 페어링 및 주의 알림 회귀 검사",
+  "Every pull request and push to master; local changed, quick and full verification": "모든 PR과 master 푸시 및 로컬 변경 범위·빠른 검사·전체 검증",
+  "Pairing redemption and credential-file cleanup on CPython with loopback sockets and temporary files.": "CPython에서 루프백 소켓과 임시 파일을 사용해 페어링 코드 교환과 자격증명 파일 정리를 검증합니다.",
+  "Attention state transitions with mocked display peripherals.": "화면 주변장치를 모의 구현해 주의 알림 상태 전이를 검증합니다.",
+  "MicroPython firmware compatibility, physical device settings lifecycle, filesystem isolation, TLS or server-enforced least privilege.": "MicroPython 펌웨어 호환성, 실제 기기의 설정 화면 전환, 파일시스템 격리, TLS 또는 서버가 강제하는 최소 권한은 검증하지 않습니다.",
+  "Gallery packaging or publication; this check does not establish physical device acceptance.": "Gallery 패키징이나 게시를 검증하지 않습니다. 이 검사만으로 실제 기기 검증 완료를 판단할 수 없습니다.",
   "Transient public GitHub release download failures use the exact official asset API identity only after full size and SHA-256 verification; unpinned missing digests and partial/corrupt transfers fail closed.": "공개 GitHub 릴리스 다운로드가 일시적으로 실패하면 공식 자산 API의 동일한 파일을 전체 크기와 SHA-256 검증 후 사용합니다. 해시가 없고 검토된 고정값도 없거나, 전송이 불완전하거나 변조되면 실패 처리합니다.",
   "Pinned CodeQL and Gradle tool archives come from exact official GitHub release asset identities and pass full size/SHA-256 verification before extraction.": "고정된 CodeQL·Gradle 도구는 공식 GitHub 릴리스의 정확한 자산에서 받고, 전체 크기와 SHA-256 검증을 통과해야 압축을 해제합니다.",
   "USB vendor discovery caches unchanged candidates, bounds retries and retains its subprocess slot until close; fake children cover resisted signals and a POSIX executable fixture covers real timeout/kill recovery": "USB vendor 조회는 후보 목록이 같으면 캐시를 재사용하고 재시도를 제한하며 자식 프로세스가 닫힐 때까지 실행 슬롯을 유지합니다. 가짜 자식으로 시그널에 반응하지 않는 상황을, POSIX 실행 파일로 실제 타임아웃·종료 후 복구를 검증합니다.",

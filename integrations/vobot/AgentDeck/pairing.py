@@ -1,6 +1,7 @@
 """Redeem an AgentDeck pairing code and store its endpoint with the token."""
 
 import asyncio
+import errno
 import json
 import os
 
@@ -11,7 +12,7 @@ DIGITS = "0123456789"
 
 def settings_form():
     return {
-        "title": "Connect to AgentDeck",
+        "title": "Connect to AgentDeck (trusted isolated LAN only)",
         "form": [
             {"type": "input", "name": "daemon_host", "caption": "Daemon address",
              "default": "", "attributes": {"maxLength": 253, "placeholder": "192.168.1.10"}},
@@ -20,6 +21,9 @@ def settings_form():
             {"type": "input", "name": "pairing_code", "caption": "Pairing code",
              "default": "", "attributes": {"maxLength": 7, "placeholder": "000 000"},
              "tip": "Run agentdeck pair on your computer, save the code here, then open AgentDeck on the dock."},
+            {"type": "input", "name": "forget_pairing", "caption": "Forget saved connection",
+             "default": "", "attributes": {"maxLength": 6, "placeholder": "UNPAIR"},
+             "tip": "Type UNPAIR, save, then reopen AgentDeck. Removes local credentials only; it does not revoke the daemon token."},
         ],
     }
 
@@ -99,9 +103,47 @@ async def _redeem(host, port, code):
         await writer.wait_closed()
 
 
+def _remove_if_present(path):
+    try:
+        os.remove(path)
+    except OSError as error:
+        # A storage/access failure is not evidence that credentials are gone.
+        if not error.args or error.args[0] != errno.ENOENT:
+            raise
+
+
+def _forget_pairing():
+    # Remove a partially written credential too. Keep the request armed if
+    # either removal fails, so the next resume cannot reconnect silently.
+    _remove_if_present(PAIRING_PATH)
+    _remove_if_present(PAIRING_PATH + ".new")
+
+
+def _save_pairing(host, port, token):
+    temporary = PAIRING_PATH + ".new"
+    try:
+        with open(temporary, "w") as file:
+            file.write("%s\n%s\n%d\n" % (host, token, port))
+        os.rename(temporary, PAIRING_PATH)
+    finally:
+        # Never leave a second plaintext credential after a failed write/rename.
+        _remove_if_present(temporary)
+
+
 async def connection_settings(manager):
     config = manager.config() if manager else None
     config = config if isinstance(config, dict) else {}
+    forget = config.get("forget_pairing") or ""
+    if forget:
+        if not isinstance(forget, str) or forget.strip().upper() != "UNPAIR":
+            raise ValueError("Type UNPAIR to forget the connection")
+        _forget_pairing()
+        config["forget_pairing"] = ""
+        config["pairing_code"] = ""
+        manager.config(config)
+        return None
+    # Clean up an interrupted write before reading or replacing credentials.
+    _remove_if_present(PAIRING_PATH + ".new")
     host = config.get("daemon_host") or ""
     code = config.get("pairing_code") or ""
     if not code:
@@ -120,8 +162,5 @@ async def connection_settings(manager):
     config["pairing_code"] = ""
     manager.config(config)
     host, port, token = await asyncio.wait_for(_redeem(host, port, code), 5)
-    temporary = PAIRING_PATH + ".new"
-    with open(temporary, "w") as file:
-        file.write("%s\n%s\n%d\n" % (host, token, port))
-    os.rename(temporary, PAIRING_PATH)
+    _save_pairing(host, port, token)
     return host, port, token
