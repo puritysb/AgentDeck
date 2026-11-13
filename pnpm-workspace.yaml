@@ -43,6 +43,9 @@ overrides:
   '@elgato/utils>zod': 4.6.6
   '@anthropic-ai/sdk>zod': 4.6.6
   '@modelcontextprotocol/sdk>zod': 4.6.6
+  # Test-only MCP client graph: patched Hono server and middleware advisories.
+  '@modelcontextprotocol/sdk>@hono/node-server': 2.1.6
+  '@modelcontextprotocol/sdk>hono': 4.13.16
   'zod-to-json-schema>zod': 4.6.6
   'stream-json@3': 3.8.0
   'glob@7': 14.0.3
