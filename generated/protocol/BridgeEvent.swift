@@ -35,6 +35,12 @@ struct ADBridgeEvent: Codable {
     /// Same-machine daemon handover only: bounded aggregate/opaque-receipt JSON. Never contains
     /// card copy, prompt text, source credentials or executable data.
     var daemonCheckpoint: String?
+    /// Private fresh challenge to recover custody from the local native client after a
+    /// supervisor restart.
+    var deviceSecurityRecovery: String?
+    /// Private custody packet, unicast only to an admitted same-user native successor. Never
+    /// broadcast to devices or relays.
+    var deviceSecurityTransfer: String?
     var effortLevel: String?
     /// Session explicitly focused by the user; visual selection should use this.
     ///
@@ -201,6 +207,8 @@ struct ADBridgeEvent: Codable {
         case currentTool = "currentTool"
         case cursorIndex = "cursorIndex"
         case daemonCheckpoint = "daemonCheckpoint"
+        case deviceSecurityRecovery = "deviceSecurityRecovery"
+        case deviceSecurityTransfer = "deviceSecurityTransfer"
         case effortLevel = "effortLevel"
         case focusedSessionId = "focusedSessionId"
         case gatewayAuthMessage = "gatewayAuthMessage"
@@ -338,6 +346,8 @@ extension ADBridgeEvent {
         currentTool: String?? = nil,
         cursorIndex: Double?? = nil,
         daemonCheckpoint: String?? = nil,
+        deviceSecurityRecovery: String?? = nil,
+        deviceSecurityTransfer: String?? = nil,
         effortLevel: String?? = nil,
         focusedSessionId: String?? = nil,
         gatewayAuthMessage: String?? = nil,
@@ -455,6 +465,8 @@ extension ADBridgeEvent {
             currentTool: currentTool ?? self.currentTool,
             cursorIndex: cursorIndex ?? self.cursorIndex,
             daemonCheckpoint: daemonCheckpoint ?? self.daemonCheckpoint,
+            deviceSecurityRecovery: deviceSecurityRecovery ?? self.deviceSecurityRecovery,
+            deviceSecurityTransfer: deviceSecurityTransfer ?? self.deviceSecurityTransfer,
             effortLevel: effortLevel ?? self.effortLevel,
             focusedSessionId: focusedSessionId ?? self.focusedSessionId,
             gatewayAuthMessage: gatewayAuthMessage ?? self.gatewayAuthMessage,

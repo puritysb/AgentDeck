@@ -93,6 +93,10 @@ data class PluginCommand (
     @Json(name = "checkpointId")
     val checkpointID: String? = null,
 
+    val nonce: String? = null,
+    val pid: Double? = null,
+    val transfer: String? = null,
+
     /**
      * Optional epoch-ms lower bound; omit for the full retained history.
      */
@@ -307,6 +311,8 @@ enum class Type(val value: String) {
     ClearSessionFocus("clear_session_focus"),
     ClientRegister("client_register"),
     DaemonCheckpointACK("daemon_checkpoint_ack"),
+    DeviceSecurityACK("device_security_ack"),
+    DeviceSecurityRestore("device_security_restore"),
     Diag("diag"),
     Escape("escape"),
     Esp32OtaACK("esp32_ota_ack"),
@@ -331,33 +337,35 @@ enum class Type(val value: String) {
 
     companion object {
         public fun fromValue(value: String): Type = when (value) {
-            "apme_recommend"         -> ApmeRecommend
-            "apme_vibe"              -> ApmeVibe
-            "clear_session_focus"    -> ClearSessionFocus
-            "client_register"        -> ClientRegister
-            "daemon_checkpoint_ack"  -> DaemonCheckpointACK
-            "diag"                   -> Diag
-            "escape"                 -> Escape
-            "esp32_ota_ack"          -> Esp32OtaACK
-            "esp32_ota_error"        -> Esp32OtaError
-            "focus_session"          -> FocusSession
-            "interrupt"              -> Interrupt
-            "navigate_option"        -> NavigateOption
-            "permission_decision"    -> PermissionDecision
-            "query_session_settings" -> QuerySessionSettings
-            "query_session_timeline" -> QuerySessionTimeline
-            "query_usage"            -> QueryUsage
-            "respond"                -> Respond
-            "review_run"             -> ReviewRun
-            "select_option"          -> SelectOption
-            "send_prompt"            -> SendPrompt
-            "session_command"        -> SessionCommand
-            "set_session_setting"    -> SetSessionSetting
-            "switch_agent"           -> SwitchAgent
-            "switch_mode"            -> SwitchMode
-            "utility"                -> Utility
-            "voice"                  -> Voice
-            else                     -> throw IllegalArgumentException()
+            "apme_recommend"          -> ApmeRecommend
+            "apme_vibe"               -> ApmeVibe
+            "clear_session_focus"     -> ClearSessionFocus
+            "client_register"         -> ClientRegister
+            "daemon_checkpoint_ack"   -> DaemonCheckpointACK
+            "device_security_ack"     -> DeviceSecurityACK
+            "device_security_restore" -> DeviceSecurityRestore
+            "diag"                    -> Diag
+            "escape"                  -> Escape
+            "esp32_ota_ack"           -> Esp32OtaACK
+            "esp32_ota_error"         -> Esp32OtaError
+            "focus_session"           -> FocusSession
+            "interrupt"               -> Interrupt
+            "navigate_option"         -> NavigateOption
+            "permission_decision"     -> PermissionDecision
+            "query_session_settings"  -> QuerySessionSettings
+            "query_session_timeline"  -> QuerySessionTimeline
+            "query_usage"             -> QueryUsage
+            "respond"                 -> Respond
+            "review_run"              -> ReviewRun
+            "select_option"           -> SelectOption
+            "send_prompt"             -> SendPrompt
+            "session_command"         -> SessionCommand
+            "set_session_setting"     -> SetSessionSetting
+            "switch_agent"            -> SwitchAgent
+            "switch_mode"             -> SwitchMode
+            "utility"                 -> Utility
+            "voice"                   -> Voice
+            else                      -> throw IllegalArgumentException()
         }
     }
 }

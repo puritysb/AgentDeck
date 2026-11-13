@@ -1553,6 +1553,7 @@ final class DaemonServer {
     private var openCodeLastPromptTopicBySession: [String: String] = [:]
     /// `hermes_*` observer admission + process lifetime (HermesObserverGate).
     private var hermesGate = HermesObserverGate()
+    private var deviceSecurity: DeviceSecurityManager?
 
     /// Codex threads that re-engaged after a terminal event (second prompt on
     /// the same thread id). Companion tasks are single-turn by construction,
@@ -2460,6 +2461,14 @@ final class DaemonServer {
         }
 
         DaemonLogger.shared.info("startServices: step10 initialUsageTask scheduled")
+        deviceSecurity = DeviceSecurityManager(loopbackOnly: posture.loopbackOnly) { [weak self] in
+            guard let self else { return (sessions: [], usage: [:]) }
+            return (sessions: self.buildSessionsListEvent()["sessions"] ?? [], usage: self.buildUsageEvent() ?? [:])
+        }
+        do { try await deviceSecurity?.start() }
+        catch { DaemonLogger.shared.error("Scoped device TLS unavailable; existing fleet transport remains active") }
+        try checkStartupActive()
+
 
         // 11. Claude Code hooks — HookInstaller now requires explicit user
         // consent (App Store guideline 2.5.2). This call is a no-op unless
@@ -3006,9 +3015,22 @@ final class DaemonServer {
     /// credential, then `httpAccessResponse`. Kept here rather than in the
     /// closure so a test of it is a test of the wiring
     /// (`DaemonAccessPolicyWiringTests`).
+    private func handleDeviceSecurity(_ request: HTTPServer.HTTPRequest) async -> HTTPServer.HTTPResponse {
+        guard let deviceSecurity else { return .json(["error": "daemon_initializing"], status: 503) }
+        let trusted = AuthManager.shared.isLocalConnection(request.remoteIP) && LocalTrust.verdict(for: request, port: Int(port)) == .trusted
+        return await deviceSecurity.handle(request, trustedLocalOwner: trusted)
+    }
+    private func deviceSecurityStatus() -> SendableDict {
+        SendableDict(deviceSecurity?.status ?? ["version": 1, "state": "initializing"])
+    }
+
     nonisolated static func accessPolicyResponse(
         for request: HTTPServer.HTTPRequest, daemonPort: UInt16, pairingWindowOpen: Bool
     ) -> HTTPServer.HTTPResponse? {
+        if DeviceCredentialRules.reserved(request.queryParams["token"] ?? "") ||
+            DeviceCredentialRules.reserved((request.headers["authorization"] ?? "").replacingOccurrences(of: "Bearer ", with: "", options: .anchored)) {
+            return .json(["error": "Use the secure device endpoint"], status: 401)
+        }
         let sameMachine = AuthManager.shared.isLocalConnection(request.remoteIP)
         // A web page in a browser here connects from this machine too; its
         // Host and Origin tell it from a local program (LocalTrust). A page
@@ -3489,6 +3511,19 @@ final class DaemonServer {
             return nil
         }
 
+        for path in ["/device-security/status", "/device-security/devices", "/device-security/identity"] {
+            await httpServer.get(path) { [weak self] request in
+                guard let self else { return .json(["error": "daemon unavailable"], status: 503) }
+                return await self.handleDeviceSecurity(request)
+            }
+        }
+        for path in ["/device-security/install", "/device-security/start", "/device-security/issue", "/device-security/revoke", "/device-security/seal"] {
+            await httpServer.post(path) { [weak self] request in
+                guard let self else { return .json(["error": "daemon unavailable"], status: 503) }
+                return await self.handleDeviceSecurity(request)
+            }
+        }
+
         // ── Pairing code ──────────────────────────────────────────────────
         // POST /pair is reachable unauthenticated ONLY while the operator holds
         // a window open (see the access policy above); the three operator routes
@@ -3636,6 +3671,7 @@ final class DaemonServer {
             let calendar = await DaemonActor.run { [weak self] in
                 SendableDict(self?.calendarContext.diagnostics() ?? ["status": "disabled"])
             }
+            let deviceSecurityStatus = await self?.deviceSecurityStatus()
             let credentials = AuthManager.shared.credentials
             var payload: [String: Any] = [
                 "status": "ok", "mode": "daemon", "port": daemonPort,
@@ -3646,6 +3682,7 @@ final class DaemonServer {
                 "pairingToken": AuthManager.shared.rotationAvailable ? credentials.token as Any : NSNull(),
                 "pairingRetirement": AuthManager.shared.rotationAvailable ? credentials.retirement.json as Any : NSNull(),
                 "pairingRotation": AuthManager.shared.rotationAvailable,
+                "deviceSecurity": deviceSecurityStatus?.value ?? ["version": 1, "state": "initializing"],
                 "modules": health["modules"] as Any,
                 "isSwift": true, "daemonRelay": true,
                 // Node parity: `agentdeck qr`/`pair` read this to warn instead
@@ -12718,6 +12755,7 @@ final class DaemonServer {
 
     func shutdown() async {
         startupStopped = true
+        deviceSecurity?.stop(); deviceSecurity = nil
         wakeRecoveryTask?.cancel(); wakeRecoveryTask = nil
         esp32Ota.stop()
         let power = powerObservation; powerObservation = nil

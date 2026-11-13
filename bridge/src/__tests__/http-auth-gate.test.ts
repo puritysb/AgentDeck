@@ -217,6 +217,19 @@ describe('operator approval authorizes an HTTP request', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it.each([false, true])('never promotes a scoped credential through legacy trust (local=%s)', (local) => {
+    approvePeer(peerKey(IP, DEV));
+    authMocks.isLocal = local;
+    try {
+      for (const token of ['addev1.malformed', `addev1.${'a'.repeat(32)}.${'b'.repeat(64)}`]) {
+        expect(isAuthorizedHttpRequest(fakeReq({ remoteAddress: IP, deviceId: DEV,
+          authorization: `Bearer ${token}` }))).toBe(false);
+        expect(isAuthorizedHttpRequest(fakeReq({ remoteAddress: IP, deviceId: DEV,
+          url: `/status?token=${token}` }))).toBe(false);
+      }
+    } finally { authMocks.isLocal = false; }
+  });
+
   it('refuses an unapproved remote peer', () => {
     expect(isAuthorizedHttpRequest(fakeReq({ remoteAddress: IP }))).toBe(false);
   });

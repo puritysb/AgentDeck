@@ -619,5 +619,8 @@
   "Scope, limits and command": "검증 범위·한계·실행 명령",
   "Workflow snapshot time unavailable.": "워크플로 상태를 수집한 시각을 확인할 수 없습니다.",
   "Workflow snapshot:": "워크플로 상태 수집 시각:",
-  "This report updates after a successful Pages build on master. Scheduled scans may be newer; follow each workflow link for current results. Workflow success does not mean zero security findings.": "이 보고서는 master의 Pages 빌드가 성공하면 갱신됩니다. 예약 검사는 이후에 실행되었을 수 있으므로 각 워크플로 링크에서 최신 결과를 확인하세요. 워크플로 성공이 보안 발견 사항이 없다는 뜻은 아닙니다."
+  "This report updates after a successful Pages build on master. Scheduled scans may be newer; follow each workflow link for current results. Workflow success does not mean zero security findings.": "이 보고서는 master의 Pages 빌드가 성공하면 갱신됩니다. 예약 검사는 이후에 실행되었을 수 있으므로 각 워크플로 링크에서 최신 결과를 확인하세요. 워크플로 성공이 보안 발견 사항이 없다는 뜻은 아닙니다.",
+  "Vobot pairing, TLS policy and attention": "Vobot 페어링·TLS 정책·주의 상태",
+  "TLS peer pin and validity policy, bounded response parsing and credential withholding before peer verification with mocked sockets.": "모의 소켓으로 TLS 인증서 핀·유효기간 정책, 응답 크기 제한, 서버 검증 전 자격증명 전송 차단을 확인합니다.",
+  "Scoped device TLS projects only granted session/usage fields, fences revocation and legacy fallback, and admits custody receipts by socket, process and fresh challenge; actual Swift TLS and cross-profile store execution run on macOS.": "기기별 TLS는 허용된 세션·사용량 필드만 제공하고 폐기 상태와 기존 인증 경로 우회를 검사합니다. 인계 확인은 소켓·프로세스·일회용 확인값에 묶이며, 실제 Swift TLS와 서로 다른 저장소의 상호운용 검사는 macOS에서 실행합니다."
 }

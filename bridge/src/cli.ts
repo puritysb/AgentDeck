@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { registerDeviceSecurityCommands } from './device-security-cli.js';
 import { registerDotCommands } from './dot-cli.js';
 import { APME_RETENTION } from './apme/retention-policy.generated.js';
 import { acceptsDaemonRuntime } from '@agentdeck/shared';
@@ -940,6 +941,7 @@ export function resolveAgentCommand(
 // ===== Program =====
 
 const program = new Command();
+registerDeviceSecurityCommands(program);
 
 program
   .name('agentdeck')
@@ -1524,6 +1526,7 @@ daemon
     const { negotiateIncumbentDaemon, isForeignDaemon } = await import('./daemon-takeover.js');
     const { capturePeerActivity } = await import('./apme/activity-history.js');
     const { capturePeerTimeline } = await import('./daemon-timeline-handover.js');
+    const { captureDeviceSecurity } = await import('./device-security-handover.js');
     const incumbent = await probeDaemonHealth(targetPort);
     const outcome = await negotiateIncumbentDaemon(
       {
@@ -1536,6 +1539,7 @@ daemon
       },
       {
         adoptToken: adoptPeerToken,
+        captureDeviceSecurity,
         standDown: requestDaemonStandDown,
         shutdown: requestDaemonShutdown,
         waitForExit: waitForDaemonExit,
@@ -1572,6 +1576,7 @@ daemon
           { port: probePort, incumbent: health, portWasExplicit: false, localBuild, replaceStaleBuild: opts.upgrade !== false, deferSwiftHandover: !opts.foreground },
           {
             adoptToken: adoptPeerToken,
+            captureDeviceSecurity,
             standDown: requestDaemonStandDown,
             shutdown: requestDaemonShutdown,
             waitForExit: waitForDaemonExit,

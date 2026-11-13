@@ -174,7 +174,6 @@
     },
     "DaemonCheckpointAckCommand": {
       "additionalProperties": false,
-      "description": "Durable checkpoint receipt from the local native client, scoped to this socket.",
       "properties": {
         "checkpointId": {
           "type": "string"
@@ -187,6 +186,53 @@
       "required": [
         "type",
         "checkpointId"
+      ],
+      "type": "object"
+    },
+    "DeviceSecurityAckCommand": {
+      "additionalProperties": false,
+      "description": "Durable checkpoint receipt from the local native client, scoped to this socket.",
+      "properties": {
+        "nonce": {
+          "type": "string"
+        },
+        "pid": {
+          "type": "number"
+        },
+        "type": {
+          "const": "device_security_ack",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "pid",
+        "nonce"
+      ],
+      "type": "object"
+    },
+    "DeviceSecurityRestoreCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "nonce": {
+          "type": "string"
+        },
+        "pid": {
+          "type": "number"
+        },
+        "transfer": {
+          "type": "string"
+        },
+        "type": {
+          "const": "device_security_restore",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "pid",
+        "nonce",
+        "transfer"
       ],
       "type": "object"
     },
@@ -391,6 +437,12 @@
         },
         {
           "$ref": "#/definitions/DaemonCheckpointAckCommand"
+        },
+        {
+          "$ref": "#/definitions/DeviceSecurityAckCommand"
+        },
+        {
+          "$ref": "#/definitions/DeviceSecurityRestoreCommand"
         },
         {
           "$ref": "#/definitions/QuerySessionTimelineCommand"

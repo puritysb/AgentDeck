@@ -74,6 +74,8 @@ enum AgentDeckPaths {
     static var daemonJson: URL { baseDirectory.appendingPathComponent("daemon.json") }
     static var daemonCrashLog: URL { baseDirectory.appendingPathComponent("daemon-crash.log") }
     #if os(macOS)
+    static func deviceSecurity(in directory: URL) -> URL { directory.appendingPathComponent("device-security.json") }
+    static func deviceCredentials(in directory: URL) -> URL { directory.appendingPathComponent("device-credentials.json") }
     static func authCredentials(in directory: URL) -> URL { directory.appendingPathComponent(PairingCredentialRules.file) }
     static func authCredentialLock(in directory: URL) -> URL { directory.appendingPathComponent(PairingCredentialRules.lockFile) }
     static var authCredentials: URL { authCredentials(in: baseDirectory) }

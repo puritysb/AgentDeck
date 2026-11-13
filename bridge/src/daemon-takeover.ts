@@ -32,6 +32,7 @@ export interface IncumbentHealth {
   build?: string;
   pairingToken?: string;
   pairingRetirement?: unknown;
+  deviceSecurity?: {version:number;state:string};
 }
 
 /**
@@ -48,6 +49,7 @@ export interface TakeoverDeps {
   log?: (msg: string) => void;
   /** Returns true when the served token actually changed. */
   adoptToken: (token: unknown, retirement?: unknown) => boolean;
+  captureDeviceSecurity: (port:number, incumbent:IncumbentHealth) => Promise<boolean>;
   standDown: (port: number) => Promise<boolean>;
   shutdown: (port: number) => Promise<void>;
   waitForExit: (port: number, timeoutMs: number) => Promise<boolean>;
@@ -182,6 +184,11 @@ export async function negotiateIncumbentDaemon(
     log(`Daemon on port ${port} (PID ${incumbent.pid ?? '?'}) is running build ${incumbent.build}; `
       + `this CLI is build ${localBuild}.`);
     log(`Restarting it so the port serves the current build (pass --no-upgrade to leave it alone).`);
+    if (incumbent.deviceSecurity && incumbent.deviceSecurity.state !== 'disabled' &&
+        (ownership !== 'same-user' || !await deps.captureDeviceSecurity(port, incumbent))) {
+      log('Device TLS custody could not be transferred; leaving the current daemon in place.');
+      return 'refuse';
+    }
     await deps.shutdown(port);
     return finishYield(true, { port, portWasExplicit }, deps, log, {
       subject: `The previous daemon`,
@@ -201,6 +208,12 @@ export async function negotiateIncumbentDaemon(
       log(`Could not capture the app daemon’s timeline; leaving it running to preserve history. Retry when it responds.`);
       return 'refuse';
     }
+  }
+
+  if (incumbent.deviceSecurity && incumbent.deviceSecurity.state !== 'disabled' &&
+      (ownership !== 'same-user' || !await deps.captureDeviceSecurity(port, incumbent))) {
+    log('Device TLS custody could not be transferred; leaving the app daemon in place.');
+    return 'refuse';
   }
 
   // Reverse two-tier upgrade path: the macOS app may already own the canonical
