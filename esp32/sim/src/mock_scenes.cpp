@@ -542,6 +542,24 @@ bool SimScenes::apply(const char* name) {
            "Checking dense roster disclosure");
     return true;
   }
+  if (std::strcmp(name, "question-compact") == 0) {
+    base(CreatureState::ASKING);
+    addSession("claude-code", "awaiting_option", "Layout review");
+    auto& session = g_state.sessions[0];
+    setStr(session.question, sizeof(session.question),
+           "Which verification should run before updating the connected display and confirming that every option remains readable?");
+    session.optionCount = 3;
+    const char* choices[] = {"Build and inspect", "Run checks again", "Keep current build"};
+    for (uint8_t i = 0; i < 3; ++i) {
+      setStr(session.options[i].label, sizeof(session.options[i].label), choices[i]);
+      session.options[i].index = i;
+    }
+    g_state.codexPrimaryPercent = 38;
+    addTimeline("chat_response", session.id, "First check complete", nullptr);
+    addTimeline("chat_response", session.id, "Second check complete", nullptr);
+    addTimeline("chat_response", session.id, "Third check complete", nullptr);
+    return true;
+  }
   if (std::strcmp(name, "permission") == 0) {
     base(CreatureState::ASKING);
     addSession("claude-code", "awaiting_permission", "AgentDeck");
@@ -574,6 +592,6 @@ bool SimScenes::apply(const char* name) {
 }
 
 const char* SimScenes::catalog() {
-  return "background-work, background-done, quota-colors, usage-all, zai-only, usage-none, usage-zero, usage-stale, codex-only, codex-luna, codex-credits, live-mix, empty, idle, display-off, worktree-glance, ci-wait, working, multi, crowd, crowded, dense, permission, attention, "
+  return "background-work, background-done, quota-colors, usage-all, zai-only, usage-none, usage-zero, usage-stale, codex-only, codex-luna, codex-credits, live-mix, empty, idle, display-off, worktree-glance, ci-wait, working, multi, crowd, crowded, dense, permission, question-compact, attention, "
          "demo:<agent>:<state>";
 }

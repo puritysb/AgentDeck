@@ -4,6 +4,7 @@
 #ifdef BOARD_EINK_SURFACE
 
 #include "eink_display.h"
+#include "eink_question_layout.h"
 
 #include <Arduino.h>
 #include <Adafruit_GFX.h>
@@ -1409,14 +1410,13 @@ void drawSessionCard(const Snap& s, const RowSnap& r, bool firstAwaiting,
         // the card took the panel: set it in 12 pt bold and give it the lines
         // that fit above the options and the model tag.
         const bool showsOptions = strcmp(r.agentType,"dot") && firstAwaiting && s.optionCount > 0 && tall;
-        const GFXfont* questionFont = tall ? &FreeSansBold12pt7b : &FreeSans9pt7b;
-        const int16_t questionLineH = tall ? 26 : 20;
-        if (tall) dy += 6;
+        const auto questionLayout = AgentDeckEink::tallQuestionLayout(h, showsOptions ? s.optionCount : 0);
+        const GFXfont* questionFont = tall && questionLayout.large ? &FreeSansBold12pt7b : &FreeSans9pt7b;
+        const int16_t questionLineH = tall ? questionLayout.lineHeight : 20;
         int maxLines = h >= 130 ? 2 : 1;
         if (tall) {
-            const int room = (y + h - 34) - dy - (showsOptions ? s.optionCount * 20 : 0);
-            maxLines = room / questionLineH;
-            maxLines = maxLines < 3 ? 3 : maxLines > 6 ? 6 : maxLines;
+            dy = y + questionLayout.baseline;
+            maxLines = questionLayout.lines;
         }
         const char* p = r.question;
         for (int line = 0; line < maxLines && *p && dy < y + h - 8; line++) {
