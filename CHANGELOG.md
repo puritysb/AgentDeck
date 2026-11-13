@@ -45,9 +45,18 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- **Terminal dashboard.** The session list now leads with sessions that need
+  you, then working, then idle, with a caption per group, as the Work screen
+  does. It opens on the first request, and `n` jumps to the next one with its
+  detail open. Cards show model, activity and context whenever the column has
+  room, and a waiting session always shows its question. A task title and its
+  identical first prompt no longer appear as two activity rows. Hotkeys `1-9`
+  keep their numbers.
+
 - **TRMNL 7.5-inch e-ink.** When one waiting session takes the whole panel,
-  its question is set in 12 pt bold on up to six lines. It was three lines of
-  9 pt at the top of a mostly empty card.
+  its ASCII question is set in 12 pt bold on up to six lines. Shorter cards
+  reserve space for every choice and the model tag, retaining 9 pt when needed.
+  Non-ASCII text keeps the existing fallback font.
 - **TTGO T-Display.** The usage page's heading turns amber and reads
   `N NEED YOU` while a session waits for an answer. The page showed nothing
   for a waiting session before.
