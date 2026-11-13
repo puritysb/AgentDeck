@@ -1,7 +1,7 @@
 application:
   name: AgentDeck
   version: 0.3.0
-  description: See coding sessions and usage on the Vobot Mini Dock.
+  description: See coding sessions and usage on the Vobot Mini Dock. Use only on trusted, isolated local networks. Traffic and saved credentials are unencrypted. Never expose the daemon port to the internet or use public or untrusted networks.
   author: SerendipityBound
   repository: https://github.com/puritysb/AgentDeck
   bugs: https://github.com/puritysb/AgentDeck/issues

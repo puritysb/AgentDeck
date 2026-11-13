@@ -11,6 +11,7 @@ for board in trmnl_75 nm_epd_420_preview lilygo_epd47_notouch_preview lilygo_epd
   mkdir -p "$audit_out/$board"
   ".pio/build/$board/program" --scene pairing-required --out "$audit_out/$board/pairing-required.png"
 done
+".pio/build/trmnl_75/program" --scene question-compact --out "$audit_out/trmnl_75/question-compact.png"
 for board in ips10 t_embed t_display_pro; do
   mkdir -p "$audit_out/$board"
   ".pio/build/$board/program" --verify-interactions --outdir "$audit_out/$board"

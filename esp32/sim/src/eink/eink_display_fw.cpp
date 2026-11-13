@@ -71,6 +71,23 @@ bool SimEink::renderToPng(const char* scene, const char* path) {
   g_sim_millis += 3600;
   Eink::render();
 
+#if defined(AGENTDECK_TRMNL_75_UI)
+  if (std::strcmp(scene, "question-compact") == 0) {
+    // Reproduce the board immediately after returning from DECISION, before
+    // the daemon removes the request. No decision command is sent on host.
+    static Snap sample; snapshot(sample);
+    assert(sample.optionCount == 3);
+    assert(dashboardLayout(sample).cardHeight == 204);
+    suppressedDecisionHash = lastDecisionHash;
+    manualFace = PaperFace::Glance;
+    faceHoldUntilMs = 0;
+    forceFull = true;
+    g_sim_millis += 3600; Eink::render();
+    g_sim_millis += 3600; Eink::render();
+    assert(renderFace == PaperFace::Glance);
+  }
+#endif
+
   if (pairingRequired) {
     // Drive a real cached OFFLINE -> auth-refused transition. Both admission
     // hashes must change, and the real renderer must replace the framebuffer.

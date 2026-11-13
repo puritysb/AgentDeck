@@ -57,6 +57,18 @@ Processing octopus > processing jellyfish > routing crayfish > none.
 
 ## Sessions & status
 
+- **Roster order** (2026-11-13): sessions that need the operator come first,
+  then working, then idle, each under a caption (`NEEDS YOU · 1`) when more
+  than one group is present. The cursor opens on the first of them. Hotkeys
+  `1-9` keep the daemon's stable order, so a number does not move when a
+  session's state does.
+- Cards are detailed (model, activity, context) whenever the column has the
+  rows for it, not only for six sessions or fewer. A compact roster still
+  gives a waiting session a second line with its question.
+- `n` jumps to the next session that needs the operator and opens its detail.
+  The footer shows the key only while one is waiting.
+- A task whose title is its first prompt is one activity row, not two.
+
 - Session list from daemon `sessions_list`; virtual OpenClaw entry when `gatewayAvailable`
 - Half-block pixel font logo (4×6→4×3)
 - Status split: LIMITS|MODELS (E-ink style)

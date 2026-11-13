@@ -220,3 +220,65 @@ describe('Dot as an ordinary read-only roster peer', () => {
     expect(buildRoster(state({ dot, connectionStatus: 'reconnecting' })).some(c => c.isDot)).toBe(false);
   });
 });
+
+describe('roster order follows who needs the operator', () => {
+  const sessions = [
+    session({ id: 'idle-a', projectName: 'Alpha', state: 'idle', port: 9121 }),
+    session({ id: 'work-b', projectName: 'Bravo', state: 'processing', port: 9122 }),
+    session({ id: 'ask-c', projectName: 'Charlie', state: 'awaiting_permission', question: 'Allow the firmware flash on the connected panel?', port: 9123 }),
+    session({ id: 'work-d', projectName: 'Delta', state: 'processing', port: 9124 }),
+  ];
+  it('puts waiting first, then working, and keeps hotkeys in the stable order', () => {
+    const cards = buildRoster(state({ sessions }));
+    expect(cards.map(c => c.id)).toEqual(['ask-c', 'work-b', 'work-d', 'idle-a']);
+    // A session keeps its number when its state moves it to another group.
+    const keys = Object.fromEntries(cards.map(c => [c.id, c.hotkey]));
+    const reordered = buildRoster(state({ sessions: sessions.map(s => s.id === 'ask-c' ? { ...s, state: 'idle' } : s) }));
+    expect(Object.fromEntries(reordered.map(c => [c.id, c.hotkey]))).toEqual(keys);
+    expect(reordered.map(c => c.id)).toEqual(['work-b', 'work-d', 'idle-a', 'ask-c']);
+  });
+  it('captions groups, opens on the request and gives its question a dedicated line when rows are short', () => {
+    const view = defaultView();
+    const tall = renderDashboard(state({ sessions }), 140, 40, [], 0, 0, view);
+    expect(view.selectedId).toBe('ask-c');
+    for (const caption of ['NEEDS YOU', 'WORKING', 'IDLE']) expect(tall).toContain(caption);
+    expect(tall.indexOf('NEEDS YOU')).toBeLessThan(tall.indexOf('WORKING'));
+    expect(tall).toContain('n needs you');
+    const narrow = renderDashboard(state({ sessions }), 72, 30, [], 0, 0, defaultView());
+    expect(narrow).toContain('n needs you');
+    // 12 rows cannot hold four detailed cards; the request still gets its line.
+    const short = renderDashboard(state({ sessions }), 140, 12, [], 0, 0, defaultView());
+    expect(short).toContain('Allow the firmware flash');
+    expect(short.match(/Allow/g)).toHaveLength(1);
+    // Nothing waiting: no caption for it and no key hint.
+    const calm = renderDashboard(state({ sessions: sessions.filter(s => s.id !== 'ask-c') }), 140, 40, [], 0, 0, defaultView());
+    expect(calm).not.toContain('NEEDS YOU');
+    expect(calm).not.toContain('n needs you');
+    const narrowCalm = renderDashboard(state({ sessions: sessions.filter(s => s.id !== 'ask-c') }), 72, 30, [], 0, 0, defaultView());
+    expect(narrowCalm).not.toContain('n needs you');
+  });
+  it('does not print a task title and its identical first prompt as two rows', () => {
+    const rows: TimelineEntry[] = [
+      { ts: 1, type: 'task_start', raw: 'Check the open tickets', sessionId: 'a', agentType: 'claude-code' },
+      { ts: 2, type: 'chat_start', raw: 'Check the open tickets', sessionId: 'a', agentType: 'claude-code' },
+      { ts: 3, type: 'chat_start', raw: 'Check the open tickets', sessionId: 'b', agentType: 'claude-code' },
+      { ts: 4, type: 'chat_start', raw: 'A second prompt', sessionId: 'a', agentType: 'claude-code' },
+    ];
+    expect(buildTimelineRows(rows).map(r => `${r.entry.type}:${r.entry.sessionId}`))
+      .toEqual(['task_start:a', 'chat_start:b', 'chat_start:a']);
+  });
+
+  it('keeps the first prompt folded after closure metadata arrives, but preserves a distinct judged title', () => {
+    const rows: TimelineEntry[] = [
+      { ts: 1, type: 'task_start', raw: 'Check the open tickets', sessionId: 'a', taskId: 'task-a' },
+      { ts: 2, type: 'chat_start', raw: 'Check the open tickets', sessionId: 'a' },
+      { ts: 3, type: 'task_end', raw: 'Finished in two turns', sessionId: 'a', taskId: 'task-a', taskScore: 0.9, taskOutcome: 'success' },
+    ];
+    const closed = buildTimelineRows(rows);
+    expect(closed).toHaveLength(1);
+    expect(closed[0]!.text).toContain('Finished in two turns');
+    expect(closed[0]!.text).toContain('0.90');
+    const judged = buildTimelineRows(rows.map(e => e.type === 'task_end' ? { ...e, taskSummary: 'Resolved the remaining tickets' } : e));
+    expect(judged.map(r => r.entry.type)).toEqual(['task_start', 'chat_start']);
+  });
+});

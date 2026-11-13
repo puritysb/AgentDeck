@@ -22,7 +22,7 @@ import {
   ink, toneColor, stateGlyph, stateChip, quotaColor, brandColor, agentMark, agentName, hex,
 } from './theme.js';
 import {
-  buildRoster, rosterCounts, rosterDensity, summarizeRoster, buildUsageGroups,
+  buildRoster, rosterCounts, rosterDensity, summarizeRoster, buildUsageGroups, rosterGroup, ROSTER_GROUP_LABELS,
   buildTimelineRows, type RosterCard, type UsageGroupVM, type UsageRowVM,
 } from './model.js';
 
@@ -268,9 +268,13 @@ function voiceLabel(state: DashboardState): string {
 
 function renderFooter(state: DashboardState, view: ViewState, layout: LayoutMode, cols: number): string {
   const hints: string[] = [];
+  const needsYou = buildRoster(state).some(c => c.tone === 'awaiting');
   if (layout === 'narrow') {
-    return ` ${ink.faint}${truncText('tab panel  \u2191\u2193  \u23CE detail  f follow  ? help  q quit', cols - 2)}${RESET}`;
+    const next = needsYou ? `${toneColor('awaiting_permission')}n needs you${RESET}${ink.faint}  ` : '';
+    return ` ${ink.faint}${truncText(`${next}tab panel  \u2191\u2193  \u23CE detail  f follow  ? help  q quit`, cols - 2)}${RESET}`;
   }
+  // The terminal's own strength is the keyboard: one key reaches the request.
+  if (needsYou) hints.push(`${toneColor('awaiting_permission')}n needs you${RESET}${ink.faint}`);
   hints.push(`tab ${view.focus === 'roster' ? 'activity' : 'sessions'}`);
   hints.push(view.focus === 'roster' ? '↑↓ select' : '↑↓ scroll');
   hints.push(`⏎ ${view.detail ? 'close' : 'detail'}`);
@@ -323,7 +327,14 @@ function renderRoster(state: DashboardState, cards: RosterCard[], view: ViewStat
   const density = rosterDensity(cards.length);
   const indent = '    ';
   const blocks: Array<{ id: string; lines: string[] }> = [];
-  const detailed = density === 'detailed' && cards.length * 4 <= height + 1;
+  // Groups are captioned when more than one is present; the caption says what
+  // the colour already does, for a terminal read at a glance or in mono.
+  const groupCounts = new Map<string, number>();
+  for (const c of cards) groupCounts.set(rosterGroup(c), (groupCounts.get(rosterGroup(c)) ?? 0) + 1);
+  const captions = density !== 'summarized' && groupCounts.size > 1;
+  // Detail is a matter of room, not of how many sessions there are: eight
+  // sessions in a 40-row column used to get one line each above empty space.
+  const detailed = density !== 'summarized' && cards.length * 4 + (captions ? groupCounts.size : 0) <= height + 1;
   let list = cards;
   let hiddenNote = '';
   if (density === 'summarized') {
@@ -334,8 +345,15 @@ function renderRoster(state: DashboardState, cards: RosterCard[], view: ViewStat
     if (sum.hiddenOffline) notes.push(`${sum.hiddenOffline} offline hidden`);
     hiddenNote = notes.join(' · ');
   }
+  let lastGroup = '';
   for (const card of list) {
     const isSel = card.id === selected;
+    const group = rosterGroup(card);
+    if (captions && group !== lastGroup) {
+      const tone = group === 'needs' ? toneColor('awaiting_permission') : group === 'working' ? toneColor('processing') : ink.faint;
+      blocks.push({ id: '', lines: [` ${tone}${group === 'needs' ? BOLD : ''}${ROSTER_GROUP_LABELS[group]}${RESET}${ink.faint} · ${groupCounts.get(group)}${RESET}`] });
+    }
+    lastGroup = group;
     if (detailed) {
       const meta = card.meta.join(' · ');
       const badges = cardBadges(card);
@@ -349,14 +367,20 @@ function renderRoster(state: DashboardState, cards: RosterCard[], view: ViewStat
       lines.push('');
       blocks.push({ id: card.id, lines });
     } else {
-      const fl = focusLine(card) || `${ink.faint}${card.meta[0] ?? ''}${RESET}`;
+      const question = card.tone === 'awaiting' && card.focus?.kind === 'question';
+      const fl = (!question && focusLine(card)) || `${ink.faint}${card.meta[0] ?? ''}${RESET}`;
       const bar = isSel ? `${ink.accent}${terminalCaps.unicode ? '▌' : '>'}${RESET}` : ' ';
       const key = card.hotkey ? `${ink.faint}${card.hotkey}${RESET}` : ' ';
       const head = `${bar}${key} ${brandColor(card.agentType)}${agentMark(card.agentType)}${RESET} ${ink.text}${card.displayName}${RESET}`;
       const chip = stateChip(card.state, frame, 'tiny');
       const nameW = Math.min(visLen(head), Math.max(14, Math.floor(width * 0.45)));
       const left = padRight(truncText(head, nameW), nameW);
-      blocks.push({ id: card.id, lines: [spread(`${left} ${fl}`, chip, width)] });
+      const lines = [spread(`${left} ${fl}`, chip, width)];
+      // Give the request its own full-width line, even in a compact roster.
+      if (question) {
+        lines.push(truncText(`${indent}${toneColor('awaiting_permission')}${card.focus!.text}${RESET}`, width));
+      }
+      blocks.push({ id: card.id, lines });
     }
   }
   // Scroll window keeps the selected block visible.
@@ -745,6 +769,7 @@ function renderHelpOverlay(cols: number, rows: number): string {
     ' tab        switch between sessions and activity',
     '            (narrow: next panel; s u a d jump to one)',
     ' enter      session detail: question, options, CI, subagents',
+    ' n          next session that needs you, with its detail open',
     ' f          follow: activity for the selected session only',
     ' 1-9        connect to a numbered managed session',
     ' Esc        close help or detail',

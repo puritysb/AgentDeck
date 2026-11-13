@@ -45,6 +45,15 @@
   ],
   "steps": [
     {
+      "id": "vobot-python",
+      "name": "Vobot pairing and attention regressions",
+      "gate": "vobot-python",
+      "tiers": ["changed", "quick", "full"],
+      "run": "python3 integrations/vobot/test_pairing.py && python3 integrations/vobot/test_attention.py",
+      "requires": { "commands": ["python3"] },
+      "paths": ["integrations/vobot/**"]
+    },
+    {
       "id": "version",
       "name": "Version sync",
       "gate": "typecheck",
@@ -384,6 +393,20 @@
     }
   ],
   "gates": [
+    {
+      "id": "vobot-python",
+      "name": "Vobot pairing and attention",
+      "where": "ubuntu-latest and local CPython",
+      "trigger": "Every pull request and push to master; local changed, quick and full verification",
+      "level": ["unit", "integration"],
+      "workflow": ".github/workflows/ci.yml",
+      "job": "vobot-python",
+      "blocking": true,
+      "command": "python3 integrations/vobot/test_pairing.py && python3 integrations/vobot/test_attention.py",
+      "evidence": ["integrations/vobot/test_pairing.py", "integrations/vobot/test_attention.py"],
+      "proves": ["Pairing redemption and credential-file cleanup on CPython with loopback sockets and temporary files.", "Attention state transitions with mocked display peripherals."],
+      "does_not_prove": ["MicroPython firmware compatibility, physical device settings lifecycle, filesystem isolation, TLS or server-enforced least privilege.", "Gallery packaging or publication; this check does not establish physical device acceptance."]
+    },
     {
       "id": "security-pipeline-health",
       "name": "Security pipeline freshness",
