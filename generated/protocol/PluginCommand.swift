@@ -67,6 +67,9 @@ struct ADPluginCommand: Codable, Equatable {
     var mode: ADMode?
     var action: ADAction?
     var checkpointId: String?
+    var nonce: String?
+    var pid: Double?
+    var transfer: String?
     /// Optional epoch-ms lower bound; omit for the full retained history.
     var since: Double?
     var agent: ADAgent?
@@ -110,6 +113,9 @@ struct ADPluginCommand: Codable, Equatable {
         case mode = "mode"
         case action = "action"
         case checkpointId = "checkpointId"
+        case nonce = "nonce"
+        case pid = "pid"
+        case transfer = "transfer"
         case since = "since"
         case agent = "agent"
         case command = "command"
@@ -166,6 +172,9 @@ extension ADPluginCommand {
         mode: ADMode?? = nil,
         action: ADAction?? = nil,
         checkpointId: String?? = nil,
+        nonce: String?? = nil,
+        pid: Double?? = nil,
+        transfer: String?? = nil,
         since: Double?? = nil,
         agent: ADAgent?? = nil,
         command: ADCommand?? = nil,
@@ -202,6 +211,9 @@ extension ADPluginCommand {
             mode: mode ?? self.mode,
             action: action ?? self.action,
             checkpointId: checkpointId ?? self.checkpointId,
+            nonce: nonce ?? self.nonce,
+            pid: pid ?? self.pid,
+            transfer: transfer ?? self.transfer,
             since: since ?? self.since,
             agent: agent ?? self.agent,
             command: command ?? self.command,
@@ -523,6 +535,8 @@ enum ADType: String, Codable, Equatable {
     case clearSessionFocus = "clear_session_focus"
     case clientRegister = "client_register"
     case daemonCheckpointAck = "daemon_checkpoint_ack"
+    case deviceSecurityAck = "device_security_ack"
+    case deviceSecurityRestore = "device_security_restore"
     case diag = "diag"
     case escape = "escape"
     case esp32OtaAck = "esp32_ota_ack"

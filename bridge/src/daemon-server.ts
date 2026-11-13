@@ -1,3 +1,5 @@
+import { DeviceSecurityReplica } from './device-security-replica.js';
+import { DeviceSecurityManager } from './device-security-manager.js';
 import { ClaudeAttentionLifecycle } from '@agentdeck/shared';
 import { DaemonConfigurationStore, readPixooConfiguration, writePixooConfiguration, pixooRevision } from './daemon-configuration.js';
 import { configuredRecovery, selectRecovery, disconnectRecovery, recoveryConsent } from './daemon-recovery.js';
@@ -2173,6 +2175,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     bridgePort: port,
   });
 
+  const deviceSecurityReplica = new DeviceSecurityReplica();
+  let deviceSecurity: DeviceSecurityManager | null = null;
   const httpServer = createServer((req, res) => {
     const credentialGeneration = getPairingGeneration();
     let permitsCredentialChange = false;
@@ -2250,6 +2254,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     if (ownerStopping && !['GET', 'HEAD', 'OPTIONS'].includes(req.method ?? 'GET')) {
       res.writeHead(503, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'daemon_stopping' })); return;
+    }
+    if ((req.url ?? '').startsWith('/device-security/')) {
+      if (deviceSecurity?.handle(req, res)) return;
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'daemon_initializing' })); return;
     }
     // APME routes: auth-gated (task prompts, project paths, hook payloads are sensitive).
     if ((req.url ?? '').startsWith('/apme')) {
@@ -2330,6 +2339,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         calendar: glanceCalendar.diagnostics(),
         pairingRetirement: getPairingRetirement(),
         pairingRotation: true,
+        deviceSecurity: deviceSecurity?.status() ?? { version: 1, state: 'initializing' },
         // Capability: this daemon drives remote sessions down their own push
         // socket (session_focus_down / session_command_down / session_event_up).
         // Workers require this flag before remote-attaching; the Swift daemon
@@ -4953,6 +4963,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     httpServer,
     isDaemon: true,
   });
+  deviceSecurity = new DeviceSecurityManager(getDataDir(), async () => ({
+    sessions: await core.buildSessionsSnapshot(), usage: core.buildUsage(),
+  }), posture.loopbackOnly ? '127.0.0.1' : '0.0.0.0');
   // Matrix state is a daemon display projection, independent of Pixoo64 hardware.
   broadcastMatrix({ type: 'connection', status: 'disconnected' } as BridgeEvent);
   core.wsServer.onBroadcast(broadcastMatrix);
@@ -6942,6 +6955,20 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     handleSessionSettingsSocketRequest(cmd, sender, gatewayAdapter, core.wsServer);
 
   const handleDeviceCommand = (cmd: PluginCommand, sender?: WebSocket): void => {
+    if (cmd.type === 'device_security_restore') {
+      if (ownerStopping || !deviceSecurity || !sender || !core.wsServer.isLocalProgramClient(sender) || core.wsServer.isEsp32Client(sender) || surfaceNegotiations.has(sender)) return;
+      if (typeof cmd.pid === 'number' && typeof cmd.nonce === 'string' && typeof cmd.transfer === 'string') {
+        void deviceSecurityReplica.restore(deviceSecurity, sender, cmd.pid, cmd.nonce, cmd.transfer)
+          .catch(() => log('[agentdeck] Device TLS custody recovery was refused.'));
+      }
+      return;
+    }
+    if (cmd.type === 'device_security_ack') {
+      if (!sender || !core.wsServer.isLocalProgramClient(sender) || core.wsServer.isEsp32Client(sender) || surfaceNegotiations.has(sender)) return;
+      if (typeof cmd.pid === 'number' && typeof cmd.nonce === 'string') deviceSecurityReplica.receive(sender, cmd.pid, cmd.nonce);
+      if (!ownerStopping && deviceSecurity) deviceSecurityReplica.requestRecovery(deviceSecurity, (socket, event) => core.wsServer.sendTo(socket, event), buildHubStateEvent());
+      return;
+    }
     if (cmd.type === 'daemon_checkpoint_ack') {
       if (!sender || typeof cmd.checkpointId !== 'string' || !core.wsServer.isLocalProgramClient(sender) || core.wsServer.isEsp32Client(sender) || surfaceNegotiations.has(sender)) return;
       if (cmd.checkpointId === DAEMON_CHECKPOINT_POLICY.subscriptionId || cmd.checkpointId === DAEMON_CONFIGURATION_POLICY.subscriptionId) {
@@ -8175,7 +8202,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
 
   core.wsServer.onClientDisconnect((ws) => {
     for (const check of [...checkpointWaiters]) check();
-    checkpointPeers.delete(ws); configurationPeers.delete(ws);
+    checkpointPeers.delete(ws); configurationPeers.delete(ws); deviceSecurityReplica.remove(ws);
     surfaceNegotiations.delete(ws);
     unregisterWifiEsp32Socket(ws);
   });
@@ -8500,8 +8527,17 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     abortWifiEsp32Ota();
     pocketAutonomy.flush();
     drainAllPending();
-    try { await publishCheckpoint(true); }
-    catch { log('[agentdeck] Final checkpoint replica unconfirmed; durable local checkpoint retained.'); }
+    // Both receipts share the core's five-second shutdown budget. Waiting
+    // sequentially could close the successor socket before its durable ACK.
+    await Promise.all([
+      publishCheckpoint(true).catch(() => log('[agentdeck] Final checkpoint replica unconfirmed; durable local checkpoint retained.')),
+      (async () => {
+        if (!deviceSecurity) return;
+        try { await deviceSecurityReplica.transfer(deviceSecurity, (socket, event) => core.wsServer.sendTo(socket, event), buildHubStateEvent()); }
+        catch { log('[agentdeck] Device TLS successor unconfirmed; sealed custody remains inactive.'); }
+        await deviceSecurity.stop();
+      })(),
+    ]);
     apme?.historyReader?.close();
     await dotHost?.stop();
     ciPollingStopped = true;
@@ -8574,4 +8610,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // Rows of a worker that went silent age out on read; announce it so devices
   // drop them now rather than at the next unrelated broadcast.
   core.addInterval(setInterval(() => { relayHub.sweep(); }, 5_000));
+  try { await deviceSecurity.start(); }
+  catch { log('[agentdeck] Scoped device TLS unavailable; existing fleet transport remains active.'); }
+  deviceSecurityReplica.requestRecovery(deviceSecurity, (socket, event) => core.wsServer.sendTo(socket, event), buildHubStateEvent());
+
 }

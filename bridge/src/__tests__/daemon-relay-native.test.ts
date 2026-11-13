@@ -15,7 +15,7 @@ const SD_PLUS_LAYOUT: DeckLayout = { columns: 4, rows: 2, keyCount: 8, family: '
 
 const sources = [
  'App/AgentDeckPaths.swift','Model/SessionWeightRules.generated.swift','Model/PairingCodeRules.generated.swift',
- 'Daemon/Core/Logger.swift','Daemon/Server/HTTPServer.swift','Daemon/Server/WebSocketServer.swift',
+ 'Daemon/Core/Logger.swift','Daemon/Server/DeviceCredentialRules.swift','Daemon/Server/HTTPServer.swift','Daemon/Server/WebSocketServer.swift',
  'Daemon/Server/PairingCredentialRules.generated.swift','Daemon/Server/AuthManager.swift','Daemon/Server/PairingKnockStore.swift','Daemon/Server/LocalTrust.swift','Daemon/Server/LocalTrustRules.generated.swift',
  'Daemon/Session/GitHubCIClient.swift','Daemon/Session/GitHubCIConnection.swift','Daemon/Session/GitHubCIPolicy.generated.swift',
  'Daemon/Relay/DaemonRelayPolicy.generated.swift','Daemon/Relay/DaemonRelay.swift','Daemon/Relay/DaemonRelayConnection.swift','Daemon/Relay/DaemonRelayUplink.swift',

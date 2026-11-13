@@ -69,82 +69,90 @@ the [rotation scope and limitations](../../docs/daemon.md#lan-security-model-iss
 Check other hosts and inactive profiles separately; an unreachable or older
 daemon may still accept the previous credential.
 Do not rotate automatically just to forget one dock. Device-specific revocation
-requires the daemon changes described below.
+is available only after opting into the separate device TLS transport below.
 
-## Remaining security work
+## Opt-in device TLS transport
 
-Before claiming secure remote use, implement and test all of the following:
+The source includes a separate HTTPS polling endpoint for Vobot. It requires a
+random per-device credential and serves only bounded session and usage fields.
+Both Node and Swift implement the same authority format. The device credential
+is rejected by the legacy HTTP and WebSocket routes, including local-trust and
+IP-approval shortcuts. A Surface profile never grants authority.
 
-- Verified HTTPS pairing and WSS data transport on the actual Mini Dock runtime,
-  including certificate/hostname or pinned-identity validation, expiry, wrong
-  server and interception tests. Never silently fall back to plaintext.
-- Random per-device credentials stored as verifiers on the server, with scopes
-  bound at issuance. Enforce the read-only allow-list on both HTTP and WebSocket
-  paths before any startup data or command dispatch in **both Node and Swift**.
-  Client-declared profiles must not grant authority. Test rejected commands,
-  impersonated registration and endpoints outside the read-only allow-list.
-- Individual revocation that closes active sockets and rejects reconnections,
-  plus persistence, restart and Node/Swift ownership-handover tests. Keep legacy
-  credentials explicit during migration; do not silently unpair the fleet or
-  turn a scoped device token into an unrestricted shared token.
-- Remove long-lived credentials from URLs only after both shipped daemons accept
-  the replacement authentication mechanism. Verify device storage isolation
-  and platform credential protection; do not present obfuscation as encryption.
+Existing installations continue to use their saved pairing unless an operator
+provisions `/apps/AgentDeck/device-tls.json` over the trusted USB connection.
+Once that file exists, invalid configuration or TLS failure stops the secure
+connection; the app does not fall back to its legacy token. Keep `pairing.txt`
+and the Wi-Fi settings intact during migration. Existing devices remain on
+legacy transport until individually upgraded; this does not encrypt the fleet
+or retire its shared credential.
 
-The local deletion changes here do not complete these items. Validate the
-settings flow on physical firmware before packaging a new Gallery release.
+### Local operator workflow
 
-### Server implementation and migration sequence
+Use a private identity configuration with `version: 1`, `role: "owner"`, a DNS
+`hostname`, a dedicated `port` outside 9120–9139, base64 PKCS#12 `pfx`, its
+`password`, and base64 DER trust anchor `caDER`. The certificate must include
+its DNS name and the server-auth extended key usage. The identity and device
+configuration files contain secrets and must stay outside the repository with
+owner-only file permissions. The native daemon imports the identity through
+Security.framework without an external runtime.
 
-The current source has two distinct boundaries that must not be conflated:
+```sh
+agentdeck device-security install /absolute/private/identity.json
+agentdeck device-security pair Vobot --host 192.168.1.10 --output /absolute/private/device-tls.json
+agentdeck device-security status
+agentdeck device-security revoke DEVICE_ID
+```
 
-- `bridge/src/ws-server.ts` and the Swift `WebSocketServer` authenticate before
-  the daemon associates a Surface offer with the connection. Initial data is
-  scheduled independently of that offer. A delay awaiting registration is not
-  an authorization check.
-- Node's `surfaceAllowsEvent` currently filters only the portable-reader
-  profile. Swift additionally checks negotiated command capabilities, but a
-  new connection with the shared credential can omit that negotiation. Neither
-  behavior makes the credential itself read-only.
-- `shared/src/pairing-credentials.ts` defines the existing credential adoption
-  format as `token`, `accepted`, `revision` and `eventId`. Do not append device
-  scope to a token and pass it through this legacy adoption path: scope is not
-  part of that persisted/adopted authority. Native sandbox and CLI stores can
-  also differ, so sharing a filename is not a handover protocol.
+The host address must be this computer's device-reachable LAN IPv4 address.
+Pairing verifies the running TLS server before issuing a credential and writes
+a new file with mode 0600; it refuses to overwrite an existing output. Transfer
+that file and the compatible app modules over USB. Do not paste its contents
+into logs, a URL, a ticket, or an unverified LAN endpoint. Installation refuses
+to replace an existing server identity. Certificate renewal and trust-root
+replacement require a coordinated operator migration before expiry; there is
+no automatic rotation or downgrade path.
 
-Implement the next phase in this order, leaving legacy clients unchanged:
+Revocation records a durable tombstone for one device. Every HTTPS request
+checks it before collection and again before sending data; each connection
+closes after its response. Credentials grant `sessions.read`, `usage.read`, or
+both, and cannot invoke controls, hooks, relay, audio, or pairing endpoints.
+Only verifiers are retained on the server. The device keeps its bearer secret
+in its app filesystem; this is not hardware-backed encrypted storage.
 
-1. Define a versioned device-credential record with a random opaque identifier,
-   a hash of a high-entropy secret, immutable granted scopes, revocation state
-   and an owner generation. Use common fixtures for the TypeScript and Swift
-   readers. Reject corrupt or unknown versions without a legacy fallback.
-2. Add explicit read-only issuance under the existing operator-held pairing
-   window. Return the credential kind and granted scopes; a new Vobot client
-   must reject a response that silently substitutes a shared unrestricted
-   token. Keep old clients on the explicit legacy path until upgraded.
-3. Resolve the credential to a server-owned principal at the handshake, before
-   any connect callback or queued startup data. Put a deny-by-default check
-   before **every** HTTP dispatch, WebSocket raw/relay path, command callback,
-   binary/audio path and outbound send. Permit only the agreed session/usage
-   projection. Registration may describe a device, never raise its authority.
-4. Add owner-only list/revoke operations that return metadata, never secrets.
-   Revocation must durably commit before success, invalidate already-open
-   sockets, fence pending asynchronous sends and survive restart. Device self-
-   deletion is not server revocation. Do not use an IP address as a token's
-   fallback identity or admit revoked credentials through approval fallback.
-5. Extend the explicit Node/Swift custody exchange to carry device verifiers
-   and revocation generation atomically. An old or incompatible owner must
-   refuse scoped authentication, never convert it into a shared token. Test
-   stale-owner return and interrupted handover before enabling issuance in
-   either production daemon.
-6. Ship compatible daemon support first, then opt the Vobot client into the
-   new credential kind. Test wrong scope, missing registration, re-registration
-   as an internal worker, raw relay commands, binary audio, concurrent revoke,
-   reconnect after restart, and both custody directions. Only then validate
-   the TLS/device-storage release separately on the physical Mini Dock.
+### Firmware verification and owner handover
 
-Until those acceptance checks pass, do not enable a partial device-token
-implementation or describe per-device revocation as delivered.
+On the tested Mini Dock firmware 1.2.6, native TLS rejects wrong hostnames and
+untrusted issuers but accepts an expired leaf certificate. The client therefore
+also checks the owner-provisioned leaf SHA-256 pin and the verified chain's
+validity interval before sending its bearer credential. An unset clock or a
+clock earlier than provisioning fails closed. This depends on the device's
+clock: the firmware has no demonstrated tamper-resistant time source, so the
+checks do not establish protection against malicious clock rollback. The
+custom stream adapter also avoids `asyncio.Stream`, which this runtime does
+not export.
+
+The current owner stops its TLS listener before transferring the identity,
+verifiers and revocations to an admitted local same-user successor. Node sends
+its transfer only to one registered local native socket and waits for a durable
+receipt within the shutdown budget. Node taking over from Swift captures a
+fresh sealed response before stand-down. If the Node supervisor restarts first,
+the new owner challenges its current local native connection and recovers a
+freshly sealed transfer; the receipt is tied to that socket and expires. An
+inactive replica never promotes
+itself from stale data when its previous owner is unreachable. Interrupted
+handover can therefore leave device TLS unavailable and needs operator
+recovery from the latest authoritative store; legacy connections remain
+independent. Neither cold recovery nor an older daemon may revive a revoked
+device credential.
+
+Automated tests cover both TLS listeners, scope projection, revocation during
+collection, store interoperability, and failed receipt handling. Physical RAM
+tests on firmware 1.2.6 exercised valid, wrong-host, expired and wrong-CA cases,
+Node and Swift snapshots, repeated polling, and rejection after revocation.
+Those RAM results do not prove that the installed app or a Gallery package has
+been updated. Confirm installed hashes, operating TLS traffic and both live
+owner transitions before reporting deployment complete.
 
 ## Gallery release
 

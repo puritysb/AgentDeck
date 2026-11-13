@@ -1850,6 +1850,14 @@
           "description": "Same-machine daemon handover only: bounded aggregate/opaque-receipt JSON. Never contains card copy, prompt text, source credentials or executable data.",
           "type": "string"
         },
+        "deviceSecurityRecovery": {
+          "description": "Private fresh challenge to recover custody from the local native client after a supervisor restart.",
+          "type": "string"
+        },
+        "deviceSecurityTransfer": {
+          "description": "Private custody packet, unicast only to an admitted same-user native successor. Never broadcast to devices or relays.",
+          "type": "string"
+        },
         "effortLevel": {
           "type": "string"
         },

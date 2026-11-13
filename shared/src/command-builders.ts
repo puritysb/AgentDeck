@@ -16,6 +16,8 @@ import type {
   VoiceCommand,
   QueryUsageCommand,
   DaemonCheckpointAckCommand,
+  DeviceSecurityAckCommand,
+  DeviceSecurityRestoreCommand,
   QuerySessionTimelineCommand,
   DiagCommand,
   UtilityCommand,
@@ -64,6 +66,12 @@ export const agentCommand = {
   },
   daemonCheckpointAck(checkpointId: string): DaemonCheckpointAckCommand {
     return { type: "daemon_checkpoint_ack", checkpointId };
+  },
+  deviceSecurityAck(pid: number, nonce: string): DeviceSecurityAckCommand {
+    return { type: "device_security_ack", pid, nonce };
+  },
+  deviceSecurityRestore(pid: number, nonce: string, transfer: string): DeviceSecurityRestoreCommand {
+    return { type: "device_security_restore", pid, nonce, transfer };
   },
   querySessionTimeline(sessionId: string): QuerySessionTimelineCommand {
     return { type: "query_session_timeline", sessionId };

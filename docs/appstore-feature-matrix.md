@@ -40,6 +40,12 @@ The submitted macOS app must not contain `Process()`, `/bin/sh`, AppleScript, ge
 
 The upgrade story exists in README, web, and developer documentation only. App Store UI must not tell users to install or launch a companion executable. CLI-only sections appear as progressive enhancement when an independently running external daemon is detected.
 
+## Device transport security implementation
+
+| Capability | Standalone macOS | Node daemon | Verification status |
+| --- | --- | --- | --- |
+| TLS device listener and individually revocable read-only credentials | Native Security and Network APIs; no helper process | Dedicated HTTPS listener alongside legacy transport | Opt-in owner configuration. Both TLS listeners, cross-profile custody and Vobot RAM transport are verified; installed rollout and Gallery publication require separate evidence. Legacy pairing remains intact during migration. |
+
 ## Node-only Hermes attention pilot
 
 The Node receiver can project top-level Hermes human-input hooks into the

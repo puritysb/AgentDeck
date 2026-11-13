@@ -86,6 +86,18 @@ data class BridgeEvent (
      */
     val daemonCheckpoint: String? = null,
 
+    /**
+     * Private fresh challenge to recover custody from the local native client after a
+     * supervisor restart.
+     */
+    val deviceSecurityRecovery: String? = null,
+
+    /**
+     * Private custody packet, unicast only to an admitted same-user native successor. Never
+     * broadcast to devices or relays.
+     */
+    val deviceSecurityTransfer: String? = null,
+
     val effortLevel: String? = null,
 
     /**

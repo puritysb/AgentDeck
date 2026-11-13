@@ -1034,6 +1034,59 @@ final class DaemonService: ObservableObject {
         }
     }
 
+    /// The source remains live until the durable receipt returns on this socket.
+    func acceptDeviceSecurityTransfer(_ text: String, token: BridgeDeliveryToken) async -> String? {
+        let currentPort = Int(port)
+        guard isUsingExternalDaemon, currentPort > 0, token.isValid,
+              let data = text.data(using: .utf8), data.count <= DeviceSecurityRules.maxBytes + DeviceCredentialRules.maxBytes + 1024,
+              let receipt = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let pid = receipt["pid"] as? Int, LocalPeerOwnership.of(pid: pid) == .sameUser,
+              let transfer = receipt["transfer"] as? [String: Any], let nonce = transfer["nonce"] as? String,
+              JSONSerialization.isValidJSONObject(transfer), let transferData = try? JSONSerialization.data(withJSONObject: transfer) else { return nil }
+        let health = await healthMonitor.probeHealth(currentPort, false)
+        guard token.isValid, isUsingExternalDaemon, Int(port) == currentPort, health?["pid"] as? Int == pid,
+              LocalPeerOwnership.of(pid: pid) == .sameUser else { return nil }
+        do {
+            try await DaemonActor.run {
+                guard token.isValid else { throw DeviceSecurityRules.Failure.invalidTransfer }
+                let value = try DeviceSecurityRules.transfer(transferData, nonce: nonce)
+                _ = try DeviceTLSIdentity.load(pfx: Data(base64Encoded: value.configuration.pfx)!, password: value.configuration.password,
+                    caDER: Data(base64Encoded: value.configuration.caDER)!, hostname: value.configuration.hostname)
+                guard token.isValid else { throw DeviceSecurityRules.Failure.invalidTransfer }
+                try DeviceSecurityStore().adopt(transferData, nonce: nonce)
+            }
+            guard token.isValid, isUsingExternalDaemon, Int(port) == currentPort else { return nil }
+            return nonce
+        } catch { DaemonLogger.shared.error("Device TLS owner custody was refused; no acknowledgement sent"); return nil }
+    }
+
+    /// A supervisor may restart Node before this client promotes. Return only
+    /// freshly sealed authority to that admitted owner; never promote a replica.
+    func returnDeviceSecurityCustody(_ text: String, token: BridgeDeliveryToken) async -> (nonce: String, transfer: String)? {
+        let currentPort = Int(port)
+        guard isUsingExternalDaemon, currentPort > 0, token.isValid,
+              let data = text.data(using: .utf8), data.count <= 1024,
+              let request = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let pid = request["pid"] as? Int, LocalPeerOwnership.of(pid: pid) == .sameUser,
+              let nonce = request["nonce"] as? String, DeviceCredentialRules.hex(nonce, count: 32),
+              let expiresAt = request["expiresAt"] as? Double, expiresAt > Date().timeIntervalSince1970 * 1000 else { return nil }
+        let health = await healthMonitor.probeHealth(currentPort, false)
+        guard token.isValid, isUsingExternalDaemon, Int(port) == currentPort,
+              health?["pid"] as? Int == pid, LocalPeerOwnership.of(pid: pid) == .sameUser,
+              let security = health?["deviceSecurity"] as? [String: Any], security["state"] as? String == "replica" else { return nil }
+        do {
+            let transfer: String? = try await DaemonActor.run {
+                guard token.isValid, Date().timeIntervalSince1970 * 1000 < expiresAt else { return nil }
+                let store = DeviceSecurityStore()
+                guard try store.read()?.role == .owner else { return nil }
+                guard let sealed = try store.seal(nonce: nonce) else { return nil }
+                return String(decoding: try JSONEncoder().encode(sealed), as: UTF8.self)
+            }
+            guard let transfer, token.isValid, isUsingExternalDaemon, Int(port) == currentPort else { return nil }
+            return (nonce: nonce, transfer: transfer)
+        } catch { DaemonLogger.shared.error("Device TLS custody return was refused"); return nil }
+    }
+
     private func startHealthMonitor() {
         healthMonitorTask?.cancel()
         healthMonitorTask = Task { [weak self] in

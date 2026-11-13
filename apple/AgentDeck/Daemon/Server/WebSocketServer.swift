@@ -374,6 +374,11 @@ actor WebSocketServer {
         let remoteIP = Self.remoteIPString(nwConn.endpoint)
         let sameMachine = AuthManager.shared.isLocalConnection(remoteIP)
         let parsed = HTTPServer.parseHTTPRequest(requestData, remoteIP: remoteIP)
+        if DeviceCredentialRules.reserved(parsed.queryParams["token"] ?? "") ||
+            DeviceCredentialRules.reserved((parsed.headers["authorization"] ?? "").replacingOccurrences(of: "Bearer ", with: "", options: .anchored)) {
+            Self.refuseUpgrade(nwConn)
+            return
+        }
         // A web page in a browser here connects from this machine too, and a
         // WebSocket has no CORS to keep it from reading what the daemon sends.
         // Its Host and Origin tell it from a local program (LocalTrust).

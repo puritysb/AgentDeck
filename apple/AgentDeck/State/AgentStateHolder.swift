@@ -40,6 +40,8 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
     /// App-layer handover cache; only snapshots from the preferred local daemon qualify.
     var onLocalTimelineSnapshot: (([TimelineEntry]) -> Void)?
     var onLocalDaemonCheckpoint: (@MainActor (String, Int, BridgeDeliveryToken) async -> String?)?
+    var onLocalDeviceSecurityTransfer: (@MainActor (String, BridgeDeliveryToken) async -> String?)?
+    var onLocalDeviceSecurityRecovery: (@MainActor (String, BridgeDeliveryToken) async -> (nonce: String, transfer: String)?)?
     private var checkpointAdmission = 0
     let displaySync = DisplaySyncService()
     private(set) var timelineGenerator: StateTimelineGenerator!
@@ -842,6 +844,7 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
                 if token.claimCheckpointSubscription() {
                     sendCommand(.daemonCheckpointAck(checkpointId: DaemonParityRules.checkpointSubscriptionId))
                     sendCommand(.daemonCheckpointAck(checkpointId: DaemonParityRules.configurationSubscriptionId))
+                    sendCommand(.deviceSecurityAck(pid: Int(ProcessInfo.processInfo.processIdentifier), nonce: DeviceSecurityRules.subscriptionId))
                 }
                 checkpointAdmission += 1
                 let admission = checkpointAdmission, endpoint = connection.url
@@ -850,6 +853,28 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
                           let id = await self.onLocalDaemonCheckpoint?(payload, admission, token),
                           token.isValid, self.connection.url == endpoint else { return }
                     self.sendCommand(.daemonCheckpointAck(checkpointId: id))
+                }
+            }
+            if let payload = e.deviceSecurityRecovery, let token = e.deliveryToken, token.isValid,
+               let preferredLocalBridgeUrl, PairingCredential.sameEndpoint(preferredLocalBridgeUrl, connection.url),
+               let host = URL(string: preferredLocalBridgeUrl)?.host?.lowercased(), ["127.0.0.1", "localhost", "::1", "[::1]"].contains(host) {
+                let endpoint = connection.url
+                Task { @MainActor [weak self] in
+                    guard let self, token.isValid, self.connection.url == endpoint,
+                          let result = await self.onLocalDeviceSecurityRecovery?(payload, token),
+                          token.isValid, self.connection.url == endpoint else { return }
+                    self.sendCommand(.deviceSecurityRestore(pid: Int(ProcessInfo.processInfo.processIdentifier), nonce: result.nonce, transfer: result.transfer))
+                }
+            }
+            if let payload = e.deviceSecurityTransfer, let token = e.deliveryToken, token.isValid,
+               let preferredLocalBridgeUrl, PairingCredential.sameEndpoint(preferredLocalBridgeUrl, connection.url),
+               let host = URL(string: preferredLocalBridgeUrl)?.host?.lowercased(), ["127.0.0.1", "localhost", "::1", "[::1]"].contains(host) {
+                let endpoint = connection.url
+                Task { @MainActor [weak self] in
+                    guard let self, token.isValid, self.connection.url == endpoint,
+                          let nonce = await self.onLocalDeviceSecurityTransfer?(payload, token),
+                          token.isValid, self.connection.url == endpoint else { return }
+                    self.sendCommand(.deviceSecurityAck(pid: Int(ProcessInfo.processInfo.processIdentifier), nonce: nonce))
                 }
             }
             #endif

@@ -29,6 +29,8 @@ jobs:
         run: |
           python3 integrations/vobot/test_pairing.py
           python3 integrations/vobot/test_attention.py
+          python3 integrations/vobot/test_tls_peer.py
+          python3 integrations/vobot/test_tls_transport.py
 
   test:
     runs-on: ubuntu-latest
@@ -146,7 +148,7 @@ jobs:
         # Swift fixture compilers and bounded VM renders share this runner.
         # Run files serially to avoid CPU contention consuming their deadlines.
         # Keep every parity case and its production timeout unchanged.
-        run: pnpm exec vitest run bridge/src/__tests__/pairing-retirement.test.ts bridge/src/__tests__/daemon-recovery.test.ts shared/src/__tests__/daemon-parity.test.ts shared/src/__tests__/ci-wait-sync.test.ts shared/src/__tests__/daemon-relay-sync.test.ts bridge/src/__tests__/daemon-relay-native.test.ts bridge/src/__tests__/apme-retention-parity.test.ts bridge/src/__tests__/antigravity-observation.test.ts bridge/src/__tests__/calendar.test.ts bridge/src/__tests__/pixoo-baked.test.ts bridge/src/__tests__/pocket-autonomy-parity.test.ts bridge/src/__tests__/glance-frame-parity.test.ts bridge/src/__tests__/ips10-roster.test.ts bridge/src/__tests__/claude-background-tasks.test.ts bridge/src/__tests__/codex-background-terminals.test.ts bridge/src/__tests__/background-work.test.ts bridge/src/__tests__/matrix-expression.test.ts bridge/src/__tests__/tui-terrarium-snapshots.test.ts bridge/src/__tests__/daemon-supervisor.test.ts bridge/src/__tests__/fm-helper-build.test.ts bridge/src/__tests__/usage-api-recovery.test.ts bridge/src/__tests__/wifi-config.test.ts bridge/src/__tests__/apme-async-probes.test.ts --maxWorkers=1
+        run: pnpm exec vitest run bridge/src/__tests__/pairing-retirement.test.ts bridge/src/__tests__/daemon-recovery.test.ts shared/src/__tests__/daemon-parity.test.ts shared/src/__tests__/ci-wait-sync.test.ts shared/src/__tests__/daemon-relay-sync.test.ts bridge/src/__tests__/daemon-relay-native.test.ts bridge/src/__tests__/device-credential-native.test.ts bridge/src/__tests__/device-tls-server.test.ts bridge/src/__tests__/apme-retention-parity.test.ts bridge/src/__tests__/antigravity-observation.test.ts bridge/src/__tests__/calendar.test.ts bridge/src/__tests__/pixoo-baked.test.ts bridge/src/__tests__/pocket-autonomy-parity.test.ts bridge/src/__tests__/glance-frame-parity.test.ts bridge/src/__tests__/ips10-roster.test.ts bridge/src/__tests__/claude-background-tasks.test.ts bridge/src/__tests__/codex-background-terminals.test.ts bridge/src/__tests__/background-work.test.ts bridge/src/__tests__/matrix-expression.test.ts bridge/src/__tests__/tui-terrarium-snapshots.test.ts bridge/src/__tests__/daemon-supervisor.test.ts bridge/src/__tests__/fm-helper-build.test.ts bridge/src/__tests__/usage-api-recovery.test.ts bridge/src/__tests__/wifi-config.test.ts bridge/src/__tests__/apme-async-probes.test.ts --maxWorkers=1
         env:
           TZ: Asia/Seoul
 

@@ -63,6 +63,10 @@ class PairingTests(unittest.IsolatedAsyncioTestCase):
             path.write_text("127.0.0.1\n" + "b" * 32 + "\n9120\n")
             partial = Path(str(path) + ".new")
             partial.write_text("old partial credential")
+            secure = Path(tmp) / "device-tls.json"
+            secure.write_text("private secure credential")
+            secure_partial = Path(str(secure) + ".new")
+            secure_partial.write_text("partial secure credential")
             manager = Settings({"forget_pairing": " unpair ", "pairing_code": "123456"})
             with patch.object(pairing, "PAIRING_PATH", str(path)), patch.object(pairing, "_redeem", new_callable=AsyncMock) as redeem:
                 self.assertIsNone(await pairing.connection_settings(manager))
@@ -70,6 +74,8 @@ class PairingTests(unittest.IsolatedAsyncioTestCase):
                 redeem.assert_not_awaited()
             self.assertFalse(path.exists())
             self.assertFalse(partial.exists())
+            self.assertFalse(secure.exists())
+            self.assertFalse(secure_partial.exists())
             self.assertEqual(manager.config_data["forget_pairing"], "")
             self.assertEqual(manager.config_data["pairing_code"], "")
 

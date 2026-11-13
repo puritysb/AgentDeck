@@ -18,6 +18,8 @@ public enum AgentCommand: Equatable {
     case voice(action: String, sessionId: String?)
     case queryUsage
     case daemonCheckpointAck(checkpointId: String)
+    case deviceSecurityAck(pid: Int, nonce: String)
+    case deviceSecurityRestore(pid: Int, nonce: String, transfer: String)
     case querySessionTimeline(sessionId: String)
     case diag(action: String)
     case utility(action: String, value: Int?)
@@ -73,6 +75,17 @@ public enum AgentCommand: Equatable {
         case .daemonCheckpointAck(let checkpointId):
             var dict: [String: Any] = ["type": "daemon_checkpoint_ack"]
             dict["checkpointId"] = checkpointId
+            return dict
+        case .deviceSecurityAck(let pid, let nonce):
+            var dict: [String: Any] = ["type": "device_security_ack"]
+            dict["pid"] = pid
+            dict["nonce"] = nonce
+            return dict
+        case .deviceSecurityRestore(let pid, let nonce, let transfer):
+            var dict: [String: Any] = ["type": "device_security_restore"]
+            dict["pid"] = pid
+            dict["nonce"] = nonce
+            dict["transfer"] = transfer
             return dict
         case .querySessionTimeline(let sessionId):
             var dict: [String: Any] = ["type": "query_session_timeline"]
@@ -173,6 +186,8 @@ public enum AgentCommand: Equatable {
         case .voice: return "voice"
         case .queryUsage: return "query_usage"
         case .daemonCheckpointAck: return "daemon_checkpoint_ack"
+        case .deviceSecurityAck: return "device_security_ack"
+        case .deviceSecurityRestore: return "device_security_restore"
         case .querySessionTimeline: return "query_session_timeline"
         case .diag: return "diag"
         case .utility: return "utility"
