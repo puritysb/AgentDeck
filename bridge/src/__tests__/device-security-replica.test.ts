@@ -48,27 +48,45 @@ describe('private device custody receipt',()=>{
     await replica.transfer(manager,send,base);
     expect(seal).not.toHaveBeenCalled();expect(send).not.toHaveBeenCalled();
   });
-  it('unicasts once and accepts only the selected socket, pid and nonce receipt',async()=>{
+  it('requires separate readiness and durable receipts from the selected peer',async()=>{
     const replica=new DeviceSecurityReplica(),{manager,seal}=fixture(),a=socket(),b=socket();
     replica.receive(a,42,DEVICE_SECURITY.subscriptionId);replica.receive(b,42,DEVICE_SECURITY.subscriptionId);
-    let sent!:BridgeEvent;
-    const send=vi.fn((_socket:WebSocket,event:BridgeEvent)=>{sent=event;});
-    const pending=replica.transfer(manager,send,base);await Promise.resolve();
-    expect(send).toHaveBeenCalledOnce();expect(send.mock.calls[0][0]).toBe(a);
-    const nonce=JSON.parse((sent as {deviceSecurityTransfer:string}).deviceSecurityTransfer).transfer.nonce;
+    const send=vi.fn();const pending=replica.transfer(manager,send,base);
+    const offer=JSON.parse(send.mock.calls[0][1].deviceSecurityTransfer).offer;
+    replica.receive(b,42,offer);replica.receive(a,99,offer);replica.receive(a,42,'bad');
+    await Promise.resolve();expect(seal).not.toHaveBeenCalled();
+    replica.receive(a,42,offer);await Promise.resolve();await Promise.resolve();
+    expect(send).toHaveBeenCalledTimes(2);expect(send.mock.calls.every(call=>call[0]===a)).toBe(true);
+    const nonce=JSON.parse(send.mock.calls[1][1].deviceSecurityTransfer).transfer.nonce;
+    expect(nonce).not.toBe(offer);
     let complete=false;void pending.then(()=>{complete=true;});
-    replica.receive(b,42,nonce);replica.receive(a,99,nonce);replica.receive(a,42,'bad');
+    replica.receive(a,42,offer);replica.receive(b,42,nonce);replica.receive(a,99,nonce);
     await Promise.resolve();expect(complete).toBe(false);
     replica.receive(a,42,nonce);await pending;
     expect(seal).toHaveBeenCalledWith(nonce);expect(manager.status().state).toBe('replica');
   });
-  it('stays sealed on timeout, disconnect and synchronous send failure',async()=>{
+  it('retains active custody when a subscribed native client is not ready',async()=>{
+    vi.useFakeTimers();
+    for(const mode of ['timeout','disconnect','throw']){
+      const replica=new DeviceSecurityReplica(),{manager,seal}=fixture(),a=socket();
+      replica.receive(a,42,DEVICE_SECURITY.subscriptionId);
+      const pending=replica.transfer(manager,()=>{if(mode==='throw')throw new Error('closed');},base);
+      if(mode==='disconnect')replica.remove(a);
+      if(mode==='timeout')await vi.advanceTimersByTimeAsync(DEVICE_SECURITY.offerTimeoutMs);
+      await pending;expect(seal).not.toHaveBeenCalled();expect(manager.status().state).toBe('listening');expect(vi.getTimerCount()).toBe(0);
+    }
+  });
+  it('stays sealed when the durable receipt fails after readiness was confirmed',async()=>{
     vi.useFakeTimers();
     for(const mode of ['timeout','disconnect','throw']){
       const replica=new DeviceSecurityReplica(),{manager}=fixture(),a=socket();
       replica.receive(a,42,DEVICE_SECURITY.subscriptionId);
-      const pending=replica.transfer(manager,()=>{if(mode==='throw')throw new Error('closed');},base);
-      const rejected=expect(pending).rejects.toThrow('unconfirmed');await Promise.resolve();
+      const pending=replica.transfer(manager,(_socket,event)=>{
+        const packet=JSON.parse(event.deviceSecurityTransfer!);
+        if(packet.offer){replica.receive(a,42,packet.offer);return;}
+        if(mode==='throw')throw new Error('closed');
+      },base);
+      const rejected=expect(pending).rejects.toThrow('unconfirmed');await vi.advanceTimersByTimeAsync(0);
       if(mode==='disconnect')replica.remove(a);
       if(mode==='timeout')await vi.advanceTimersByTimeAsync(DEVICE_SECURITY.ackTimeoutMs);
       await rejected;expect(manager.status().state).toBe('replica');expect(vi.getTimerCount()).toBe(0);

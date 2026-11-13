@@ -8,6 +8,7 @@ enum DeviceSecurityRules {
     static let maxIdentityBytes = 32768
     static let maxCertificateBytes = 8192
     static let subscriptionId = "device-security/v1"
+    static let offerTimeoutMs = 1000
     static let ackTimeoutMs = 3000
     static let bindTimeoutMs = 20000
     static let bindRetryMs = 250

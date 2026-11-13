@@ -1,7 +1,7 @@
 import { parseDeviceCredentialState, type DeviceCredentialState } from './device-credentials.js';
 
 /** Owner custody is independent of the legacy fleet token and its compatibility ring. */
-export const DEVICE_SECURITY = {version:1, file:'device-security.json', maxBytes:131072, maxIdentityBytes:32768, maxCertificateBytes:8192, subscriptionId:'device-security/v1', ackTimeoutMs:3000, bindTimeoutMs:20000, bindRetryMs:250} as const;
+export const DEVICE_SECURITY = {version:1, file:'device-security.json', maxBytes:131072, maxIdentityBytes:32768, maxCertificateBytes:8192, subscriptionId:'device-security/v1', offerTimeoutMs:1000, ackTimeoutMs:3000, bindTimeoutMs:20000, bindRetryMs:250} as const;
 export interface DeviceSecurityConfiguration {
   version:1;
   role:'owner'|'replica';

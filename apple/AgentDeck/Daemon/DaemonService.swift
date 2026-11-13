@@ -1040,12 +1040,17 @@ final class DaemonService: ObservableObject {
         guard isUsingExternalDaemon, currentPort > 0, token.isValid,
               let data = text.data(using: .utf8), data.count <= DeviceSecurityRules.maxBytes + DeviceCredentialRules.maxBytes + 1024,
               let receipt = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let pid = receipt["pid"] as? Int, LocalPeerOwnership.of(pid: pid) == .sameUser,
-              let transfer = receipt["transfer"] as? [String: Any], let nonce = transfer["nonce"] as? String,
-              JSONSerialization.isValidJSONObject(transfer), let transferData = try? JSONSerialization.data(withJSONObject: transfer) else { return nil }
+              let pid = receipt["pid"] as? Int, LocalPeerOwnership.of(pid: pid) == .sameUser else { return nil }
         let health = await healthMonitor.probeHealth(currentPort, false)
         guard token.isValid, isUsingExternalDaemon, Int(port) == currentPort, health?["pid"] as? Int == pid,
               LocalPeerOwnership.of(pid: pid) == .sameUser else { return nil }
+        // A new socket may arrive before stand-down has finished becoming a
+        // client. The source retains custody unless this readiness offer passes.
+        if let offer = receipt["offer"] as? String {
+            return DeviceCredentialRules.hex(offer, count: 32) ? offer : nil
+        }
+        guard let transfer = receipt["transfer"] as? [String: Any], let nonce = transfer["nonce"] as? String,
+              JSONSerialization.isValidJSONObject(transfer), let transferData = try? JSONSerialization.data(withJSONObject: transfer) else { return nil }
         do {
             try await DaemonActor.run {
                 guard token.isValid else { throw DeviceSecurityRules.Failure.invalidTransfer }

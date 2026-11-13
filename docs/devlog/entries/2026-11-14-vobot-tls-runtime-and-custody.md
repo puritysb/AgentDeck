@@ -48,3 +48,23 @@ private custody packet. Promoting a stale replica merely because the previous
 process disappeared was rejected because it could revive revoked authority.
 The test used temporary home/data directories, loopback-only ports and disabled
 device modules; it did not replace the operating daemon.
+
+The actual signed sandbox app exposed a boundary the store fixture could not:
+after Swift yielded to Node, its UI socket subscribed before `DaemonService`
+finished entering client mode. Stopping Node in that interval sealed its
+custody, but the native callback correctly refused the transfer. Both stores
+then remained replicas. A separate readiness offer now precedes sealing;
+an unready receiver leaves Node's durable owner state intact for restart.
+The readiness nonce differs from the durable receipt nonce, so a delayed
+readiness response cannot acknowledge persistence. The one-second offer and
+three-second receipt fit within the five-second shutdown budget. Once sealing
+has happened, an unconfirmed receipt still fails closed; it never promotes an
+old replica or pretends that an unknown write failed.
+
+The corrected path passed with a separately signed sandbox app using its own
+bundle identifier, container, loopback port 19460 and disabled hardware modules.
+The actual native callbacks handled Node-to-Swift custody and TLS serving,
+Swift-to-Node takeover, a restart before client readiness, and a restart after
+client readiness. The original device token remained usable and the revoked
+token remained rejected throughout. This was a local test derivative, not an
+App Store artifact or a deployment to the operating fleet.

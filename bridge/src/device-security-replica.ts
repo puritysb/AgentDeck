@@ -44,16 +44,27 @@ export class DeviceSecurityReplica {
     if(manager.status().state!=='listening')return;
     const selected=[...this.peers].find(([socket,pid])=>socket.readyState===WebSocket.OPEN&&localPeerOwnership(pid)==='same-user');
     if(!selected)return; // Retain the durable owner state for its own restart.
-    const [socket,pid]=selected,nonce=randomBytes(16).toString('hex');
+    const [socket,pid]=selected;
+    // A subscribed UI socket may connect before native ownership reaches client
+    // mode. Confirm readiness before sealing; silence retains our owner state.
+    const offer=randomBytes(16).toString('hex');
+    try {
+      await this.receipt(socket,pid,offer,DEVICE_SECURITY.offerTimeoutMs,()=>send(socket,
+        {...base,deviceSecurityTransfer:JSON.stringify({pid:process.pid,offer})} as BridgeEvent));
+    } catch { return; }
+    if(socket.readyState!==WebSocket.OPEN||localPeerOwnership(pid)!=='same-user')return;
+    const nonce=randomBytes(16).toString('hex');
     const receipt=await manager.sealForHandover(nonce);
     if(!receipt)return;
-    await new Promise<void>((resolve,reject)=>{
+    await this.receipt(socket,pid,nonce,DEVICE_SECURITY.ackTimeoutMs,()=>send(socket,
+      {...base,deviceSecurityTransfer:JSON.stringify({pid:process.pid,transfer:receipt})} as BridgeEvent));
+  }
+  private receipt(socket:WebSocket,pid:number,nonce:string,timeout:number,send:()=>void):Promise<void>{
+    return new Promise<void>((resolve,reject)=>{
       const fail=()=>{clearTimeout(timer);this.pending=null;reject(new Error('device-security-replica-unconfirmed'));};
-      const timer=setTimeout(fail,DEVICE_SECURITY.ackTimeoutMs);
+      const timer=setTimeout(fail,timeout);
       this.pending={socket,pid,nonce,fail,ack:()=>{clearTimeout(timer);this.pending=null;resolve();}};
-      try {
-        send(socket,{...base,deviceSecurityTransfer:JSON.stringify({pid:process.pid,transfer:receipt})} as BridgeEvent);
-      } catch { fail(); }
+      try { send(); } catch { fail(); }
     });
   }
 }
