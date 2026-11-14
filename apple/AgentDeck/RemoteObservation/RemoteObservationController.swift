@@ -42,6 +42,8 @@ final class RemoteObservationController: ObservableObject {
     private var readerRetryAt: Date?
     private var pendingEventID: UUID?
     private var started = false
+    /// Debug capture pin only; never set in Release.
+    private var fixturePinned = false
     #if os(macOS)
     private var activity: NSObjectProtocol?
     #endif
@@ -53,8 +55,25 @@ final class RemoteObservationController: ObservableObject {
          jitter: @escaping () -> Double = { Double.random(in: 0.8...1.2) },
          automaticLifecycle: Bool = !AgentDeckApp.isHostedTest()) {
         self.transport = transport; self.disk = disk; self.now = now
-        self.localIdentity = localIdentity; self.automaticLifecycle = automaticLifecycle
+        self.localIdentity = localIdentity
         self.jitter = jitter
+        #if DEBUG && os(iOS)
+        // Capture pin (`-AgentDeckWatchFixture <name>`): show a synthetic received
+        // snapshot on the Remote tab without reading consent, cache or iCloud.
+        let pinned = automaticLifecycle ? WatchFixture.fromLaunchArguments(now: now()) : nil
+        self.automaticLifecycle = automaticLifecycle && pinned == nil
+        if let pinned {
+            fixturePinned = true
+            reader.receiving = true
+            reader.notifications = true
+            snapshot = pinned
+            status = "Fetched the Mac's original observation."
+            selectedTab = .remote
+            return
+        }
+        #else
+        self.automaticLifecycle = automaticLifecycle
+        #endif
         // Hosted apps must not inspect the real user's consent/cache or contact iCloud.
         if automaticLifecycle { restoreDisk() }
     }
@@ -436,7 +455,7 @@ final class RemoteObservationController: ObservableObject {
     #endif
 
     func refresh(force: Bool = false) async {
-        guard !busy, reader.receiving || reader.unsubscribePending else { return }
+        guard !busy, !fixturePinned, reader.receiving || reader.unsubscribePending else { return }
         if !force {
             if let readerRetryAt, now() < readerRetryAt { return }
             if pendingEventID == nil, let lastReadAt, now().timeIntervalSince(lastReadAt) < RemoteObservationPolicy.publishInterval { return }

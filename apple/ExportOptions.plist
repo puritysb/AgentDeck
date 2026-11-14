@@ -16,6 +16,10 @@
 	<dict>
 		<key>bound.serendipity.agent.deck</key>
 		<string>AgentDeck Dashboard AppStore</string>
+		<key>bound.serendipity.agent.deck.watchkitapp</key>
+		<string>AgentDeck Watch AppStore</string>
+		<key>bound.serendipity.agent.deck.watchkitapp.widgets</key>
+		<string>AgentDeck Watch Widgets AppStore</string>
 	</dict>
 </dict>
 </plist>

@@ -22,7 +22,7 @@ case "$PLATFORM" in
             set -- -only-testing:AgentDeckTests_macOS/CloudKitProbeTests \
                    -only-testing:AgentDeckTests_macOS/RemoteObservationProjectionTests \
                    -only-testing:AgentDeckTests_macOS/RemoteObservationPersistenceTests \
-                   -only-testing:AgentDeckTests_macOS/RemoteGlanceTests \
+                   -only-testing:AgentDeckTests_macOS/WatchGlanceTests \
                    -only-testing:AgentDeckTests_macOS/WatchObservationModelTests \
                    -only-testing:AgentDeckTests_macOS/RemoteObservationProductTests \
                    -only-testing:AgentDeckTests_macOS/RemoteObservationCloudStoreTests
@@ -30,7 +30,7 @@ case "$PLATFORM" in
         ;;
     iOS) ACTION=build; DESTINATION='generic/platform=iOS Simulator'; PRODUCTS="$CONFIGURATION-iphonesimulator" ;;
     watchOS)
-        [ "$CONFIGURATION" = CloudKitPoCDebug ] || { echo "Watch verification is development-only" >&2; exit 2; }
+        case "$CONFIGURATION" in Debug|Release) ;; *) echo "Watch verification uses Debug or Release" >&2; exit 2 ;; esac
         ACTION=build; DESTINATION='generic/platform=watchOS Simulator'; PRODUCTS="$CONFIGURATION-watchsimulator"
         ;;
     *) echo "Unknown platform: $PLATFORM" >&2; exit 2 ;;

@@ -70,6 +70,7 @@ ACCENTS = {
     "03-attention": AMBER_500,
     "04-complete": KELP_300,
     "05-devices": KELP_300,
+    "05-remote": AMBER_500,
 }
 
 CAPTIONS = {
@@ -104,6 +105,16 @@ CAPTIONS = {
                "끝난 세션은 바닥에 내려앉습니다 — 눈에 보이는 평온."),
         "ja": ("仕事が終われば\n水槽は静かになる",
                "終わったセッションは底へ沈む — 見える静けさ。"),
+    },
+    # iPhone/iPad Remote tab (2.2.0): the read-only iCloud reader that the
+    # Apple Watch app shares. Synthetic WatchFixture "busy" snapshot.
+    "05-remote": {
+        "en": ("Away from your Mac,\nstill in the loop",
+               "Read-only work counts, sessions and allowance through your\nprivate iCloud — on iPhone, iPad and Apple Watch."),
+        "ko": ("Mac을 떠나 있어도\n흐름은 그대로",
+               "개인 iCloud로 받는 읽기 전용 작업 수 · 세션 · 사용량 —\niPhone, iPad, Apple Watch에서."),
+        "ja": ("Macを離れていても\n流れはそのまま",
+               "プライベートiCloudで届く読み取り専用の件数・セッション・使用量 —\niPhone、iPad、Apple Watchで。"),
     },
     # macOS-only feature panel: the downstream rail, cropped from the fleet
     # capture. The rail is the one surface that shows the whole desk fleet.

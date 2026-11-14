@@ -1,0 +1,313 @@
+{
+ "version": "2.2.0",
+ "screenshots": [
+  {
+   "file": "apple/appstore-submission/screenshots/en/iPhone/01-fleet.png",
+   "sha256": "1cb98cc4c10e36434ad43077399123020b29cbc2ea16a86a4743a1b922aebe40",
+   "platform": "iPhone",
+   "locale": "en"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/iPhone/05-remote.png",
+   "sha256": "bd3beaf7d14d5b598f79553a1b09039525724963243e479ec7b9189b51d89596",
+   "platform": "iPhone",
+   "locale": "en"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/iPhone/02-all-sessions.png",
+   "sha256": "664c23370698d1245ac3be622401ec59652fc048612b2abb98c44c6bdcfa75b2",
+   "platform": "iPhone",
+   "locale": "en"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/iPhone/03-attention.png",
+   "sha256": "fe0b9d018db9f89ec4404924d8c126b14cd79e0950cd8e4d5476373ddf5a1bc6",
+   "platform": "iPhone",
+   "locale": "en"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/iPhone/04-complete.png",
+   "sha256": "d27168437de98fc25b047688bbf4bd435e66135dc4dc53b193088c01ac858a1f",
+   "platform": "iPhone",
+   "locale": "en"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/iPad/01-fleet.png",
+   "sha256": "bacdbb76c2c3482838ad45cce22ebd567c17c823635eb74f559c0c3ac765bed6",
+   "platform": "iPad",
+   "locale": "en"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/iPad/05-remote.png",
+   "sha256": "6c9d60ec004e12598455d1bd88b33ea8b657cc5ba9e0ea5e40a4ed3efa237ff0",
+   "platform": "iPad",
+   "locale": "en"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/iPad/02-all-sessions.png",
+   "sha256": "bab956f1fad00a6cf3e4184c4ab52130910c04469dd5e6dc1c517eded6fe454e",
+   "platform": "iPad",
+   "locale": "en"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/iPad/03-attention.png",
+   "sha256": "1062c823a59e98a53fe45d71d50230bc8eba0030be107146f9fefd1be95c4f4d",
+   "platform": "iPad",
+   "locale": "en"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/iPad/04-complete.png",
+   "sha256": "f24f313d899328dedd654286e5a5871d4681d2dd433c9fefe9027f4b7deaca56",
+   "platform": "iPad",
+   "locale": "en"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/Watch/ultra49-1-needs-you.png",
+   "sha256": "62d6e1ed858eaa4106995c1dc13c32e83c4a94ba6e42e32cd86b5dab7f4548ed",
+   "platform": "Watch",
+   "locale": "en"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/Watch/ultra49-2-sessions.png",
+   "sha256": "b4e5f9c3b28c324dfb5c0a91e31c9dd43f33fdef036bb69427d15ff912d6d063",
+   "platform": "Watch",
+   "locale": "en"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/Watch/ultra49-3-allowance.png",
+   "sha256": "abafd41fc22df39436d3d0a8e1a35e5051055ba3682686a1650ddd1818883daf",
+   "platform": "Watch",
+   "locale": "en"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/Watch/ultra49-4-alert.png",
+   "sha256": "7e47e3bf668c9e2bbef621ddbd090829f006771e0b907b635f8db2e04a385460",
+   "platform": "Watch",
+   "locale": "en"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/Watch/ultra49-5-working.png",
+   "sha256": "6911b83097f97e0ae2f030fd0adf23686ff9a80117bb3fad11a7002642e6c23d",
+   "platform": "Watch",
+   "locale": "en"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/Watch/ultra49-6-all-clear.png",
+   "sha256": "8f0e966c60062f8f0794b5b3aceddbaccffb12909870027c935f82c70f9c7d72",
+   "platform": "Watch",
+   "locale": "en"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/ko/iPhone/01-fleet.png",
+   "sha256": "f9a404a2a3d488d6d55552fe44d689666538843d23b43ee8e62d03a7ee8982e8",
+   "platform": "iPhone",
+   "locale": "ko"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/ko/iPhone/05-remote.png",
+   "sha256": "773d4de37e39e7190f6a6dd261368a9ad3deff22011b9c73bb6423f498da236d",
+   "platform": "iPhone",
+   "locale": "ko"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/ko/iPhone/02-all-sessions.png",
+   "sha256": "f58917e07bc3169d6d0c20f63492bba56d0cbf4997c567dfbbb0a3e64ee0a354",
+   "platform": "iPhone",
+   "locale": "ko"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/ko/iPhone/03-attention.png",
+   "sha256": "75bfc6411a1864700c76c76de82c991a63095d5d707fa820c0c54901ace4318a",
+   "platform": "iPhone",
+   "locale": "ko"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/ko/iPhone/04-complete.png",
+   "sha256": "07edc7d4dac129bfdafb7cb42e4ef378466a1852a363a9549d3283f059f61444",
+   "platform": "iPhone",
+   "locale": "ko"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/ko/iPad/01-fleet.png",
+   "sha256": "75329fb570f296ee8620b451cd5ded99d3516ba66ca244d2ab56fa61a468c6f0",
+   "platform": "iPad",
+   "locale": "ko"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/ko/iPad/05-remote.png",
+   "sha256": "302f1d12354ce0fd6ed9af748011f275077247bb29a704ddb834933190ad0033",
+   "platform": "iPad",
+   "locale": "ko"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/ko/iPad/02-all-sessions.png",
+   "sha256": "79402706169d3660db9012f9bcedaa1d9413467d033374896396f6f6f9769133",
+   "platform": "iPad",
+   "locale": "ko"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/ko/iPad/03-attention.png",
+   "sha256": "c1473d3c599faac33d4dd1fd9bbb6c6e372ee046eec70e5e2fdca4d1ae5d1f5e",
+   "platform": "iPad",
+   "locale": "ko"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/ko/iPad/04-complete.png",
+   "sha256": "f3def6d9727b98e00f6aafe121d39c084acd418ad7c2b3570523b1b8f890b1cb",
+   "platform": "iPad",
+   "locale": "ko"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/Watch/ultra49-1-needs-you.png",
+   "sha256": "62d6e1ed858eaa4106995c1dc13c32e83c4a94ba6e42e32cd86b5dab7f4548ed",
+   "platform": "Watch",
+   "locale": "ko"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/Watch/ultra49-2-sessions.png",
+   "sha256": "b4e5f9c3b28c324dfb5c0a91e31c9dd43f33fdef036bb69427d15ff912d6d063",
+   "platform": "Watch",
+   "locale": "ko"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/Watch/ultra49-3-allowance.png",
+   "sha256": "abafd41fc22df39436d3d0a8e1a35e5051055ba3682686a1650ddd1818883daf",
+   "platform": "Watch",
+   "locale": "ko"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/Watch/ultra49-4-alert.png",
+   "sha256": "7e47e3bf668c9e2bbef621ddbd090829f006771e0b907b635f8db2e04a385460",
+   "platform": "Watch",
+   "locale": "ko"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/Watch/ultra49-5-working.png",
+   "sha256": "6911b83097f97e0ae2f030fd0adf23686ff9a80117bb3fad11a7002642e6c23d",
+   "platform": "Watch",
+   "locale": "ko"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/Watch/ultra49-6-all-clear.png",
+   "sha256": "8f0e966c60062f8f0794b5b3aceddbaccffb12909870027c935f82c70f9c7d72",
+   "platform": "Watch",
+   "locale": "ko"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/ja/iPhone/01-fleet.png",
+   "sha256": "f78660f418ad941ec45a314e7c08c21ae0b0609e764230b7004effde7e03085f",
+   "platform": "iPhone",
+   "locale": "ja"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/ja/iPhone/05-remote.png",
+   "sha256": "a303342ab229faa09498d0f648733a62d3607f65222ee030531071ca6019e992",
+   "platform": "iPhone",
+   "locale": "ja"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/ja/iPhone/02-all-sessions.png",
+   "sha256": "2f81794e44cd48efc64285cbd54eccf2ce3c89cd8ab994332be6da3fc1a9d0a8",
+   "platform": "iPhone",
+   "locale": "ja"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/ja/iPhone/03-attention.png",
+   "sha256": "0e9e3368de8849b2c7ffbb063cd38ce27ff0bee7e8df5cc8f4533780780ce857",
+   "platform": "iPhone",
+   "locale": "ja"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/ja/iPhone/04-complete.png",
+   "sha256": "32cb12b7d62f68d44c8aa3ecda489ee71d8725e5a6ebb0eb8ebe5338097619b8",
+   "platform": "iPhone",
+   "locale": "ja"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/ja/iPad/01-fleet.png",
+   "sha256": "048bf18ecf0e56008bebfc536ad3bf90765afa9c8fde0a62f98f3af5ee0adaa9",
+   "platform": "iPad",
+   "locale": "ja"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/ja/iPad/05-remote.png",
+   "sha256": "67b0a13f1f92afda30bf5d72245454b9a06ab9a1b9ff6c5d361729603619696e",
+   "platform": "iPad",
+   "locale": "ja"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/ja/iPad/02-all-sessions.png",
+   "sha256": "5a0e40417db08266afebf315f9d6db5daae79e8dc838c6534628c782282e85f6",
+   "platform": "iPad",
+   "locale": "ja"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/ja/iPad/03-attention.png",
+   "sha256": "29179fe7c0618168761f4dac444a3146de40f96549c9bc06a9c6f736bb52aa23",
+   "platform": "iPad",
+   "locale": "ja"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/ja/iPad/04-complete.png",
+   "sha256": "e6e8d3118d47f0ec60303878ee83b50826b19f8e3ced8e7cdf37b11f001c1b24",
+   "platform": "iPad",
+   "locale": "ja"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/Watch/ultra49-1-needs-you.png",
+   "sha256": "62d6e1ed858eaa4106995c1dc13c32e83c4a94ba6e42e32cd86b5dab7f4548ed",
+   "platform": "Watch",
+   "locale": "ja"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/Watch/ultra49-2-sessions.png",
+   "sha256": "b4e5f9c3b28c324dfb5c0a91e31c9dd43f33fdef036bb69427d15ff912d6d063",
+   "platform": "Watch",
+   "locale": "ja"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/Watch/ultra49-3-allowance.png",
+   "sha256": "abafd41fc22df39436d3d0a8e1a35e5051055ba3682686a1650ddd1818883daf",
+   "platform": "Watch",
+   "locale": "ja"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/Watch/ultra49-4-alert.png",
+   "sha256": "7e47e3bf668c9e2bbef621ddbd090829f006771e0b907b635f8db2e04a385460",
+   "platform": "Watch",
+   "locale": "ja"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/Watch/ultra49-5-working.png",
+   "sha256": "6911b83097f97e0ae2f030fd0adf23686ff9a80117bb3fad11a7002642e6c23d",
+   "platform": "Watch",
+   "locale": "ja"
+  },
+  {
+   "file": "apple/appstore-submission/screenshots/en/Watch/ultra49-6-all-clear.png",
+   "sha256": "8f0e966c60062f8f0794b5b3aceddbaccffb12909870027c935f82c70f9c7d72",
+   "platform": "Watch",
+   "locale": "ja"
+  }
+ ],
+ "previews": [
+  {
+   "file": "apple/appstore-submission/previews/iPhone/agentdeck-preview.mp4",
+   "sha256": "c441d3600d04a0173f9b884ce815109c282e732a1aaa2423bb78c7c2598d85ba",
+   "platform": "iPhone"
+  },
+  {
+   "file": "apple/appstore-submission/previews/iPad/agentdeck-preview.mp4",
+   "sha256": "7aba2922381b3f5ab917f977e795875e89720fcf320e1b845e7d3cb90be28743",
+   "platform": "iPad"
+  }
+ ],
+ "notes": [
+  "iPhone/iPad 05-remote: Debug build Remote tab with the synthetic WatchFixture 'busy' snapshot; iPhone 16 Pro Max capture scaled uniformly to the 6.5-inch 1284x2778 set and composed with per-locale captions (scripts/compose-appstore-screenshots.py).",
+  "iPhone/iPad 01-04 and both previews are the approved 2.1.0 media, unchanged.",
+  "Watch: Ultra 3 49 mm 422x514 (APP_WATCH_ULTRA) from the Debug Watch app with synthetic fixtures; the Watch UI is English-only, so every locale uses the same captures.",
+  "Clock shows the capture time: watchOS Simulator does not support status-bar overrides",
+  "The video is a demo asset: App Store Connect has no App Preview slot for Apple Watch",
+  "The long-look screenshot is the app's notification view rendered in-app (DEBUG page pin), not a captured forwarded alert"
+ ]
+}

@@ -315,8 +315,11 @@ actor RemoteObservationCloudStore: RemoteObservationTransport {
                 subscriptionID: id, options: .firesOnRecordCreation)
             subscription.zoneID = Self.zoneID
             let info = CKSubscription.NotificationInfo()
-            info.alertBody = "AgentDeck has an update to review."
+            // Content-free by contract: the alert names no agent, project or text.
+            info.title = "AgentDeck"
+            info.alertBody = "An agent is waiting for your response."
             info.soundName = "default"
+            info.category = RemoteObservationContract.attentionCategory
             subscription.notificationInfo = info
             subscriptions = [subscription]
         }

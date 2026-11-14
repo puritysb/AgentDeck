@@ -27,6 +27,8 @@ An Apple signing certificate belongs to a developer team, not a bundle ID. The M
 | `APPLE_INSTALLER_CERTIFICATE_BASE64`    | Password-protected `.p12` containing the organization Mac Installer Distribution certificate and private key |
 | `APPLE_CERTIFICATE_PASSWORD`            | The password used for both `.p12` files                                                                      |
 | `IOS_PROVISIONING_PROFILE_BASE64`       | App Store profile for `QF36NDHYHD.bound.serendipity.agent.deck`                                              |
+| `WATCH_PROVISIONING_PROFILE_BASE64`     | App Store profile for the embedded Watch app `QF36NDHYHD.bound.serendipity.agent.deck.watchkitapp`           |
+| `WATCH_WIDGETS_PROVISIONING_PROFILE_BASE64` | App Store profile for its complications `QF36NDHYHD.bound.serendipity.agent.deck.watchkitapp.widgets`    |
 | `MACOS_PROVISIONING_PROFILE_BASE64`     | Mac App Store profile for `QF36NDHYHD.bound.serendipity.agent.deck`                                          |
 | `ASC_API_KEY_ID`                        | Organization App Store Connect API key ID                                                                    |
 | `ASC_ISSUER_ID`                         | Organization App Store Connect issuer ID                                                                     |
@@ -59,23 +61,32 @@ Separate files avoid relying on Keychain Access to export a multi-private-key PK
 
 ## 2. Create the App Store profiles
 
-Create two distribution profiles in Certificates, Identifiers & Profiles:
+Create four distribution profiles in Certificates, Identifiers & Profiles:
 
 | Platform | Profile type  | App ID                         | Profile name                         |
 | -------- | ------------- | ------------------------------ | ------------------------------------ |
 | iOS      | App Store     | `bound.serendipity.agent.deck` | `AgentDeck Dashboard AppStore`       |
+| iOS      | App Store     | `bound.serendipity.agent.deck.watchkitapp` | `AgentDeck Watch AppStore` |
+| iOS      | App Store     | `bound.serendipity.agent.deck.watchkitapp.widgets` | `AgentDeck Watch Widgets AppStore` |
 | macOS    | Mac App Store | `bound.serendipity.agent.deck` | `AgentDeck Dashboard macOS AppStore` |
 
-Select the new organization Apple Distribution certificate for both. Do not select an old `R22679GY5Z` certificate.
+The two Watch App IDs need the iCloud capability with CloudKit and the
+`iCloud.bound.serendipity.agent.deck` container assigned before their profiles
+are generated; the iOS archive embeds both bundles and each is signed with its
+own profile (`apple/project.yml` release configs, `apple/ExportOptions.plist`).
+
+Select the new organization Apple Distribution certificate for every profile. Do not select an old `R22679GY5Z` certificate.
 
 ## 3. Upload the secrets
 
-Base64-encode the four binary files without copying them into the repository:
+Base64-encode the six binary files without copying them into the repository:
 
 ```bash
 base64 -i agentdeck-apple-distribution.p12 | gh secret set APPLE_DISTRIBUTION_CERTIFICATE_BASE64
 base64 -i agentdeck-mac-installer.p12 | gh secret set APPLE_INSTALLER_CERTIFICATE_BASE64
 base64 -i AgentDeck_Dashboard_AppStore.mobileprovision | gh secret set IOS_PROVISIONING_PROFILE_BASE64
+base64 -i AgentDeck_Watch_AppStore.mobileprovision | gh secret set WATCH_PROVISIONING_PROFILE_BASE64
+base64 -i AgentDeck_Watch_Widgets_AppStore.mobileprovision | gh secret set WATCH_WIDGETS_PROVISIONING_PROFILE_BASE64
 base64 -i AgentDeck_Dashboard_macOS_AppStore.provisionprofile | gh secret set MACOS_PROVISIONING_PROFILE_BASE64
 gh secret set APPLE_CERTIFICATE_PASSWORD
 ```

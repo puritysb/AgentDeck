@@ -10,6 +10,8 @@ enum RemoteObservationContract {
     static let snapshotRecord = "latest"
     static let snapshotType = "ObservationSnapshot"
     static let eventType = "AttentionEvent"
+    /// Notification category; the Watch renders it with a graphical long look.
+    static let attentionCategory = "AGENTDECK_ATTENTION"
     static let payloadLimit = 16_384
     static let eventRetention: TimeInterval = 24 * 60 * 60
     static let cleanupBatch = 100
@@ -51,7 +53,11 @@ enum RemoteObservationContract {
     }
 
     static var disk: RemoteProbeDisk {
+        #if os(watchOS)
+        storage(in: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0], environment: environment)
+        #else
         storage(in: AgentDeckPaths.baseDirectory, environment: environment)
+        #endif
     }
 }
 
@@ -179,6 +185,7 @@ struct RemoteUsageWindow: Codable, Equatable, Sendable {
     let resetsAt: Date
     let validUntil: Date?
 
+#if !os(watchOS)
     static func zaiAccount(_ quota: ZaiRateLimits, observedAt: Date?, at now: Date) -> [Self] {
         guard quota.authFailed != true, let observedAt else { return [] }
         let validUntil = observedAt.addingTimeInterval(10 * 60)
@@ -190,6 +197,7 @@ struct RemoteUsageWindow: Codable, Equatable, Sendable {
         }
     }
 
+#endif
     #if os(macOS)
     static func codexAccount(_ account: CodexRateLimitsLocal?, plan: String?, at now: Date) -> [Self] {
         guard let account, CodexPlanRules.snapshotMatchesAccountPlan(snapshot: account.planType, account: plan) else { return [] }
@@ -225,6 +233,7 @@ struct RemoteLocalRoster: Sendable {
     let observedAt: Date
 }
 
+#if !os(watchOS)
 /// Local-only identifiers are confined to this journal, never to a CloudKit payload.
 struct RemotePublicationJournal: Codable, Equatable, Sendable {
     enum Intent: String, Codable { case none, stop, delete }
@@ -341,6 +350,8 @@ struct RemotePublicationJournal: Codable, Equatable, Sendable {
     }
 }
 
+#endif
+
 struct RemoteReaderJournal: Codable, Sendable {
     var version = 1
     var receiverID = UUID()
@@ -351,6 +362,7 @@ struct RemoteReaderJournal: Codable, Sendable {
     var unsubscribePending = false
 }
 
+#if !os(watchOS)
 /// Small independent revocation marker: a failed larger journal write must not restore old consent.
 struct RemoteSharingRevocation: Codable {
     let account: String
@@ -358,6 +370,8 @@ struct RemoteSharingRevocation: Codable {
     let revision: Int
     let intent: RemotePublicationJournal.Intent
 }
+
+#endif
 
 struct RemoteObservationCache: Codable {
     var version = 1

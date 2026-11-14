@@ -11,6 +11,39 @@ new English, Korean and Japanese screenshots (four per platform) selected for
 the three preview videos. Other retained screenshot files are historical extras.
 Prepared does not mean uploaded, submitted or live; record each portal readback.
 
+## 2.2.0 iOS selected set: Remote monitoring and Apple Watch (prepared 2026-11-14)
+
+[Selection and SHA-256 provenance](media-2.2.0-selection.json) pins, per locale,
+five iPhone and five iPad screenshots (the 2.1.0 set plus `05-remote` in second
+position), the unchanged 2.1.0 iPhone/iPad previews, and six Apple Watch
+screenshots (`screenshots/en/Watch/ultra49-*.png`, 422×514, `APP_WATCH_ULTRA`;
+the Watch UI is English-only, so all locales share them). The Watch app ships
+inside the iPhone app, so its media belongs to the iOS version. `series46-*.png`
+(416×496) are retained alternates. [Localized listing](metadata-2.2.0.json).
+`previews/Watch/agentdeck-watch-demo-ultra49.mp4` is a demo for the web site
+and review notes; App Store Connect has no App Preview slot for Apple Watch.
+
+The listing copy below was folded into `metadata-2.2.0.json`; it is kept here
+as the short form for the web site:
+
+> **Apple Watch.** Glance at your agents from your wrist. The AgentDeck Watch
+> app reads the encrypted summary your Mac shares to your private iCloud: how
+> many agents need you, which are working, each agent's mark and state, and how
+> much allowance is left. Complications keep the count on your watch face, and
+> a forwarded alert shows who is waiting. It is read-only: answer on your Mac.
+
+> **Apple Watch.** 손목에서 에이전트 상태를 확인하세요. AgentDeck Watch 앱은
+> Mac이 개인 iCloud에 공유한 암호화된 요약을 읽어, 응답을 기다리는 에이전트
+> 수, 작업 중인 에이전트, 에이전트별 마크와 상태, 남은 사용량을 보여 줍니다.
+> 컴플리케이션으로 시계 화면에 개수를 두고, 전달된 알림에서 누가 기다리는지
+> 볼 수 있습니다. 읽기 전용이며 응답은 Mac에서 합니다.
+
+Before upload: Production CloudKit read and a forwarded long look on a
+physical Watch, the two Watch App Store profiles and CI secrets
+([setup](../../docs/asc-cert-setup.md)), a signed archive passing
+`verify-appstore-archive.sh`, and a Watch-face complication capture from that
+device (the simulator in this Xcode has no face editor).
+
 ## Screenshot sets
 
 Localized screenshots live under `screenshots/{en,ko,ja}/{macOS,iPhone,iPad}/`.
