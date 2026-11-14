@@ -30,6 +30,25 @@ Hand this checklist to internal testers (you + 2-3 trusted reviewers) before sub
 
 Before starting, note your macOS version, device model, and any non-default accessibility / language settings in the bug report template at the end.
 
+## Read-only remote monitoring — Production candidate
+
+Use the actual signed macOS/iOS TestFlight builds and deployed Production schema.
+Development PoC delivery does not satisfy these checks. Record each platform's
+version/build and signed CloudKit/APNs environment separately. Full preparation
+and latency sampling: [remote monitoring](apple-remote-observation.md#production-preparation-and-acceptance).
+
+- [ ] Fresh launch asks for neither cloud sharing nor notification authorization. The Remote tab opens without LAN pairing, including before local onboarding completes.
+- [ ] Explicit Mac sharing and phone receiving use the same Apple Account. Aggregate counts and original observation time appear by default. Separately enabling detailed sharing adds bounded session/state rows and timestamped account usage; disabling it removes those details after publication. No question text or controls appear in Remote.
+- [ ] A real wait after enrollment produces a generic alert on the eligible phone/Watch. A baseline wait does not produce a historical alert.
+- [ ] Open a resolved, expired and still-waiting alert. A disconnected/missing source remains unconfirmed; no disappearance claims task success. Foreground alerts do not switch tabs without a tap.
+- [ ] Disable phone Wi-Fi and use cellular. Exercise locked phone/Watch, background, force quit, Focus and denied alerts; distinguish cloud-save acknowledgement from visible delivery.
+- [ ] Sleep/quit the Mac and reopen the phone offline. Source time never advances on fetch, data becomes historical after three minutes, expired counts are hidden after seven days, and unknown identity does not reveal another account's cache.
+- [ ] Switch the local daemon between Swift and Node and use a non-default port. Close the Mac Dashboard. Sharing follows only the app's preferred local daemon and continues with menu-bar-only operation.
+- [ ] Stop sharing offline, terminate/relaunch, reconnect: disabled consent persists and the phone eventually sees sharing stopped. Delete offline, relaunch, reconnect: records/subscriptions disappear before confirmed-success copy appears.
+- [ ] Stop receiving offline: reader clears immediately; its pending subscription cleanup completes under the original account without clearing another receiver's subscription.
+- [ ] Switch/sign out of iCloud during a save; verify consent revocation, no cross-account outbox replay and explicit recovery of original-account pending cleanup. Test full storage/throttling and finite network deadlines.
+- [ ] Record 20 spaced eligible alerts, delays, misses, duplicates and resolved-before-delivery outcomes. Review privacy-policy/ASC disclosures and run the signed Production archive guard before submission.
+
 ---
 
 ## Section A — First-run experience (macOS)

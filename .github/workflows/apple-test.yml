@@ -131,7 +131,7 @@ jobs:
       - name: Verify compiled Dot boundary
         run: python3 apple/scripts/verify-dot-build.py "$RUNNER_TEMP/AgentDeckDerivedData/Build/Products/${{ matrix.configuration }}/AgentDeck.app" '${{ matrix.dot }}'
 
-      - name: Verify deterministic CloudKit PoC without iCloud access
+      - name: Verify CloudKit transport and remote monitoring without iCloud access
         if: matrix.configuration == 'Debug'
         env:
           AGENTDECK_APPLE_DERIVED_DATA: ${{ runner.temp }}/AgentDeckCloudKitDerivedData

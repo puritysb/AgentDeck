@@ -20,7 +20,12 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
     #if os(macOS)
     /// Freshness for native session actions must come from a roster frame,
     /// never a usage/timeline update or the wake watchdog's timestamp.
-    private var latestAttentionSessionSnapshot: AttentionSessionSnapshot?
+    var onRemoteObservationInvalidated: (@Sendable () -> Void)?
+    private var latestAttentionSessionSnapshot: AttentionSessionSnapshot? {
+        didSet {
+            if oldValue != nil, latestAttentionSessionSnapshot == nil { onRemoteObservationInvalidated?() }
+        }
+    }
     var attentionSessionSnapshot: AttentionSessionSnapshot? {
         guard !isTerminating, !userStoppedConnecting, state.bridgeConnected,
               connection.status == .connected,
@@ -28,6 +33,40 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
               snapshot.endpoint == PairingCredential.endpoint(of: connection.url),
               snapshot.endpoint == PairingCredential.endpoint(of: selectedBridgeURL) else { return nil }
         return snapshot
+    }
+
+    private var relayedZaiUsage: (endpoint: String, token: BridgeDeliveryToken, windows: [RemoteUsageWindow])?
+
+    /// Only the app's currently pinned local daemon can supply cloud observations.
+    /// A selected LAN host or capture fixture never becomes this Mac's publisher.
+    private var remoteObservationEndpoint: String? {
+        #if DEBUG
+        guard !hasLaunchArgumentBridgePin else { return nil }
+        #endif
+        guard !isInertHost,
+              let preferredLocalBridgeUrl,
+              let host = URL(string: preferredLocalBridgeUrl)?.host?.lowercased(),
+              ["localhost", "127.0.0.1", "::1", "[::1]"].contains(host),
+              let endpoint = PairingCredential.endpoint(of: preferredLocalBridgeUrl),
+              endpoint == PairingCredential.endpoint(of: connection.url),
+              endpoint == PairingCredential.endpoint(of: selectedBridgeURL) else { return nil }
+        return endpoint
+    }
+
+    var remoteObservationRoster: RemoteLocalRoster? {
+        guard let endpoint = remoteObservationEndpoint,
+              let snapshot = attentionSessionSnapshot, snapshot.isFresh(),
+              snapshot.endpoint == endpoint else { return nil }
+        return RemoteLocalRoster(sessions: snapshot.sessions.map {
+            RemoteSessionEvidence(row: $0, observedAt: snapshot.receivedAt)
+        }, observedAt: snapshot.receivedAt)
+    }
+
+    func remoteRelayedZaiUsage(daemonURL: String, at now: Date = Date()) -> [RemoteUsageWindow] {
+        guard let reading = relayedZaiUsage, reading.token.isValid, connection.status == .connected,
+              reading.endpoint == remoteObservationEndpoint,
+              reading.endpoint == PairingCredential.endpoint(of: daemonURL) else { return [] }
+        return reading.windows.filter { $0.isVisible(at: now) }
     }
     #endif
     private var lastKnownState: DashboardState?
@@ -284,6 +323,14 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
             guard let self, !self.isTerminating else { return }
             self.handleEvent(event)
         }
+        #if os(macOS)
+        connection.onZaiUsage = { [weak self] quota, endpoint, token in
+            guard let self, endpoint == self.remoteObservationEndpoint else { return }
+            // A present provider block replaces the previous observation, including retirement.
+            self.relayedZaiUsage = (endpoint, token, RemoteUsageWindow.zaiAccount(quota,
+                observedAt: remoteObservationDate(quota.capturedAt), at: Date()))
+        }
+        #endif
         connection.onDisconnect = { [weak self] in
             guard let self else { return }
             guard !self.isTerminating else { return }

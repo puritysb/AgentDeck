@@ -1,4 +1,3 @@
-#if AGENTDECK_CLOUDKIT_POC
 import Foundation
 import CryptoKit
 
@@ -138,4 +137,3 @@ struct RemotePublisherState: Codable, Equatable {
         return attentionRevision != publishedAttentionRevision || !eligible(at: now).isEmpty || lastPublishedAt == nil || now.timeIntervalSince(lastPublishedAt!) >= RemoteObservationPolicy.publishInterval
     }
 }
-#endif

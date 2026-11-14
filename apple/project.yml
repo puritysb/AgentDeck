@@ -19,6 +19,8 @@ options:
 settings:
   base:
     AGENTDECK_CLOUDKIT_CONDITION: ""
+    AGENTDECK_ICLOUD_ENVIRONMENT: Development
+    AGENTDECK_APNS_ENVIRONMENT: development
     SWIFT_VERSION: "6.0"
     MARKETING_VERSION: "2.1.1"
     SWIFT_INCLUDE_PATHS: "$(inherited) $(PROJECT_DIR)/../shared/glance-raster/include"
@@ -29,6 +31,9 @@ settings:
     AGENTDECK_DOT_SUPPORT: excluded
     EXCLUDED_SOURCE_FILE_NAMES: "$(inherited) Dot*.swift dot-mcp-contract.json"
   configs:
+    Release:
+      AGENTDECK_ICLOUD_ENVIRONMENT: Production
+      AGENTDECK_APNS_ENVIRONMENT: production
     CloudKitPoCDebug:
       AGENTDECK_CLOUDKIT_CONDITION: AGENTDECK_CLOUDKIT_POC
     DotPreviewDebug:
@@ -36,6 +41,8 @@ settings:
       AGENTDECK_DOT_SUPPORT: preview
       EXCLUDED_SOURCE_FILE_NAMES: ""
     DotPreviewRelease:
+      AGENTDECK_ICLOUD_ENVIRONMENT: Production
+      AGENTDECK_APNS_ENVIRONMENT: production
       AGENTDECK_DOT_CONDITION: AGENTDECK_DOT_PREVIEW
       AGENTDECK_DOT_SUPPORT: preview
       EXCLUDED_SOURCE_FILE_NAMES: ""
@@ -59,6 +66,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: bound.serendipity.agent.deck
         INFOPLIST_FILE: AgentDeck/Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: AgentDeck/Resources/AgentDeck-iOS.entitlements
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
         PRODUCT_NAME: AgentDeck
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
