@@ -52,6 +52,9 @@ final class WatchObservationModel: ObservableObject {
         #endif
         // Cold start without network: only an opaque local identity match restores.
         summary = cache.load(localIdentity: localIdentity())
+        if summary == nil, hasSavedObservation {
+            status = Self.accountVerificationMessage
+        }
         accountObserver = NotificationCenter.default.addObserver(forName: .CKAccountChanged, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in await self?.accountDidChange() }
         }
@@ -104,9 +107,21 @@ final class WatchObservationModel: ObservableObject {
         }
     }
 
+    private static var accountVerificationMessage: String {
+        String(localized: "A saved observation is on this Watch. Connect to iCloud to verify its account before showing it.")
+    }
+
+    private var hasSavedObservation: Bool {
+        cache.disk.read("reader.json", as: RemoteReaderCache.Envelope.self) != nil
+    }
+
     private func describe(_ error: Error) -> String {
         switch error {
         case CloudKitProbeStore.ProbeError.accountUnverified:
+            if summary == nil {
+                return hasSavedObservation ? Self.accountVerificationMessage
+                    : String(localized: "iCloud is unverified. Connect and try again.")
+            }
             return String(localized: "iCloud is unverified. Showing the last saved observation.")
         case CloudKitProbeStore.ProbeError.accountUnavailable, CloudKitProbeStore.ProbeError.accountChanged:
             summary = nil
@@ -119,8 +134,13 @@ final class WatchObservationModel: ObservableObject {
             WidgetCenter.shared.reloadAllTimelines()
             return String(localized: "The Mac is not sharing a summary.")
         case let error as URLError where error.code == .timedOut:
+            if summary == nil {
+                return hasSavedObservation ? Self.accountVerificationMessage
+                    : String(localized: "iCloud timed out. Connect and try again.")
+            }
             return String(localized: "iCloud timed out. Last observation kept.")
         default:
+            if summary == nil, hasSavedObservation { return Self.accountVerificationMessage }
             let failure = error as NSError
             return String(localized: "iCloud unavailable (\(failure.domain) \(failure.code)).")
         }
