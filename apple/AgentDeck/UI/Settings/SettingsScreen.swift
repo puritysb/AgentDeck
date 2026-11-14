@@ -229,6 +229,7 @@ struct SettingsScreen: View {
     /// jargon like "Daemon" / "Discovery" — first-run users shouldn't
     /// have to know what those mean to find the right setting.
     enum SettingsSection: Hashable, Identifiable {
+        case remoteMonitoring
         case integrations
         #if AGENTDECK_DOT_PREVIEW
         case dot
@@ -247,6 +248,7 @@ struct SettingsScreen: View {
 
         var title: String {
             switch self {
+            case .remoteMonitoring: "Remote monitoring"
             case .integrations:    "Integrations"
             #if AGENTDECK_DOT_PREVIEW
             case .dot:             "Dot"
@@ -265,6 +267,7 @@ struct SettingsScreen: View {
 
         var icon: String {
             switch self {
+            case .remoteMonitoring: "icloud"
             case .integrations:    "link"
             #if AGENTDECK_DOT_PREVIEW
             case .dot:             "circle"
@@ -288,6 +291,8 @@ struct SettingsScreen: View {
         /// internals knowledge (daemon, mDNS, hook JSON, etc.).
         var subtitle: String {
             switch self {
+            case .remoteMonitoring:
+                "Share encrypted work counts and attention updates with your iPhone."
             case .integrations:
                 "Wire up Claude Code, OpenClaw, and Anthropic API — everything AgentDeck talks to."
             #if AGENTDECK_DOT_PREVIEW
@@ -317,9 +322,9 @@ struct SettingsScreen: View {
     }
 
     #if AGENTDECK_DOT_PREVIEW
-    private static let essentialSections: [SettingsSection] = [.integrations, .dot, .dashboard, .about]
+    private static let essentialSections: [SettingsSection] = [.integrations, .remoteMonitoring, .dot, .dashboard, .about]
     #else
-    private static let essentialSections: [SettingsSection] = [.integrations, .dashboard, .about]
+    private static let essentialSections: [SettingsSection] = [.integrations, .remoteMonitoring, .dashboard, .about]
     #endif
     private static let advancedSections: [SettingsSection] = [.connection, .daemon, .pairing, .display, .hardware, .evaluation, .timelineSummary]
 
@@ -387,6 +392,8 @@ struct SettingsScreen: View {
     @ViewBuilder
     private func sectionContent(for section: SettingsSection) -> some View {
         switch section {
+        case .remoteMonitoring:
+            RemoteObservationView(embedded: true)
         case .integrations:
             VStack(alignment: .leading, spacing: 14) {
                 #if AGENTDECK_CLOUDKIT_POC

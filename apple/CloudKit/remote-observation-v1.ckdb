@@ -1,0 +1,23 @@
+DEFINE SCHEMA
+
+    RECORD TYPE ObservationSnapshot (
+        schemaVersion INT64,
+        installationID STRING QUERYABLE,
+        revision INT64,
+        publishedAt TIMESTAMP,
+        expiresAt TIMESTAMP,
+        payload ENCRYPTED BYTES,
+        GRANT READ, WRITE TO "_creator",
+        GRANT CREATE TO "_icloud"
+    );
+
+    RECORD TYPE AttentionEvent (
+        schemaVersion INT64,
+        installationID STRING QUERYABLE,
+        occurredAt TIMESTAMP,
+        expiresAt TIMESTAMP,
+        deleteAfter TIMESTAMP QUERYABLE,
+        payload ENCRYPTED BYTES,
+        GRANT READ, WRITE TO "_creator",
+        GRANT CREATE TO "_icloud"
+    );

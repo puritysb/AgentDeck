@@ -1,4 +1,3 @@
-#if AGENTDECK_CLOUDKIT_POC
 import Foundation
 
 /// Local identifiers are used only for transition tracking, never encoded.
@@ -7,6 +6,47 @@ struct RemoteSessionEvidence: Sendable {
     let alive: Bool
     let working: Bool
     let waitingForResponse: Bool
+    #if !os(watchOS)
+    var agent: RemoteSessionDetail.Agent = .unknown
+    var state: AgentConnectionState? = nil
+    var startedAt: Date? = nil
+    var activeSubagents: Int? = nil
+    var backgroundJobs: Int? = nil
+    #endif
+
+    init(localID: String, alive: Bool, working: Bool, waitingForResponse: Bool) {
+        self.localID = localID
+        self.alive = alive
+        self.working = working
+        self.waitingForResponse = waitingForResponse
+    }
+
+    #if !os(watchOS)
+    init(row: SessionInfo, observedAt: Date) {
+        let state = AgentConnectionState(rawValue: row.state ?? "")
+        self.init(localID: row.id, alive: row.alive, working: state == .processing,
+                  waitingForResponse: state?.isAwaiting == true
+                    && !(row.question?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true))
+        self.state = state
+        agent = RemoteSessionDetail.Agent(rawValue: row.agentType ?? "") ?? .unknown
+        if let start = remoteObservationDate(row.startedAt), start.timeIntervalSince1970 >= 0, start <= observedAt {
+            startedAt = start
+        }
+        activeSubagents = row.subagents.map { max(0, $0.active) }
+        backgroundJobs = row.coordination.map { max(0, $0.backgroundJobs) }
+    }
+
+    var detail: RemoteSessionDetail {
+        let phase: RemoteSessionDetail.Phase
+        if waitingForResponse { phase = .response }
+        else if working { phase = .working }
+        else if state?.isAwaiting == true { phase = .awaiting }
+        else if state == .idle { phase = .idle }
+        else { phase = .unknown }
+        return RemoteSessionDetail(agent: agent, phase: phase, startedAt: startedAt,
+                                   activeSubagents: activeSubagents, backgroundJobs: backgroundJobs)
+    }
+    #endif
 }
 
 struct RemoteRosterSummary: Codable, Equatable, Sendable {
@@ -63,4 +103,3 @@ struct RemoteWaitTracker: Codable, Equatable, Sendable {
     /// Reconnection needs a fresh baseline; unknown gaps do not resolve episodes.
     mutating func invalidate() { hasBaseline = false }
 }
-#endif

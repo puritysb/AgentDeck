@@ -185,6 +185,10 @@ if [ -f "$MAIN_EXEC" ]; then
     fi
 fi
 
+if ! python3 "$(dirname "$0")/verify-remote-observation.py" "$APP" --environment Production; then
+    fail "remote observation Production signing/identity check failed"
+fi
+
 if [ "$FAIL" -ne 0 ]; then
     echo ""
     echo "✗ App Store archive verification FAILED. See errors above." >&2

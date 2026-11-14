@@ -67,6 +67,9 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
     // MARK: - Event callback
 
     var onEvent: ((BridgeEvent) -> Void)?
+    #if os(macOS)
+    var onZaiUsage: ((ZaiRateLimits, String, BridgeDeliveryToken) -> Void)?
+    #endif
 
     /// Called when WebSocket disconnects (before reconnect attempts)
     var onDisconnect: (() -> Void)?
@@ -390,9 +393,18 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
                 event = .stateUpdate(update)
             }
             let admittedEvent = event
+            #if os(macOS)
+            let endpoint = PairingCredential.endpoint(of: endpointURL)
+            let token = deliveryToken
+            #endif
             DispatchQueue.main.async {
                 guard !self.isTerminating, self.connectionGeneration == generation else { return }
                 self.onEvent?(admittedEvent)
+                #if os(macOS)
+                if case .usageUpdate(let usage) = admittedEvent, let zai = usage.zaiRateLimits, let endpoint, token.isValid {
+                    self.onZaiUsage?(zai, endpoint, token)
+                }
+                #endif
             }
         }
     }
