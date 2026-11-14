@@ -20,6 +20,22 @@ private actor WatchStoreFixture: WatchObservationStore {
     func invalidateAccount() {}
 }
 
+private actor WatchOfflineAccountFixture: WatchObservationStore {
+    enum Failure: CaseIterable, Sendable { case offline, unverified, timedOut }
+    let failure: Failure
+    init(_ failure: Failure = .offline) { self.failure = failure }
+    func checkAccount(expected: Int?) throws -> Int {
+        switch failure {
+        case .offline: throw URLError(.notConnectedToInternet)
+        case .unverified: throw CloudKitProbeStore.ProbeError.accountUnverified
+        case .timedOut: throw URLError(.timedOut)
+        }
+    }
+    func accountIdentity(account: Int?) throws -> String { throw URLError(.notConnectedToInternet) }
+    func fetchRoster(account: Int?) throws -> RemoteRosterSummary { throw URLError(.notConnectedToInternet) }
+    func invalidateAccount() {}
+}
+
 @MainActor
 final class WatchObservationModelTests: XCTestCase {
     private func withCache(_ test: (RemoteReaderCache) async throws -> Void) async throws {
@@ -29,6 +45,24 @@ final class WatchObservationModelTests: XCTestCase {
     }
     private var observation: RemoteRosterSummary {
         RemoteRosterSummary(schemaVersion: 1, observedAt: Date().addingTimeInterval(-30), workingCount: 3, waitingCount: 2)
+    }
+
+    func testColdStartWithoutLocalIdentityKeepsCacheHiddenUntilAccountVerification() async throws {
+        try await withCache { cache in
+            let saved = observation
+            try cache.save(saved, account: "owner", localIdentity: nil)
+            for failure in WatchOfflineAccountFixture.Failure.allCases {
+                let model = WatchObservationModel(store: WatchOfflineAccountFixture(failure), cache: cache,
+                                                  localIdentity: { nil })
+                XCTAssertNil(model.summary)
+                XCTAssertTrue(model.status?.contains("verify its account") == true)
+                await model.refresh()
+                XCTAssertNil(model.summary)
+                XCTAssertTrue(model.status?.contains("verify its account") == true)
+                XCTAssertEqual(cache.disk.read("reader.json", as: RemoteReaderCache.Envelope.self)?.summary, saved)
+                XCTAssertFalse(model.busy)
+            }
+        }
     }
 
     func testVerifiedDifferentAccountClearsRestoredCountsEvenWhenFetchFails() async throws {
