@@ -29,8 +29,17 @@ enum RemoteLocalIdentity {
 
 struct RemoteProbeDisk {
     let directory: URL
-    init(directory: URL = AgentDeckPaths.baseDirectory.appendingPathComponent("remote-observation-poc", isDirectory: true)) {
+    init(directory: URL = RemoteProbeDisk.defaultDirectory) {
         self.directory = directory
+    }
+    static var defaultDirectory: URL {
+        #if os(watchOS)
+        // The Watch reader has no AgentDeck data directory; it keeps only its own cache.
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return base.appendingPathComponent("remote-observation-poc", isDirectory: true)
+        #else
+        return AgentDeckPaths.baseDirectory.appendingPathComponent("remote-observation-poc", isDirectory: true)
+        #endif
     }
     func read<T: Decodable>(_ name: String, as type: T.Type) -> T? {
         let url = directory.appendingPathComponent(name)
@@ -45,7 +54,7 @@ struct RemoteProbeDisk {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: 0o700])
         let url = directory.appendingPathComponent(name)
-        #if os(iOS)
+        #if os(iOS) || os(watchOS)
         try bytes.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         #else
         try bytes.write(to: url, options: .atomic)

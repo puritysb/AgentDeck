@@ -44,7 +44,7 @@ because they require another user service and do not establish the native reader
 | Explicit sharing consent and a debug test event | Automatic enrollment or remote control/approval |
 | Real response-wait transitions and aggregate working/waiting counts | Completion/failure inference and task-success claims |
 | One available Codex account quota reading with original provenance/time | New provider logins, server-side quota polling, usage forecasting |
-| Read-only iPhone summary and cached historical view | Widget extensions, Watch app, direct-to-Watch push |
+| Read-only iPhone summary and cached historical view | iPhone widget extension, direct-to-Watch push (a development Watch reader was added 2026-11-14; see [Watch reader](#watch-reader-development)) |
 | Account changes, disable/delete, finite retries, stale-data UI | Notification service extension and custom key recovery |
 
 Codex quota is optional evidence: absent, untrusted or timestamp-less readings
@@ -724,3 +724,59 @@ before execution. Evidence is local in
 the earlier physical-control/cache pending state. This is development acceptance;
 Production delivery, offline cold-start variations, physical account switching,
 and long-duration disruption measurements remain separate checks.
+
+### Watch reader (development)
+
+Added 2026-11-14. At the PM's request a read-only Watch reader was built ahead of the iPhone
+widget instead of after it. It is a separate watchOS target, not a change to
+the gate order for anything that ships: it is not embedded in the iOS app and
+belongs to no App Store archive.
+
+- Targets: `AgentDeck_watchOS` (`bound.serendipity.agent.deck.watchkitapp`,
+  watchOS 10+, runs independently of the iPhone app) with the embedded
+  WidgetKit extension `AgentDeckWatchWidgets` (circular, rectangular, inline
+  and corner complications). Scheme `AgentDeck_CloudKitPoC_watchOS`. Both
+  targets always compile the PoC sources (`AGENTDECK_CLOUDKIT_POC`) and carry
+  only the Development CloudKit entitlement for the same container; no push
+  entitlement, no App Group.
+- Source: the Watch reads the `RosterProbe/stage-b-latest` summary from the
+  private database over its own network path, using the same
+  `CloudKitProbeStore` (moved unchanged into `CloudKitObservationStore.swift`),
+  `RemoteReaderCache` and freshness policy as the iPhone. Alerts still arrive
+  by Apple's iPhone forwarding; the Watch registers no subscription, so there
+  is no second alert per event.
+- Presentation: `RemoteGlance` is the one rule for both the app and the
+  complications — a wait outranks work, "All clear" needs an observed empty
+  roster, historical evidence is muted with its original time, and expired,
+  missing or future-dated evidence shows no count. Complication timelines add
+  entries at the historical and expiry boundaries so the face ages without a
+  fetch; a failed fetch shows "—", never a guessed count.
+- Account rules match the iPhone reader: cache restore requires the same iCloud
+  identity, an account change or missing account clears it, and a deleted
+  summary clears it. The Watch never connects to a daemon and cannot answer.
+
+Verified: watchOS simulator build of the app and embedded extension;
+`RemoteGlanceTests` plus the existing PoC suites (21 tests) in the iOS PoC
+scheme; simulator screens for no iCloud account, 2 waiting/3 working,
+historical 4 working and all clear (DEBUG `-AgentDeckWatchFixture
+waiting,working,ageSeconds`). **Not verified:** signed install on a physical
+Watch (Automatic signing must first register the two new bundle IDs with the
+container), a real CloudKit fetch on the Watch, complication rendering on a
+face, and the complication refresh budget.
+
+PR review also covers missed account-change notifications: the verified owner
+is checked against the cache before every fetch, even when a restored summary
+is already visible. A changed owner clears the old counts even if the next
+fetch fails; same-account offline reads preserve the source observation time.
+Cache-write failures remain visible, and account changes reset refresh throttling.
+These cases and the shared glance rules run in the macOS CloudKit PoC gate.
+The changed/full verification tiers and Apple CI also build the Watch app and
+check that its complication executable is embedded. These automated checks do
+not replace physical Watch account switching, offline cold starts, face rendering,
+background refresh measurements, or forwarded-alert acceptance.
+
+Review verification (2026-11-14): all 27 selected macOS PoC XCTest cases
+passed, including the four Watch model regressions. The updated app and embedded
+complication built for watchOS Simulator. An isolated Series 11 46 mm simulator
+on watchOS 27 rendered waiting/working, historical, expired-without-counts and
+observed-empty states. This is simulator evidence, not physical Watch acceptance.

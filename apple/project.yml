@@ -11,6 +11,7 @@ options:
   deploymentTarget:
     iOS: "17.0"
     macOS: "26.0"
+    watchOS: "10.0"
   xcodeVersion: "26.6"
   createIntermediateGroups: true
   generateEmptyDirectories: true
@@ -199,6 +200,70 @@ targets:
           # Keep in step with the host app's Debug conditions above.
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: "AGENTDECK_APP_STORE DEBUG $(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)"
 
+  # Development-only Watch reader for the CloudKit remote-observation PoC
+  # (docs/apple-remote-observation.md). Not embedded in the iOS app and not
+  # part of any App Store archive; installed from Xcode onto a paired Watch.
+  # It reads the private CloudKit summary directly, so it builds the PoC
+  # sources under AGENTDECK_CLOUDKIT_POC in every configuration.
+  AgentDeck_watchOS:
+    type: application
+    platform: watchOS
+    productName: AgentDeck
+    sources:
+      - path: AgentDeckWatch
+      - path: AgentDeck/RemoteObservation/WatchObservationModel.swift
+      - path: AgentDeck/RemoteObservation/RemoteObservationProjection.swift
+      - path: AgentDeck/RemoteObservation/RemoteObservationPersistence.swift
+      - path: AgentDeck/RemoteObservation/CloudKitObservationStore.swift
+      - path: AgentDeck/RemoteObservation/RemoteGlance.swift
+      - path: AgentDeck/UI/Common/DesignTokens.swift
+    dependencies:
+      - target: AgentDeckWatchWidgets
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: bound.serendipity.agent.deck.watchkitapp
+        PRODUCT_NAME: AgentDeck
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: AgentDeck
+        INFOPLIST_KEY_WKCompanionAppBundleIdentifier: bound.serendipity.agent.deck
+        INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_ENTITLEMENTS: AgentDeckWatch/Resources/AgentDeckWatch.entitlements
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: QF36NDHYHD
+        ENABLE_PREVIEWS: true
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "AGENTDECK_CLOUDKIT_POC"
+      configs:
+        debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG AGENTDECK_CLOUDKIT_POC"
+
+  AgentDeckWatchWidgets:
+    type: app-extension
+    platform: watchOS
+    sources:
+      - path: AgentDeckWatchWidgets
+        excludes:
+          - Resources/Info.plist
+      - path: AgentDeckWatch/Shared
+      - path: AgentDeck/RemoteObservation/RemoteObservationProjection.swift
+      - path: AgentDeck/RemoteObservation/RemoteObservationPersistence.swift
+      - path: AgentDeck/RemoteObservation/CloudKitObservationStore.swift
+      - path: AgentDeck/RemoteObservation/RemoteGlance.swift
+      - path: AgentDeck/UI/Common/DesignTokens.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: bound.serendipity.agent.deck.watchkitapp.widgets
+        PRODUCT_NAME: AgentDeckWatchWidgets
+        INFOPLIST_FILE: AgentDeckWatchWidgets/Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: AgentDeckWatchWidgets/Resources/AgentDeckWatchWidgets.entitlements
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: QF36NDHYHD
+        SKIP_INSTALL: YES
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "AGENTDECK_CLOUDKIT_POC"
+      configs:
+        debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG AGENTDECK_CLOUDKIT_POC"
+
 schemes:
   AgentDeck_iOS:
     build:
@@ -295,5 +360,12 @@ schemes:
       config: CloudKitPoCDebug
       targets:
         - AgentDeckTests_macOS
+    run:
+      config: CloudKitPoCDebug
+
+  AgentDeck_CloudKitPoC_watchOS:
+    build:
+      targets:
+        AgentDeck_watchOS: all
     run:
       config: CloudKitPoCDebug

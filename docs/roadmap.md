@@ -13,15 +13,15 @@ collaboration summaries, and personalized agent evaluation.
 **2026-11-01: Stage A development transport implemented; single-route iPhone/Watch delivery verified; resilience work pending.**
 The selected first experiment uses CloudKit private storage and query-subscription
 alerts, with the running Mac app as publisher and iPhone as reader. Apple Watch
-receives eligible forwarded iPhone notifications; no dedicated Watch target is
-part of this PoC. This avoids operating an AgentDeck relay before the value of
+receives eligible forwarded iPhone notifications; a development-only Watch reader
+(not shipped) reads the same summary. This avoids operating an AgentDeck relay before the value of
 away-from-desk attention has been established.
 
 - [x] A: Prove Mac → CloudKit → iPhone cellular → Watch delivery using a test event.
 - [ ] B: Connect real response-wait transitions, summary counts and one trustworthy quota source.
 - [ ] C: Verify offline history, retries, duplicate prevention, account changes and disable/delete.
 - [ ] D: Measure normal/delayed alerts and assess added value over a standalone usage gauge.
-- [ ] E, after acceptance: one iPhone widget; Watch complications require a separate follow-up.
+- [ ] E, after acceptance: one iPhone widget. A development Watch reader with complications was built early at the PM's request (2026-11-14); physical Watch acceptance is pending.
 
 The [implementation design and acceptance matrix](apple-remote-observation.md)
 own the detailed gates. [Preview copy](marketing/apple-remote-observation.md)
