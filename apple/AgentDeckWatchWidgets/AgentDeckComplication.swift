@@ -19,14 +19,17 @@ struct GlanceProvider: TimelineProvider {
     func getSnapshot(in context: Context, completion: @escaping (GlanceEntry) -> Void) {
         if context.isPreview { completion(placeholder(in: context)); return }
         let done = CompletionBox(completion)
-        Task { done.call(GlanceEntry(date: .now, summary: await Self.fetch())) }
+        Task {
+            let summary = await Self.fetch()
+            done.call(GlanceEntry(date: .now, summary: summary))
+        }
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<GlanceEntry>) -> Void) {
         let done = CompletionBox(completion)
         Task {
-            let now = Date()
             let summary = await Self.fetch()
+            let now = Date()
             let entries = ([now] + RemoteGlance.transitions(for: summary, after: now))
                 .map { GlanceEntry(date: $0, summary: summary) }
             done.call(Timeline(entries: entries, policy: .after(now.addingTimeInterval(15 * 60))))
@@ -75,7 +78,8 @@ struct GlanceComplicationView: View {
                 VStack(spacing: 0) {
                     Text(glance.count.map(String.init) ?? "—")
                         .font(.title2.weight(.bold)).monospacedDigit()
-                    Image(systemName: glance.headline == .unavailable ? "icloud.slash" : "person.wave.2")
+                    Image(systemName: glance.headline == .unavailable ? "icloud.slash" :
+                          glance.historical ? "clock.arrow.circlepath" : "person.wave.2")
                         .font(.caption2)
                 }
                 .foregroundStyle(glance.tint)

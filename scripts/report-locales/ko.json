@@ -522,6 +522,7 @@
   "hosted XCTest app roots remain inert across foreground, retry and direct transport entry points without changing ordinary fixture behavior or migrating saved credentials": "XCTest가 실행한 앱 루트는 전경 복귀·재시도·전송 계층 직접 접근에서 연결을 시작하지 않으며, 일반 테스트 인스턴스의 동작과 저장된 인증 정보는 유지합니다.",
   "each directory publication first validates the root LICENSE bytes in a real npm tarball": "각 디렉터리 게시 전에 실제 npm tarball의 LICENSE가 루트 원문과 바이트 단위로 같은지 검증합니다.",
   "macOS CloudKit PoC deterministic persistence + transport XCTest": "macOS CloudKit PoC의 지속성·전송 XCTest",
+  "Development Watch app and embedded complications simulator build": "개발용 Watch 앱과 내장 컴플리케이션의 시뮬레이터 빌드",
   "iOS CloudKit PoC unsigned companion build": "iOS CloudKit PoC 동반 앱의 서명 없는 빌드",
   "the development-only CloudKit configuration deterministically tests bounded completion, account-generation invalidation, local cache/outbox reload and coalesced retry policy without contacting iCloud; the iOS PoC configuration compiles separately": "개발 전용 CloudKit 구성은 iCloud에 접속하지 않고 작업 시간 제한, 계정 세대 무효화, 로컬 캐시·발행 대기열 복구와 재시도 병합 정책을 검증하며 iOS PoC 구성도 별도로 빌드합니다",
   "all eight resident types clear HUD, shell and peer bounds on 86 Box, IPS35, round AMOLED and TTGO; IPS10/knob/ticker inputs retain identity and keep Dot read-only": "86 Box·IPS35·원형 AMOLED·TTGO에서 여덟 종류가 HUD·조개·다른 몸체를 피하며, IPS10·노브·스트립의 입력이 대상을 유지하고 Dot을 읽기 전용으로 취급합니다.",
@@ -619,5 +620,8 @@
   "Scope, limits and command": "검증 범위·한계·실행 명령",
   "Workflow snapshot time unavailable.": "워크플로 상태를 수집한 시각을 확인할 수 없습니다.",
   "Workflow snapshot:": "워크플로 상태 수집 시각:",
-  "This report updates after a successful Pages build on master. Scheduled scans may be newer; follow each workflow link for current results. Workflow success does not mean zero security findings.": "이 보고서는 master의 Pages 빌드가 성공하면 갱신됩니다. 예약 검사는 이후에 실행되었을 수 있으므로 각 워크플로 링크에서 최신 결과를 확인하세요. 워크플로 성공이 보안 발견 사항이 없다는 뜻은 아닙니다."
+  "This report updates after a successful Pages build on master. Scheduled scans may be newer; follow each workflow link for current results. Workflow success does not mean zero security findings.": "이 보고서는 master의 Pages 빌드가 성공하면 갱신됩니다. 예약 검사는 이후에 실행되었을 수 있으므로 각 워크플로 링크에서 최신 결과를 확인하세요. 워크플로 성공이 보안 발견 사항이 없다는 뜻은 아닙니다.",
+  "Vobot pairing, TLS policy and attention": "Vobot 페어링·TLS 정책·주의 상태",
+  "TLS peer pin and validity policy, bounded response parsing and credential withholding before peer verification with mocked sockets.": "모의 소켓으로 TLS 인증서 핀·유효기간 정책, 응답 크기 제한, 서버 검증 전 자격증명 전송 차단을 확인합니다.",
+  "Scoped device TLS projects only granted session/usage fields, fences revocation and legacy fallback, and admits custody receipts by socket, process and fresh challenge; actual Swift TLS and cross-profile store execution run on macOS.": "기기별 TLS는 허용된 세션·사용량 필드만 제공하고 폐기 상태와 기존 인증 경로 우회를 검사합니다. 인계 확인은 소켓·프로세스·일회용 확인값에 묶이며, 실제 Swift TLS와 서로 다른 저장소의 상호운용 검사는 macOS에서 실행합니다."
 }

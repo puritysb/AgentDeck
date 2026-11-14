@@ -31,6 +31,7 @@ function spies(overrides: Partial<Record<string, unknown>> = {}) {
     calls,
     deps: {
       adoptToken: vi.fn(() => { calls.push('adopt'); return true; }),
+      captureDeviceSecurity: vi.fn(async () => true),
       standDown: vi.fn(async () => { calls.push('stand-down'); return true; }),
       shutdown: vi.fn(async () => { calls.push('shutdown'); }),
       waitForExit: vi.fn(async () => true),
@@ -46,6 +47,24 @@ const MINE = () => 'same-user' as const;
 const UNPROVEN = () => 'unknown' as const;
 
 describe('negotiateIncumbentDaemon', () => {
+  it('refuses to stop a TLS owner when custody cannot be captured', async () => {
+    for (const isSwift of [true, false]) {
+      const captureDeviceSecurity=vi.fn(async()=>false);
+      const {calls,deps}=spies({captureDeviceSecurity});
+      const result=await negotiateIncumbentDaemon({port:9120,portWasExplicit:false,
+        localBuild:'new',incumbent:{mode:'daemon',pid:42,isSwift,build:'old',deviceSecurity:{version:1,state:'listening'}}},
+        {...deps,ownership:MINE});
+      expect(result).toBe('refuse');expect(captureDeviceSecurity).toHaveBeenCalledOnce();
+      expect(calls).not.toContain('shutdown');expect(calls).not.toContain('stand-down');
+    }
+  });
+  it('captures device custody before asking Swift to stand down', async () => {
+    const {calls,deps}=spies({captureDeviceSecurity:vi.fn(async()=>{calls.push('device-custody');return true;})});
+    expect(await negotiateIncumbentDaemon({port:9120,portWasExplicit:false,
+      incumbent:{mode:'daemon',pid:42,isSwift:true,deviceSecurity:{version:1,state:'listening'}}},
+      {...deps,ownership:MINE})).toBe('proceed');
+    expect(calls.indexOf('device-custody')).toBeLessThan(calls.indexOf('stand-down'));
+  });
   it('keeps Swift fully live for the foreground worker and captures its timeline only there', async () => {
     let live = true;
     const captureTimeline = vi.fn(async () => live);

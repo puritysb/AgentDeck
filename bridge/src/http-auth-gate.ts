@@ -30,7 +30,7 @@
  * one piece of state the gate needs — is a window open — is passed in.
  */
 import type { IncomingMessage } from 'http';
-import { DEVICE_ID_HEADER } from '@agentdeck/shared';
+import { DEVICE_ID_HEADER, isDeviceCredential } from '@agentdeck/shared';
 import { getPairingGeneration, isLocalConnection, localTrustOf, validateToken } from './auth.js';
 import { deviceIdFromHeaders, isApprovedPeer } from './pairing-knocks.js';
 
@@ -43,6 +43,13 @@ export type HttpGateDecision = 'allow' | 'public-health' | 'pair-redeem' | 'deny
 export function isAuthorizedHttpRequest(
   req: Pick<IncomingMessage, 'url' | 'headers' | 'method'> & { socket: { remoteAddress?: string; localPort?: number } },
 ): boolean {
+  // Scoped device credentials belong only to the TLS listener. Check before
+  // loopback trust and legacy IP/device approval, including malformed tokens.
+  const bearer = req.headers.authorization;
+  if (typeof bearer === 'string' && isDeviceCredential(bearer.replace(/^Bearer /, ''))) return false;
+  try {
+    if (isDeviceCredential(new URL(req.url ?? '/', 'http://localhost').searchParams.get('token'))) return false;
+  } catch { return false; }
   const ip = req.socket.remoteAddress ?? '';
   const local = isLocalConnection(ip);
   if (local && localTrustOf(req) === 'trusted') return true;

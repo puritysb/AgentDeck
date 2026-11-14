@@ -191,6 +191,12 @@ jobs:
           AGENTDECK_APPLE_DERIVED_DATA: ${{ runner.temp }}/AgentDeckCloudKitDerivedData
         run: bash apple/scripts/verify-build.sh iOS CloudKitPoCDebug
 
+      - name: Build development Watch app and embedded complications
+        if: matrix.configuration == 'Release'
+        env:
+          AGENTDECK_APPLE_DERIVED_DATA: ${{ runner.temp }}/AgentDeckWatchDerivedData
+        run: bash apple/scripts/verify-build.sh watchOS CloudKitPoCDebug
+
       - name: Test companion onboarding layouts
         if: matrix.configuration == 'Release'
         run: |

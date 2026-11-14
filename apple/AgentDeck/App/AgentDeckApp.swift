@@ -272,6 +272,12 @@ struct AgentDeckApp: App {
                   let data = try? JSONEncoder().encode(entries) else { return }
             DaemonTimelineStore.stageHandoverSnapshot(data)
         }
+        stateHolder.onLocalDeviceSecurityTransfer = { [weak daemonService] payload, token in
+            await daemonService?.acceptDeviceSecurityTransfer(payload, token: token)
+        }
+        stateHolder.onLocalDeviceSecurityRecovery = { [weak daemonService] payload, token in
+            await daemonService?.returnDeviceSecurityCustody(payload, token: token)
+        }
         stateHolder.onLocalDaemonCheckpoint = { [weak daemonService] payload, admission, token in
             guard daemonService?.isUsingExternalDaemon == true else { return nil }
             do {

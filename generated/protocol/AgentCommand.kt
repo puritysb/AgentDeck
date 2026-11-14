@@ -122,6 +122,31 @@ sealed class AgentCommand {
         }
     }
 
+    data class DeviceSecurityAck(val pid: Int, val nonce: String) : AgentCommand() {
+        override val typeTag: String = "device_security_ack"
+        override fun toJson(): String {
+            val buf = StringBuilder()
+            buf.append("{\"type\":\"device_security_ack\"")
+            buf.append(",\"pid\":").append(encode(pid))
+            buf.append(",\"nonce\":").append(encode(nonce))
+            buf.append("}")
+            return buf.toString()
+        }
+    }
+
+    data class DeviceSecurityRestore(val pid: Int, val nonce: String, val transfer: String) : AgentCommand() {
+        override val typeTag: String = "device_security_restore"
+        override fun toJson(): String {
+            val buf = StringBuilder()
+            buf.append("{\"type\":\"device_security_restore\"")
+            buf.append(",\"pid\":").append(encode(pid))
+            buf.append(",\"nonce\":").append(encode(nonce))
+            buf.append(",\"transfer\":").append(encode(transfer))
+            buf.append("}")
+            return buf.toString()
+        }
+    }
+
     data class QuerySessionTimeline(val sessionId: String) : AgentCommand() {
         override val typeTag: String = "query_session_timeline"
         override fun toJson(): String {

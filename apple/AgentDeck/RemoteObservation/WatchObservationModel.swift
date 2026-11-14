@@ -1,3 +1,5 @@
+#if AGENTDECK_CLOUDKIT_POC
+import Combine
 import CloudKit
 import Foundation
 import WidgetKit
@@ -6,6 +8,15 @@ import WidgetKit
 /// CloudKit database. It follows the iPhone reader's account and cache rules:
 /// a cache is restored only for the same iCloud identity, an account change
 /// clears it, and a fetch never advances the original observation time.
+protocol WatchObservationStore: Sendable {
+    func checkAccount(expected: Int?) async throws -> Int
+    func accountIdentity(account: Int?) async throws -> String
+    func fetchRoster(account: Int?) async throws -> RemoteRosterSummary
+    func invalidateAccount() async
+}
+
+extension CloudKitProbeStore: WatchObservationStore {}
+
 @MainActor
 final class WatchObservationModel: ObservableObject {
     @Published private(set) var summary: RemoteRosterSummary?
@@ -13,15 +24,18 @@ final class WatchObservationModel: ObservableObject {
     @Published private(set) var busy = false
     @Published private(set) var lastFetch: Date?
 
-    private let store: CloudKitProbeStore
+    private let store: any WatchObservationStore
+    private let localIdentity: () -> String?
     private let cache: RemoteReaderCache
     private var generation = 0
     private var accountObserver: NSObjectProtocol?
     private var fixture = false
 
-    init(store: CloudKitProbeStore = CloudKitProbeStore(), cache: RemoteReaderCache = RemoteReaderCache()) {
+    init(store: any WatchObservationStore = CloudKitProbeStore(), cache: RemoteReaderCache = RemoteReaderCache(),
+         localIdentity: @escaping () -> String? = RemoteLocalIdentity.current) {
         self.store = store
         self.cache = cache
+        self.localIdentity = localIdentity
         #if DEBUG
         // Screenshot pin: `-AgentDeckWatchFixture <waiting>,<working>,<ageSeconds>`
         // renders a synthetic summary and never touches CloudKit.
@@ -37,14 +51,15 @@ final class WatchObservationModel: ObservableObject {
         }
         #endif
         // Cold start without network: only an opaque local identity match restores.
-        summary = cache.load(localIdentity: RemoteLocalIdentity.current())
+        summary = cache.load(localIdentity: localIdentity())
         accountObserver = NotificationCenter.default.addObserver(forName: .CKAccountChanged, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in await self?.accountDidChange() }
         }
     }
 
-    private func accountDidChange() async {
+    func accountDidChange() async {
         generation += 1
+        lastFetch = nil
         summary = nil
         try? cache.clear()
         busy = false
@@ -65,18 +80,22 @@ final class WatchObservationModel: ObservableObject {
         let token = generation
         defer { if token == generation { busy = false } }
         do {
-            let account = try await store.checkAccount()
+            let account = try await store.checkAccount(expected: nil)
             let owner = try await store.accountIdentity(account: account)
             guard token == generation else { return }
-            if summary == nil {
-                summary = cache.load(localIdentity: RemoteLocalIdentity.current(), verifiedAccount: owner)
-            }
+            // Recheck even a restored/in-memory observation before the fetch:
+            // a missed account notification must not retain another account's counts.
+            summary = cache.load(localIdentity: localIdentity(), verifiedAccount: owner)
             let result = try await store.fetchRoster(account: account)
             guard token == generation else { return }
             summary = result
             lastFetch = Date()
             status = nil
-            try? cache.save(result, account: owner, localIdentity: RemoteLocalIdentity.current())
+            do {
+                try cache.save(result, account: owner, localIdentity: localIdentity())
+            } catch {
+                status = String(localized: "Fetched; the observation could not be saved on this Watch.")
+            }
             WidgetCenter.shared.reloadAllTimelines()
         } catch {
             guard token == generation else { return }
@@ -107,3 +126,5 @@ final class WatchObservationModel: ObservableObject {
         }
     }
 }
+
+#endif

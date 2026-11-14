@@ -236,6 +236,10 @@ export interface StateUpdateEvent {
   /** Same-machine daemon handover only: bounded aggregate/opaque-receipt JSON.
    * Never contains card copy, prompt text, source credentials or executable data. */
   daemonCheckpoint?: string;
+  /** Private custody packet, unicast only to an admitted same-user native successor. Never broadcast to devices or relays. */
+  deviceSecurityTransfer?: string;
+  /** Private fresh challenge to recover custody from the local native client after a supervisor restart. */
+  deviceSecurityRecovery?: string;
   permissionMode: PermissionMode;
   agentType?: AgentType;
   /** Session ID associated with this state payload; may move with hook activity. */
@@ -1770,6 +1774,18 @@ export interface QueryUsageCommand {
 }
 
 /** Durable checkpoint receipt from the local native client, scoped to this socket. */
+export interface DeviceSecurityAckCommand {
+  type: 'device_security_ack';
+  pid: number;
+  nonce: string;
+}
+export interface DeviceSecurityRestoreCommand {
+  type: 'device_security_restore';
+  pid: number;
+  nonce: string;
+  transfer: string;
+}
+
 export interface DaemonCheckpointAckCommand {
   type: 'daemon_checkpoint_ack';
   checkpointId: string;
@@ -1931,6 +1947,8 @@ export type PluginCommand =
   | VoiceCommand
   | QueryUsageCommand
   | DaemonCheckpointAckCommand
+  | DeviceSecurityAckCommand
+  | DeviceSecurityRestoreCommand
   | QuerySessionTimelineCommand
   | DiagCommand
   | UtilityCommand

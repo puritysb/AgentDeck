@@ -117,6 +117,25 @@ def _forget_pairing():
     # either removal fails, so the next resume cannot reconnect silently.
     _remove_if_present(PAIRING_PATH)
     _remove_if_present(PAIRING_PATH + ".new")
+    secure_path = PAIRING_PATH.rsplit("/", 1)[0] + "/device-tls.json"
+    _remove_if_present(secure_path)
+    _remove_if_present(secure_path + ".new")
+
+
+def forget_connection(manager):
+    """Honor explicit deletion before selecting either secure or legacy mode."""
+    config = manager.config() if manager else None
+    config = config if isinstance(config, dict) else {}
+    forget = config.get("forget_pairing") or ""
+    if not forget:
+        return False
+    if not isinstance(forget, str) or forget.strip().upper() != "UNPAIR":
+        raise ValueError("Type UNPAIR to forget the connection")
+    _forget_pairing()
+    config["forget_pairing"] = ""
+    config["pairing_code"] = ""
+    manager.config(config)
+    return True
 
 
 def _save_pairing(host, port, token):
@@ -131,17 +150,10 @@ def _save_pairing(host, port, token):
 
 
 async def connection_settings(manager):
+    if forget_connection(manager):
+        return None
     config = manager.config() if manager else None
     config = config if isinstance(config, dict) else {}
-    forget = config.get("forget_pairing") or ""
-    if forget:
-        if not isinstance(forget, str) or forget.strip().upper() != "UNPAIR":
-            raise ValueError("Type UNPAIR to forget the connection")
-        _forget_pairing()
-        config["forget_pairing"] = ""
-        config["pairing_code"] = ""
-        manager.config(config)
-        return None
     # Clean up an interrupted write before reading or replacing credentials.
     _remove_if_present(PAIRING_PATH + ".new")
     host = config.get("daemon_host") or ""

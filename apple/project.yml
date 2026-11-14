@@ -211,6 +211,7 @@ targets:
     productName: AgentDeck
     sources:
       - path: AgentDeckWatch
+      - path: AgentDeck/RemoteObservation/WatchObservationModel.swift
       - path: AgentDeck/RemoteObservation/RemoteObservationProjection.swift
       - path: AgentDeck/RemoteObservation/RemoteObservationPersistence.swift
       - path: AgentDeck/RemoteObservation/CloudKitObservationStore.swift

@@ -683,7 +683,7 @@ struct StateUpdateEvent: Codable, Sendable {
 
     // CodingKeys excludes moduleHealth (parsed manually from raw JSON)
     private enum CodingKeys: String, CodingKey {
-        case type, state, permissionMode, agentType, sessionId, focusedSessionId, agentCapabilities, daemonCheckpoint
+        case type, state, permissionMode, agentType, sessionId, focusedSessionId, agentCapabilities, daemonCheckpoint, deviceSecurityTransfer, deviceSecurityRecovery
         case currentTool, toolInput, toolProgress, projectName, modelName, effortLevel
         case billingType, options, promptType, question, navigable, cursorIndex
         case suggestedPrompt, modelCatalog, sessionStatus, remoteUrl, pairingUrl
@@ -697,6 +697,8 @@ struct StateUpdateEvent: Codable, Sendable {
     }
     var permissionMode: String?
     var daemonCheckpoint: String?
+    var deviceSecurityTransfer: String?
+    var deviceSecurityRecovery: String?
     var deliveryToken: BridgeDeliveryToken?
     var agentType: String?
     /// Session ID associated with this state payload. In daemon mode this is
@@ -955,6 +957,8 @@ enum PluginCommand: Encodable, Sendable {
     case voice(action: String)
     case queryUsage
     case daemonCheckpointAck(checkpointId: String)
+    case deviceSecurityAck(pid: Int, nonce: String)
+    case deviceSecurityRestore(pid: Int, nonce: String, transfer: String)
     case diag(action: String)
     case utility(action: String, value: Int?)
     case focusSession(sessionId: String)
@@ -987,6 +991,15 @@ enum PluginCommand: Encodable, Sendable {
             try container.encode(action, forKey: .init("action"))
         case .queryUsage:
             try container.encode("query_usage", forKey: .init("type"))
+        case .deviceSecurityAck(let pid, let nonce):
+            try container.encode("device_security_ack", forKey: .init("type"))
+            try container.encode(pid, forKey: .init("pid"))
+            try container.encode(nonce, forKey: .init("nonce"))
+        case .deviceSecurityRestore(let pid, let nonce, let transfer):
+            try container.encode("device_security_restore", forKey: .init("type"))
+            try container.encode(pid, forKey: .init("pid"))
+            try container.encode(nonce, forKey: .init("nonce"))
+            try container.encode(transfer, forKey: .init("transfer"))
         case .daemonCheckpointAck(let id):
             try container.encode("daemon_checkpoint_ack", forKey: .init("type"))
             try container.encode(id, forKey: .init("checkpointId"))

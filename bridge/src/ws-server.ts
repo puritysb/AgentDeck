@@ -7,7 +7,7 @@ import type { BridgeEvent, PluginCommand } from './types.js';
 import { isLocalConnection, localTrustOf, logLocalTrustRefusal, validateToken } from './auth.js';
 import { mayAdoptEsp32, noteEsp32Adopted } from './pairing-window.js';
 import { debug, log } from './logger.js';
-import { DEVICE_ID_HEADER, normalizeDeviceId, WS_PING_INTERVAL_MS, State } from '@agentdeck/shared';
+import { DEVICE_ID_HEADER, normalizeDeviceId, WS_PING_INTERVAL_MS, State, isDeviceCredential } from '@agentdeck/shared';
 
 const AWAITING_STATES: readonly string[] = [
   State.AWAITING_PERMISSION,
@@ -167,6 +167,12 @@ export class WsServer {
       } catch {
         debug('WS', 'Refused invalid WebSocket request URL');
         ws.close(1008, 'Invalid request URL');
+        return;
+      }
+      // No scoped credential may fall through to loopback trust or legacy approval.
+      if (isDeviceCredential(url.searchParams.get('token')) ||
+          isDeviceCredential(req.headers.authorization?.replace(/^Bearer /, ''))) {
+        ws.close(1008, 'Use the secure device endpoint');
         return;
       }
       // Token auth for remote connections

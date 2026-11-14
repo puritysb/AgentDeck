@@ -296,7 +296,14 @@ def _clear_usage():
 
 async def _listen():
     try:
-        settings = await connection_settings(_manager)
+        from .pairing import forget_connection
+        if forget_connection(_manager):
+            _show("Pair in App Settings")
+            return
+        from .tls_transport import configuration
+        secure = configuration()
+        settings = ((secure["host"], secure["port"], secure["token"]) if secure is not None
+                    else await connection_settings(_manager))
     except (OSError, ValueError, TypeError, asyncio.TimeoutError):
         _show("Pairing failed")
         return
@@ -304,7 +311,7 @@ async def _listen():
         _show("Pair in App Settings")
         return
     while True:
-        connection = Connection()
+        connection = Connection(secure=secure)
         try:
             await asyncio.wait_for(connection.connect(*settings), 5)
             start = time.ticks_ms()

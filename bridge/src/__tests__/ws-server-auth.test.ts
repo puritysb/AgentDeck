@@ -92,6 +92,23 @@ describe('WsServer request URL isolation', () => {
     return { ws, connect };
   }
 
+  it.each([false, true])('rejects scoped credentials before snapshot or legacy approval (local=%s)', (local) => {
+    trust.local = local;
+    const snapshot = vi.fn();
+    const record = vi.fn();
+    server.onClientConnect(snapshot);
+    server.setPairingApprovalHooks({ isApproved: () => true, record });
+    try {
+      for (const token of ['addev1.malformed', `addev1.${'a'.repeat(32)}.${'b'.repeat(64)}`]) {
+        const { ws, connect } = syntheticConnection(`/?token=${token}`, 'localhost');
+        connect();
+        expect(ws.close).toHaveBeenCalledWith(1008, 'Use the secure device endpoint');
+      }
+      expect(snapshot).not.toHaveBeenCalled();
+      expect(record).not.toHaveBeenCalled();
+    } finally { server.setPairingApprovalHooks(null); }
+  });
+
   it('ignores an untrusted Host value when reading remote query parameters', async () => {
     const { ws, connect } = syntheticConnection('/?token=wrong-token', 'invalid host');
     expect(connect).not.toThrow();

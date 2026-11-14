@@ -763,3 +763,20 @@ waiting,working,ageSeconds`). **Not verified:** signed install on a physical
 Watch (Automatic signing must first register the two new bundle IDs with the
 container), a real CloudKit fetch on the Watch, complication rendering on a
 face, and the complication refresh budget.
+
+PR review also covers missed account-change notifications: the verified owner
+is checked against the cache before every fetch, even when a restored summary
+is already visible. A changed owner clears the old counts even if the next
+fetch fails; same-account offline reads preserve the source observation time.
+Cache-write failures remain visible, and account changes reset refresh throttling.
+These cases and the shared glance rules run in the macOS CloudKit PoC gate.
+The changed/full verification tiers and Apple CI also build the Watch app and
+check that its complication executable is embedded. These automated checks do
+not replace physical Watch account switching, offline cold starts, face rendering,
+background refresh measurements, or forwarded-alert acceptance.
+
+Review verification (2026-11-14): all 27 selected macOS PoC XCTest cases
+passed, including the four Watch model regressions. The updated app and embedded
+complication built for watchOS Simulator. An isolated Series 11 46 mm simulator
+on watchOS 27 rendered waiting/working, historical, expired-without-counts and
+observed-empty states. This is simulator evidence, not physical Watch acceptance.

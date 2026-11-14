@@ -22,12 +22,14 @@ extension RemoteGlance {
 
     /// A compact label for inline complications.
     var inline: String {
+        let label: String
         switch headline {
-        case .needsYou(let n): return String(localized: "\(n) need you")
-        case .working(let n): return String(localized: "\(n) working")
-        case .allClear: return String(localized: "All clear")
-        case .unavailable: return String(localized: "AgentDeck —")
+        case .needsYou(let n): label = n == 1 ? String(localized: "1 needs you") : String(localized: "\(n) need you")
+        case .working(let n): label = String(localized: "\(n) working")
+        case .allClear: label = String(localized: "All clear")
+        case .unavailable: label = String(localized: "AgentDeck —")
         }
+        return historical ? String(localized: "Last: \(label)") : label
     }
 
     /// Session-state tokens (DESIGN.md §2.7); historical evidence is muted.

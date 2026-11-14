@@ -26,11 +26,18 @@ GUID = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 
 class Connection:
-    def __init__(self):
+    def __init__(self, secure=None):
+        self.secure_config = secure
+        self.secure = None
         self.reader = None
         self.writer = None
 
     async def connect(self, host, port, token):
+        if self.secure_config is not None:
+            from .tls_transport import TLSConnection
+            self.secure = TLSConnection(self.secure_config)
+            await self.secure.connect()
+            return
         self.reader, self.writer = await asyncio.open_connection(host, port)
         key = binascii.b2a_base64(os.urandom(16)).strip()
         request = (
@@ -61,6 +68,8 @@ class Connection:
         await self.send(1, json.dumps(REGISTER).encode())
 
     async def send(self, opcode, payload):
+        if self.secure is not None:
+            return await self.secure.send(opcode, payload)
         size = len(payload)
         header = bytes((128 | opcode, 128 | size)) if size < 126 else bytes(
             (128 | opcode, 254, size >> 8, size & 255)
@@ -81,6 +90,8 @@ class Connection:
         return result
 
     async def receive(self):
+        if self.secure is not None:
+            return await self.secure.receive()
         first, second = await self.read_exactly(2)
         opcode = first & 15
         size = second & 127
@@ -112,6 +123,10 @@ class Connection:
         return None
 
     async def close(self):
+        if self.secure is not None:
+            await self.secure.close()
+            self.secure = None
+            return
         writer = self.writer
         self.reader = None
         self.writer = None
