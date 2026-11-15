@@ -313,7 +313,7 @@ actor RemoteObservationCloudStore: RemoteObservationTransport {
             let subscription = CKQuerySubscription(recordType: RemoteObservationContract.eventType,
                 predicate: NSPredicate(format: "installationID == %@", installation.uuidString),
                 subscriptionID: id, options: .firesOnRecordCreation)
-            subscription.zoneID = Self.zoneID
+            // The private database and installation predicate scope delivery.
             let info = CKSubscription.NotificationInfo()
             // Content-free by contract: the alert names no agent, project or text.
             info.title = "AgentDeck"

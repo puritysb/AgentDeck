@@ -99,7 +99,7 @@ final class RemoteObservationCloudStoreTests: XCTestCase {
         XCTAssertEqual(received?.installationID, summary.installationID)
         let subscription = try XCTUnwrap(database.subscriptions.first as? CKQuerySubscription)
         XCTAssertEqual(subscription.recordType, "AttentionEvent")
-        XCTAssertEqual(subscription.zoneID?.zoneName, "RemoteObservationV1")
+        XCTAssertNil(subscription.zoneID)
         XCTAssertEqual(subscription.subscriptionID,
                        "remote-observation-v1-\(summary.installationID.uuidString)-\(receiverID.uuidString)")
         // CloudKit returns a securely decoded predicate with evaluation disabled.
