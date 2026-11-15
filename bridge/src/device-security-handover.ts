@@ -10,9 +10,21 @@ import type { IncumbentHealth } from './daemon-takeover.js';
 export async function captureDeviceSecurity(port:number,health:IncumbentHealth):Promise<boolean>{
   const status=health.deviceSecurity;
   if(!status||status.state==='disabled')return true;
-  if(status.version!==1||status.state!=='listening'||localPeerOwnership(health.pid)!=='same-user')return false;
-  const nonce=randomBytes(16).toString('hex');
+  if (status.version !== 1 || localPeerOwnership(health.pid) !== 'same-user') return false;
+
+  const store = new DeviceSecurityStore(getDataDir());
   try {
+    if (health.isSwift && status.state === 'replica') {
+      // Swift can serve the main port while Node retains durable TLS custody.
+      // A replica has nothing to seal. Require the profile Node will start with
+      // to contain the owner identity and to be able to read its credential store.
+      if (store.read()?.role !== 'owner') return false;
+      store.credentials.snapshot();
+      return true;
+    }
+    if (status.state !== 'listening') return false;
+
+    const nonce = randomBytes(16).toString('hex');
     const response=await fetch(`http://127.0.0.1:${port}/device-security/seal`,{
       method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nonce}),signal:AbortSignal.timeout(15000),redirect:'error',
     });
@@ -24,7 +36,7 @@ export async function captureDeviceSecurity(port:number,health:IncumbentHealth):
     for await(const chunk of response.body){count+=chunk.length;if(count>maximum)return false;chunks.push(chunk);}
     const receipt=JSON.parse(Buffer.concat(chunks).toString('utf8'));
     if(receipt.pid!==health.pid||localPeerOwnership(receipt.pid)!=='same-user')return false;
-    new DeviceSecurityStore(getDataDir()).adopt(receipt.transfer,nonce);
+    store.adopt(receipt.transfer,nonce);
     return true;
   }catch{return false;}
 }
