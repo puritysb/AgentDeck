@@ -6,6 +6,7 @@ import Foundation
 import Darwin
 import IOKit
 import IOKit.serial
+import os
 
 /// Thread-safe token to signal read threads to stop.
 /// Shared between actor (invalidate) and read dispatch queue (check).
@@ -66,6 +67,41 @@ actor ESP32Serial {
         return esp32USBVendorIDs.contains(vendorID)
     }
 
+    struct DetectedPort: Equatable, Sendable {
+        let path: String
+        var registryID: UInt64? = nil
+
+        var isNativeCDC: Bool { path.hasPrefix("/dev/cu.usbmodem") }
+    }
+
+    /// Serial modules are recreated when the Swift daemon rebinds. Keep failed
+    /// attachments for the lifetime of the host app, independently of any open
+    /// file descriptors or daemon port.
+    final class UnidentifiedCDCPorts: Sendable {
+        private let rejected = OSAllocatedUnfairLock(initialState: [String: DetectedPort]())
+
+        func record(_ port: DetectedPort) {
+            rejected.withLock { $0[port.path] = port }
+        }
+
+        func eligiblePorts(_ detected: [DetectedPort]) -> [DetectedPort] {
+            rejected.withLock { rejected in
+                guard !rejected.isEmpty else { return detected }
+                let byPath = Dictionary(uniqueKeysWithValues: detected.map { ($0.path, $0) })
+                rejected = rejected.filter { path, previous in
+                    guard let current = byPath[path] else { return false }
+                    // A quick replug can reuse the path between polls. If the
+                    // registry ID is unavailable, wait for observed removal.
+                    guard let previousID = previous.registryID, let currentID = current.registryID else {
+                        return true
+                    }
+                    return previousID == currentID
+                }
+                return detected.filter { rejected[$0.path] == nil }
+            }
+        }
+    }
+
     struct SerialConnection: Identifiable {
         let id = UUID()
         let port: String
@@ -73,6 +109,11 @@ actor ESP32Serial {
         var writeHandle: FileHandle?
         var readHandle: FileHandle?
         var connected = true
+        var registryID: UInt64?
+        var identificationDeadline: ContinuousClock.Instant?
+        var isAwaitingIdentification: Bool {
+            identificationDeadline != nil && !ESP32Serial.hasIdentified(deviceInfo)
+        }
         var readBuffer = ""
         var deviceInfo: DeviceInfo?
         var deviceInfoCapturedAt: Date?
@@ -96,7 +137,7 @@ actor ESP32Serial {
         /// WiFi-provision fallback.
         var authProvisionAcked = false
         let readToken = ReadToken()
-        let openedAt = Date()
+        var openedAt = ContinuousClock.now
         var lastReadAt: Date?
         var lastWriteAt: Date?
         var deviceInfoRequestsSent = 0
@@ -318,6 +359,11 @@ actor ESP32Serial {
     private var isStopped = false
     /// Ports skipped for a foreign USB vendor, so each is logged once.
     private var skippedForeignPorts: Set<String> = []
+    private let unidentifiedCDCPorts: UnidentifiedCDCPorts
+
+    init(unidentifiedCDCPorts: UnidentifiedCDCPorts = UnidentifiedCDCPorts()) {
+        self.unidentifiedCDCPorts = unidentifiedCDCPorts
+    }
 
     // MARK: - Sibling ownership guard (#327)
     //
@@ -451,7 +497,10 @@ actor ESP32Serial {
         qos: .userInitiated,
         attributes: .concurrent
     )
-    private static let deviceInfoTimeoutSec: TimeInterval = 30  // retry device_info if absent
+    private static let deviceInfoRetryDelay: Duration = .seconds(30)
+    // Leave room for the existing boot grace, two heartbeat retries and a reply.
+    private static let cdcIdentificationWindow: Duration = .seconds(45)
+    private static let deviceInfoRequest = #"{"type":"device_info_request"}"#
     // An identified connection that read before but has been RX-silent this
     // long is half-open: the board hung/rebooted badly or the CH340 RX path
     // wedged, while writes keep landing in the kernel buffer so no write error
@@ -468,15 +517,16 @@ actor ESP32Serial {
     /// Thread-safe queue for incoming serial data (read thread → actor)
     private struct PendingRead: @unchecked Sendable {
         let port: String
+        let token: ReadToken
         let data: String
     }
     private let pendingReadsLock = NSLock()
     nonisolated(unsafe) private var pendingReads: [PendingRead] = []
     nonisolated(unsafe) private var pendingTelemetryBoards: Set<String> = []
 
-    private nonisolated func enqueuePendingRead(port: String, data: String) {
+    private nonisolated func enqueuePendingRead(port: String, token: ReadToken, data: String) {
         pendingReadsLock.lock()
-        pendingReads.append(PendingRead(port: port, data: data))
+        pendingReads.append(PendingRead(port: port, token: token, data: data))
         pendingReadsLock.unlock()
     }
 
@@ -485,7 +535,7 @@ actor ESP32Serial {
         let reads = pendingReads
         pendingReads.removeAll()
         pendingReadsLock.unlock()
-        for r in reads {
+        for r in reads where r.token.isActive {
             if r.data.hasPrefix("<<READ_ERR:") {
                 let details = String(r.data.dropFirst("<<READ_ERR:".count).dropLast(2))
                 markReadFailure(port: r.port, message: "read failed on \(r.port): \(details)")
@@ -960,7 +1010,7 @@ actor ESP32Serial {
     /// A board has identified when its `device_info` named one; an empty name
     /// does not count (Node parity: `!conn.deviceInfo?.board`, and the
     /// generated provisioning rules).
-    static func hasIdentified(_ deviceInfo: DeviceInfo?) -> Bool {
+    nonisolated static func hasIdentified(_ deviceInfo: DeviceInfo?) -> Bool {
         guard let board = deviceInfo?.board else { return false }
         return !board.isEmpty
     }
@@ -976,7 +1026,7 @@ actor ESP32Serial {
 
     // MARK: - Port Detection
 
-    private func detectPorts() -> [String] {
+    private func detectPorts() -> [DetectedPort]? {
         // Pure-Swift port enumeration. Previously shelled out to `ls` via
         // /bin/sh; App Store guideline 2.5.2 disallows spawning external
         // interpreters and `FileManager.contentsOfDirectory` gives us the
@@ -984,7 +1034,7 @@ actor ESP32Serial {
         // build — there's no reason to keep the shell path.
         let fm = FileManager.default
         guard let entries = try? fm.contentsOfDirectory(atPath: "/dev") else {
-            return []
+            return nil
         }
         let candidates = entries
             .filter { $0.hasPrefix("cu.") }
@@ -997,59 +1047,65 @@ actor ESP32Serial {
         guard !candidates.isEmpty else { return [] }
 
         // Never open a port whose USB vendor is known to be something else.
-        let vendors = Self.serialVendorsByPort()
+        let registry = Self.serialRegistryByPort()
         return candidates
-            .filter { port in
-                let vendorID = vendors[port]
+            .compactMap { port -> DetectedPort? in
+                let entry = registry[port]
+                let vendorID = entry?.vendorID
                 if Self.isAllowedSerialVendor(vendorID) {
                     skippedForeignPorts.remove(port)
-                    return true
+                    return DetectedPort(path: port, registryID: entry?.id)
                 }
                 if skippedForeignPorts.insert(port).inserted {
                     DaemonLogger.shared.info(
                         "ESP32 serial \(port) skipped: USB vendor \(String(format: "0x%04x", vendorID ?? 0)) is not an ESP32 serial bridge"
                     )
                 }
-                return false
+                return nil
             }
             .sorted { a, b in
-                let ap = Self.portPriority(a)
-                let bp = Self.portPriority(b)
-                return ap == bp ? a < b : ap < bp
+                let ap = Self.portPriority(a.path)
+                let bp = Self.portPriority(b.path)
+                return ap == bp ? a.path < b.path : ap < bp
             }
     }
 
-    /// Callout path → `idVendor` of the nearest USB ancestor, read from the
-    /// I/O Registry (no subprocess, App Store safe).
-    private static func serialVendorsByPort() -> [String: Int] {
+    /// Callout path → serial service ID and the USB ancestor's vendor.
+    private static func serialRegistryByPort() -> [String: (id: UInt64?, vendorID: Int?)] {
         var iterator: io_iterator_t = 0
         guard IOServiceGetMatchingServices(
             kIOMainPortDefault, IOServiceMatching(kIOSerialBSDServiceValue), &iterator
         ) == KERN_SUCCESS else { return [:] }
         defer { IOObjectRelease(iterator) }
 
-        var vendors: [String: Int] = [:]
+        var entries: [String: (id: UInt64?, vendorID: Int?)] = [:]
         var service = IOIteratorNext(iterator)
         while service != 0 {
             if let path = IORegistryEntryCreateCFProperty(
                 service, kIOCalloutDeviceKey as CFString, kCFAllocatorDefault, 0
-            )?.takeRetainedValue() as? String,
-               let vendorID = IORegistryEntrySearchCFProperty(
-                service, kIOServicePlane, "idVendor" as CFString, kCFAllocatorDefault,
-                IOOptionBits(kIORegistryIterateRecursively | kIORegistryIterateParents)
-               ) as? Int {
-                vendors[path] = vendorID
+            )?.takeRetainedValue() as? String {
+                let vendorID = IORegistryEntrySearchCFProperty(
+                    service, kIOServicePlane, "idVendor" as CFString, kCFAllocatorDefault,
+                    IOOptionBits(kIORegistryIterateRecursively | kIORegistryIterateParents)
+                ) as? Int
+                var id: UInt64 = 0
+                let result = IORegistryEntryGetRegistryEntryID(service, &id)
+                entries[path] = (result == KERN_SUCCESS ? id : nil, vendorID)
             }
             IOObjectRelease(service)
             service = IOIteratorNext(iterator)
         }
-        return vendors
+        return entries
     }
 
     private static func portPriority(_ port: String) -> Int {
         if port.contains("wchusbserial") || port.contains("usbserial") { return 0 }
         if port.contains("usbmodem") { return 1 }
         return 2
+    }
+
+    func portsEligibleForOpen(_ detected: [DetectedPort]) -> [DetectedPort] {
+        unidentifiedCDCPorts.eligiblePorts(detected)
     }
 
     private func pollForDevices() async {
@@ -1075,14 +1131,22 @@ actor ESP32Serial {
         // runs, and the loop only exits on an invalidated token. Every current
         // disconnect site already invalidates, but a future one that forgets
         // would leak a spinning reader plus its FD with no other symptom.
-        for conn in connections where !conn.connected {
-            conn.readToken.invalidate()
-            try? conn.writeHandle?.close()
+        for i in connections.indices.reversed() where !connections[i].connected {
+            if connections[i].isAwaitingIdentification {
+                rejectUnidentifiedCDC(at: i)
+            } else {
+                let conn = connections.remove(at: i)
+                conn.readToken.invalidate()
+                try? conn.writeHandle?.close()
+            }
         }
-        connections.removeAll { !$0.connected }
 
-        let ports = detectPorts()
-        lastDetectedPorts = ports
+        // Keep previous exclusions if enumeration failed.
+        guard let detected = detectPorts() else {
+            publishStatusShadow()
+            return
+        }
+        lastDetectedPorts = detected.map(\.path)
         // A wedged bridge stays enumerated, so a port VANISHING from the
         // detected set means it was physically unplugged / power-cycled / driver
         // re-enumerated — cases where the wedge may well be gone. Drop its
@@ -1094,14 +1158,15 @@ actor ESP32Serial {
         // 5 min is the worse user-recovery outcome. Revisit with a grace period
         // only if enumeration false-negatives are observed in the field.
         if !failedPorts.isEmpty {
-            let detected = Set(ports)
+            let detected = Set(lastDetectedPorts)
             failedPorts = failedPorts.filter { detected.contains($0.key) }
         }
         let now = Date()
         boardHoldUntil = boardHoldUntil.filter { $0.value > now }
         publishStatusShadow()
 
-        for port in ports {
+        for candidate in portsEligibleForOpen(detected) {
+            let port = candidate.path
             // Skip if already connected
             if connections.contains(where: { $0.port == port }) { continue }
             if boardHoldUntil[port] != nil { continue }
@@ -1116,7 +1181,7 @@ actor ESP32Serial {
                 if now.timeIntervalSince(failure.lastAttempt) < backoff { continue }
             }
 
-            beginOpenPort(port)
+            beginOpenPort(candidate)
         }
     }
 
@@ -1128,7 +1193,8 @@ actor ESP32Serial {
         case cancelled
     }
 
-    private func beginOpenPort(_ port: String) {
+    private func beginOpenPort(_ candidate: DetectedPort) {
+        let port = candidate.path
         // Close any existing connection to the same port first (prevents FD leak on restart/wake race)
         if let existingIdx = connections.firstIndex(where: { $0.port == port }) {
             let old = connections.remove(at: existingIdx)
@@ -1165,7 +1231,7 @@ actor ESP32Serial {
                 return
             }
             Task(priority: .userInitiated) {
-                await self.finishOpenPort(port: port, token: token, result: result)
+                await self.finishOpenPort(candidate: candidate, token: token, result: result)
             }
         }
 
@@ -1175,7 +1241,8 @@ actor ESP32Serial {
         }
     }
 
-    private func finishOpenPort(port: String, token: OpenAttemptToken, result: SerialOpenResult) {
+    private func finishOpenPort(candidate: DetectedPort, token: OpenAttemptToken, result: SerialOpenResult) {
+        let port = candidate.path
         guard openingPorts[port] === token, !isStopped else {
             if case .opened(let fd) = result {
                 Darwin.close(fd)
@@ -1192,7 +1259,7 @@ actor ESP32Serial {
         switch result {
         case .opened(let descriptor):
             failedPorts.removeValue(forKey: port)
-            registerOpenedDescriptor(port: port, descriptor: descriptor)
+            registerOpenedDescriptor(candidate: candidate, descriptor: descriptor)
         case .failed(let errNo, let message):
             recordOpenFailure(port: port, errNo: errNo, message: message)
         case .cancelled:
@@ -1220,12 +1287,20 @@ actor ESP32Serial {
         publishStatusShadow()
     }
 
-    private func registerOpenedDescriptor(port: String, descriptor: Int32) {
+    func registerOpenedDescriptor(
+        candidate: DetectedPort, descriptor: Int32, now: ContinuousClock.Instant = .now
+    ) {
+        let port = candidate.path
         let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
         let writeHandle = handle
         let readHandle = handle
 
-        let conn = SerialConnection(port: port, fd: descriptor, writeHandle: writeHandle, readHandle: readHandle)
+        var conn = SerialConnection(port: port, fd: descriptor, writeHandle: writeHandle, readHandle: readHandle)
+        conn.openedAt = now
+        conn.registryID = candidate.registryID
+        if candidate.isNativeCDC {
+            conn.identificationDeadline = now.advanced(by: Self.cdcIdentificationWindow)
+        }
 
         DaemonLogger.shared.info("ESP32 opened: \(port) [\(port.contains("usbmodem") ? "CDC" : "UART")]")
 
@@ -1337,7 +1412,7 @@ actor ESP32Serial {
                 let n = Darwin.read(fd, buf, bufSize)
                 if n > 0 {
                     if let str = String(bytes: UnsafeBufferPointer(start: buf, count: n), encoding: .utf8) {
-                        self?.enqueuePendingRead(port: port, data: str)
+                        self?.enqueuePendingRead(port: port, token: token, data: str)
                     }
                 } else if n < 0 {
                     let errNo = errno
@@ -1347,7 +1422,7 @@ actor ESP32Serial {
                     }
                     DaemonLogger.shared.throttledDebug("ESP32", key: "read-exit:\(port):\(errNo)", "Read exit \(port): errno=\(errNo)", minInterval: 30)
                     let errText = String(cString: strerror(errNo))
-                    self?.enqueuePendingRead(port: port, data: "<<READ_ERR:errno=\(errNo) \(errText)>>")
+                    self?.enqueuePendingRead(port: port, token: token, data: "<<READ_ERR:errno=\(errNo) \(errText)>>")
                     break
                 } else {
                     Thread.sleep(forTimeInterval: 0.05)
@@ -1394,7 +1469,7 @@ actor ESP32Serial {
         publishStatusShadow()
     }
 
-    private func handleReadData(port: String, data: String) {
+    func handleReadData(port: String, data: String) {
         guard let idx = connections.firstIndex(where: { $0.port == port }) else { return }
         connections[idx].lastReadAt = Date()
         failedPorts.removeValue(forKey: port)
@@ -1423,8 +1498,14 @@ actor ESP32Serial {
             DaemonLogger.shared.sampledDebug("ESP32", key: "recv:\(port):\(type)", every: 20, "← \(port): \(type)")
 
             if type == "device_info" {
+                let deviceInfo = Self.deviceInfo(message: msg)
+                if connections[idx].identificationDeadline != nil {
+                    // A partial frame or a frame without a board name cannot
+                    // admit a CDC connection or undo an established identity.
+                    guard Self.hasIdentified(deviceInfo) else { continue }
+                }
                 let hadDeviceInfo = connections[idx].deviceInfo != nil
-                connections[idx].deviceInfo = Self.deviceInfo(message: msg)
+                connections[idx].deviceInfo = deviceInfo
                 connections[idx].deviceInfoCapturedAt = Date()
                 failedPorts.removeValue(forKey: port)
                 if !hadDeviceInfo {
@@ -1432,6 +1513,7 @@ actor ESP32Serial {
                 }
                 publishStatusShadow()
             }
+            guard !connections[idx].isAwaitingIdentification else { continue }
             if type == "wifi_provision_ack" {
                 Self.recordWifiProvisionAck(&connections[idx], message: msg, now: Self.epochMsNow())
             }
@@ -1456,18 +1538,21 @@ actor ESP32Serial {
         [state, usage, sessions, display].compactMap { $0 }
     }
 
-    private func sendHeartbeat() {
+    func sendHeartbeat(at instant: ContinuousClock.Instant = .now) {
         drainPendingReads()
         guard !connections.isEmpty else { return }
 
-        // Check for connections that never received device_info. A delayed
-        // response is not a device failure: keep the port open, retry the
-        // request, and only reconnect a completely silent port after a longer
-        // grace window.
+        // Read any final reply before enforcing the CDC identification deadline.
+        // A rejected USB attachment stays excluded when the next poll runs.
         let now = Date()
         for i in connections.indices.reversed() where connections[i].connected {
+            if let deadline = connections[i].identificationDeadline,
+               connections[i].isAwaitingIdentification, instant >= deadline {
+                rejectUnidentifiedCDC(at: i)
+                continue
+            }
             if connections[i].deviceInfo == nil,
-               now.timeIntervalSince(connections[i].openedAt) > Self.deviceInfoTimeoutSec {
+               instant - connections[i].openedAt >= Self.deviceInfoRetryDelay {
                 let port = connections[i].port
                 if connections[i].deviceInfoRequestsSent < 3 {
                     DaemonLogger.shared.throttledDebug(
@@ -1485,10 +1570,11 @@ actor ESP32Serial {
         // RX-silent past silentReadTimeoutSec is a zombie — the board can no
         // longer be reached and no write error will ever close the FD. Drop it
         // here; pollForDevices() (10s cadence) reopens the port, and the
-        // reopen's DTR/RTS toggle resets the board. Never-read connections
-        // (lastReadAt == nil) are the device_info retry path's concern above.
+        // reopen's DTR/RTS toggle resets the board. CDC connections awaiting
+        // identification use their own deadline above.
         for i in connections.indices.reversed() where connections[i].connected {
-            guard let lastReadAt = connections[i].lastReadAt else { continue }
+            guard !connections[i].isAwaitingIdentification,
+                  let lastReadAt = connections[i].lastReadAt else { continue }
             let readAge = now.timeIntervalSince(lastReadAt)
             if readAge > Self.silentReadTimeoutSec {
                 let conn = connections[i]
@@ -1536,6 +1622,14 @@ actor ESP32Serial {
         publishStatusShadow()
     }
 
+    private func rejectUnidentifiedCDC(at index: Int) {
+        let conn = connections.remove(at: index)
+        unidentifiedCDCPorts.record(DetectedPort(path: conn.port, registryID: conn.registryID))
+        conn.readToken.invalidate()
+        try? conn.writeHandle?.close()
+        DaemonLogger.shared.info("ESP32 released unidentified native USB serial port \(conn.port) until reconnect")
+    }
+
     // MARK: - Serial Helpers
 
     private enum SerialWriteResult {
@@ -1555,7 +1649,7 @@ actor ESP32Serial {
 
     private func sendDeviceInfoRequest(to conn: inout SerialConnection) {
         conn.deviceInfoRequestsSent += 1
-        sendToConnection(&conn, json: #"{"type":"device_info_request"}"#)
+        sendToConnection(&conn, json: Self.deviceInfoRequest)
     }
 
     private func sendInitialState(to conn: inout SerialConnection) {
@@ -1570,7 +1664,8 @@ actor ESP32Serial {
 
     @discardableResult
     private func sendEvent(_ event: [String: Any], to conn: inout SerialConnection) -> Bool {
-        guard let type = event["type"] as? String,
+        guard !conn.isAwaitingIdentification,
+              let type = event["type"] as? String,
               Self.serialForwardedEvents.contains(type) else { return false }
         let prepared = Self.prepareForSerial(event, deviceInfo: conn.deviceInfo)
         guard let data = try? JSONSerialization.data(withJSONObject: prepared),
@@ -1580,7 +1675,8 @@ actor ESP32Serial {
     }
 
     private func sendToConnection(_ conn: inout SerialConnection, json: String) {
-        guard conn.connected, conn.writeHandle != nil else { return }
+        guard conn.connected, conn.writeHandle != nil,
+              !conn.isAwaitingIdentification || json == Self.deviceInfoRequest else { return }
         let hadLineReset = conn.needsLineReset
         let prefix = conn.needsLineReset ? "\n" : ""
         let payload = Array((prefix + json + "\n").utf8)
