@@ -313,7 +313,8 @@ Index only clear fields needed for the event query and cleanup (installation,
 occurrence/expiry as applicable). Do not query/index encrypted fields. Creation
 of every AttentionEvent for the selected installation matches one
 `CKQuerySubscription` with `.firesOnRecordCreation`. It uses a constant visible
-alert ("AgentDeck has an update to review") and default sound. Resolution updates
+alert (title "AgentDeck", body "An agent is waiting for your response.", category
+`AGENTDECK_ATTENTION`) and default sound; the body names no agent, project or text. Resolution updates
 do not match creation and do not produce a second alert. Fetch events on open;
 push is a change hint, not the authoritative event log.
 
@@ -900,56 +901,44 @@ and long-duration disruption measurements remain separate checks.
 
 ### Watch reader (development)
 
-Added 2026-11-14. At the PM's request a read-only Watch reader was built ahead of the iPhone
-widget instead of after it. It is a separate watchOS target, not a change to
-the gate order for anything that ships: it is not embedded in the iOS app and
-belongs to no App Store archive.
+Added 2026-11-14 as a development PoC. On the same day it moved to the Remote
+V1 product contract and was embedded in the iOS app as a release candidate; the
+heading keeps its anchor for existing links.
 
 - Targets: `AgentDeck_watchOS` (`bound.serendipity.agent.deck.watchkitapp`,
-  watchOS 10+, runs independently of the iPhone app) with the embedded
-  WidgetKit extension `AgentDeckWatchWidgets` (circular, rectangular, inline
-  and corner complications). Scheme `AgentDeck_CloudKitPoC_watchOS`. Both
-  targets always compile the PoC sources (`AGENTDECK_CLOUDKIT_POC`) and carry
-  only the Development CloudKit entitlement for the same container; no push
-  entitlement, no App Group.
-- Source: the Watch reads the `RosterProbe/stage-b-latest` summary from the
-  private database over its own network path, using the same
-  `CloudKitProbeStore` (moved unchanged into `CloudKitObservationStore.swift`),
-  `RemoteReaderCache` and freshness policy as the iPhone. Alerts still arrive
-  by Apple's iPhone forwarding; the Watch registers no subscription, so there
-  is no second alert per event.
-- Presentation: `RemoteGlance` is the one rule for both the app and the
-  complications — a wait outranks work, "All clear" needs an observed empty
+  watchOS 10+, runs independently of the iPhone app) with the embedded WidgetKit
+  extension `AgentDeckWatchWidgets` (circular, rectangular, inline and corner
+  complications). Scheme `AgentDeck_watchOS`. The iOS target embeds the Watch
+  app, so every iOS archive carries it. Both Watch targets set
+  `AgentDeckRemoteObservationEnvironment` from `AGENTDECK_ICLOUD_ENVIRONMENT`
+  (Development for Debug, Production for Release) and carry the CloudKit
+  entitlement for the same container; no push entitlement, no App Group.
+  `verify-remote-observation.py` checks both embedded bundles' identity and,
+  when signed, their entitlements.
+- Source: the Watch reads the Remote V1 `ObservationSnapshot/latest` record
+  through the same `RemoteObservationCloudStore` as the iPhone, including the
+  opt-in session rows and allowance windows. Alerts still arrive by Apple's
+  iPhone forwarding; the Watch registers no subscription. The CloudKit alert
+  carries the `AGENTDECK_ATTENTION` category, which the Watch renders as a
+  custom long look built only from its own cached snapshot (no fetch, no reply).
+- Presentation: `WatchGlance` is the one rule for the app, the complications
+  and the long look — a wait outranks work, "All clear" needs an observed empty
   roster, historical evidence is muted with its original time, and expired,
-  missing or future-dated evidence shows no count. Complication timelines add
-  entries at the historical and expiry boundaries so the face ages without a
-  fetch; a failed fetch shows "—", never a guessed count.
+  missing or future-dated evidence shows no count. Pages: an attention ring
+  (waiting/working/idle arcs with agent marks), the session roster with official
+  agent marks, and allowance dials. Complication timelines add entries at the
+  historical, expiry and allowance-reset boundaries so the face ages without a
+  fetch.
 - Account rules match the iPhone reader: cache restore requires the same iCloud
   identity, an account change or missing account clears it, and a deleted
   summary clears it. The Watch never connects to a daemon and cannot answer.
 
-Verified: watchOS simulator build of the app and embedded extension;
-`RemoteGlanceTests` plus the existing PoC suites (21 tests) in the iOS PoC
-scheme; simulator screens for no iCloud account, 2 waiting/3 working,
-historical 4 working and all clear (DEBUG `-AgentDeckWatchFixture
-waiting,working,ageSeconds`). **Not verified:** signed install on a physical
-Watch (Automatic signing must first register the two new bundle IDs with the
-container), a real CloudKit fetch on the Watch, complication rendering on a
-face, and the complication refresh budget.
-
-PR review also covers missed account-change notifications: the verified owner
-is checked against the cache before every fetch, even when a restored summary
-is already visible. A changed owner clears the old counts even if the next
-fetch fails; same-account offline reads preserve the source observation time.
-Cache-write failures remain visible, and account changes reset refresh throttling.
-These cases and the shared glance rules run in the macOS CloudKit PoC gate.
-The changed/full verification tiers and Apple CI also build the Watch app and
-check that its complication executable is embedded. These automated checks do
-not replace physical Watch account switching, offline cold starts, face rendering,
-background refresh measurements, or forwarded-alert acceptance.
-
-Review verification (2026-11-14): all 27 selected macOS PoC XCTest cases
-passed, including the four Watch model regressions. The updated app and embedded
-complication built for watchOS Simulator. An isolated Series 11 46 mm simulator
-on watchOS 27 rendered waiting/working, historical, expired-without-counts and
-observed-empty states. This is simulator evidence, not physical Watch acceptance.
+Verified on this branch (2026-11-14): `WatchGlanceTests` and
+`WatchObservationModelTests` (12 cases) on iOS and macOS; the iOS app builds
+with the Watch app and complication embedded; Series 11 46 mm simulator screens
+for every glance mode, the roster, allowance and the long look (DEBUG
+`-AgentDeckWatchFixture busy|working|clear|historical|stopped`,
+`-AgentDeckWatchPage sessions|usage|notification`). **Not verified:** a
+Production CloudKit read on a physical Watch, a forwarded alert rendering the
+custom long look on hardware, the complication refresh budget, and a signed
+App Store archive with the two Watch profiles.

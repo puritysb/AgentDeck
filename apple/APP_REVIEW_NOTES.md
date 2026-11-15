@@ -147,6 +147,8 @@ AgentDeck Dashboard requires `com.apple.security.network.server`. The app is not
 
 **What listens.** The app runs an in-process local dashboard hub implemented with Apple's Network.framework. Two `NWListener` instances are created at launch — HTTP (`apple/AgentDeck/Daemon/Server/HTTPServer.swift`) and WebSocket (`apple/AgentDeck/Daemon/Server/WebSocketServer.swift`) — on port 9120 by default (user-configurable in Settings → Port, range 1024–65535; falls back within 9120–9139 when the default is occupied). The service is advertised on the local network via Bonjour as `_agentdeck._tcp`, as described by `NSLocalNetworkUsageDescription` in Info.plist.
 
+**Optional device TLS listener.** A third, separate `NWListener` (`apple/AgentDeck/Daemon/Server/DeviceTLSServer.swift`) starts only after the owner has explicitly configured a device TLS identity on this Mac; without that configuration it never opens. It serves a read-only, scope-limited session and usage snapshot over TLS (native Security and Network APIs, no custom trust bypass) to individually revocable device credentials, and it never uses the dashboard's route table or pairing token. Unconfigured installs, including review installs, have only the two listeners above.
+
 **Who connects in** (all incoming, none of which the app can initiate itself):
 
 1. **The AgentDeck Dashboard iOS companion app** (same bundle family, `bound.serendipity.agent.deck`). The user's own iPhone/iPad discovers the Mac over Bonjour on the same Wi-Fi network and opens a WebSocket connection to the Mac to receive live session events. The Mac cannot reach the iOS device as a client — the iOS app is a pure client with no server entitlement, so this data path only exists if the Mac accepts inbound connections.
@@ -237,10 +239,19 @@ private session text and provider credentials remain local.
 
 The iPhone separately enables receiving and chooses visible notifications;
 authorization is never requested at launch. CloudKit sends generic creation
-alerts and Apple forwards eligible iPhone alerts to the paired Watch; there is
-no Watch app. Opening an alert refreshes a read-only summary/event and reports
+alerts and Apple forwards eligible iPhone alerts to the paired Watch. Opening an
+alert refreshes a read-only summary/event and reports
 resolved, expired or unconfirmed state. Cloud data cannot answer or approve any
 request. Cached observations retain their original time and become historical.
+
+The included Apple Watch app is a read-only viewer of the same summary: it reads
+the user's private CloudKit database with the same Apple Account, shows counts,
+agent types, states and allowance windows, and offers four complications. It
+has no network listener, no LAN connection, no push registration of its own and
+no way to answer or approve anything. A forwarded alert shows a graphical long
+look built from the Watch's last saved summary for the same account. Without a
+Mac that has Remote monitoring turned on, the Watch shows "Turn on Remote
+observation in AgentDeck on your Mac."
 
 Stop sharing records a disabled state, with durable retry when offline. Delete
 remote data stops sharing and removes this installation's product records and
@@ -648,8 +659,8 @@ long-form sections above are for the Resolution Center reply, where length is no
 ```text
 NO ACCOUNT REQUIRED. A paired Mac is optional for reviewing the offline Device Previews.
 
-NEW IN 2.1.0
-Reconnects to the selected Mac after its daemon changes, keeps an explicit Disconnect, and can request pairing again after the Mac renews its token. No new permission, account or cloud service.
+NEW IN 2.2.0
+Remote tab: a read-only summary the user's own Mac shares to the user's private CloudKit database (same Apple Account; no AgentDeck server). It needs no Local Network access. Optional alerts are content-free and only requested from the Remote tab. Included Apple Watch app: read-only glance, sessions, allowance and complications from the same summary; no listener, no push registration, cannot answer. Without a sharing Mac both show how to turn sharing on. Entitlements: iCloud (CloudKit, one container) and push for those alerts.
 
 VERIFY ON A CLEAN IPAD OR IPHONE
 1. Choose an aquarium appearance and continue to connection setup.
@@ -676,8 +687,8 @@ Contact: admin@foundby.kr
 ```text
 NO ACCOUNT REQUIRED. Review on a clean Mac with only AgentDeck installed; no external process or terminal setup is required for these instructions.
 
-NEW IN 2.1.1 — MACOS ONLY
-Open Work in the Dashboard header. The list prioritizes sessions that need input. A selected task shows observed delegates, background jobs and confirmed handoffs when available. Resize the window to switch between task navigation and the side-by-side list and detail. The selection is preserved. The Work header opens Usage & Services. Recent message history and its graph open on demand.
+NEW IN 2.2.0 — MACOS ONLY
+Settings > Remote monitoring: optional sharing of encrypted work counts and attention updates to the user's private CloudKit database for the iPhone, iPad and Watch apps (same Apple Account; no AgentDeck server). Session/allowance details are a separate switch. No prompts, project names, paths or credentials are uploaded. Stop sharing and Delete remote data are durable offline. Off by default.
 
 WHAT IT DOES
 The sandboxed Swift daemon monitors user-enabled agent integrations, serves Dashboard, pairs companions and evaluates turns. Users start agents independently. Work presents observed activity and keeps unidentified message peers separate.
@@ -702,6 +713,7 @@ The app spawns no subprocess and bundles no helper executable. The signed-artifa
 ENTITLEMENTS
 network.server: Network.framework accepts HTTP/WebSocket connections from paired companions, localhost hooks and optional decks. No public cloud listener or router mapping.
 Bonjour (_agentdeck._tcp): local discovery, with explained Local Network access; no token in discovery.
+iCloud (CloudKit, one private container): optional Remote monitoring above.
 device.bluetooth: optional paired CoreBluetooth displays. device.audio-input: optional voice. device.serial: optional USB displays. weatherkit: weather and attribution above.
 files.user-selected.read-write + bookmarks.app-scope: users select integration files/folders in the system picker after an explanation. Removal undoes AgentDeck's entries. No home-relative-path exception or App Group.
 

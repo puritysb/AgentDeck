@@ -95,6 +95,24 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### Apple 2.2.0 release decision (2026-11-14)
+
+| Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
+| --- | --- | --- | --- | --- | --- |
+| iOS + iPadOS + embedded watchOS / App Store | 2.1.0 / 10301 | No iOS 2.2.0 version in this record; recheck the ASC inventory before upload | 2.2.0 / next CI-assigned build above the highest consumed build | Minor: users can newly follow their Mac's agents away from its network (Remote tab over private iCloud, content-free alerts) and from an included Apple Watch app with complications. | **2.2 Remote monitoring** milestone; first Watch delivery. |
+| macOS / Mac App Store | 2.1.1 per the 2026-11-10 CHANGELOG entry; read back ASC before upload | Private macOS TestFlight 2.2.0 / 11201 (earlier CloudKit candidate, not submitted) | 2.2.0 / next CI-assigned build above 11201 | Minor: the Mac can share encrypted work counts, attention updates and optional session/allowance details to the user's private iCloud. Also ships the Unreleased Dashboard, timeline and CI-wait fixes. | **2.2 Remote monitoring** milestone (publisher side). |
+
+Unchanged targets: npm, Android, ESP32, Stream Deck and Ulanzi have no 2.2
+scope in this decision. Root `VERSION` stays 2.0.0. The milestone ships only
+after the Production gates in
+[apple-remote-observation.md](docs/apple-remote-observation.md) and the
+[2.2.0 media selection](apple/appstore-submission/media-2.2.0-selection.json):
+a Production CloudKit read and forwarded alert on physical iPhone and Watch, a
+signed iOS archive with the two Watch profiles passing
+`verify-appstore-archive.sh`, the Mac publisher on a signed Production build,
+and a complication capture from a real face. The device TLS listener included
+in the macOS build stays opt-in and unadvertised; its review note describes it.
+
 ### npm 2.1.2 release decision (2026-11-11)
 
 | Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |

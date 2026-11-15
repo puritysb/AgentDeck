@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>com.apple.developer.icloud-container-environment</key>
-	<string>Development</string>
+	<string>$(AGENTDECK_ICLOUD_ENVIRONMENT)</string>
 	<key>com.apple.developer.icloud-container-identifiers</key>
 	<array>
 		<string>iCloud.bound.serendipity.agent.deck</string>

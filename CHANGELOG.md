@@ -108,6 +108,30 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 - **4.2-inch e-ink.** A waiting session's question wraps to as many lines as
   fit instead of being cut to one.
 
+## 2026-11-14 — Apple 2.2.0
+
+**Remote monitoring (iCloud).** The Mac app can share encrypted work counts,
+attention episodes and, with a separate opt-in, session rows and account
+allowance windows to your private iCloud. The iPhone and iPad Remote tab
+reads them read-only without local network discovery, and can show
+content-free attention alerts that Apple forwards to a paired Watch. Cached
+observations keep their original time and turn historical; stop sharing and
+delete remote data are durable across offline periods and account changes.
+No prompts, project names, paths or credentials leave the Mac, and nothing
+can be answered or approved from iCloud.
+
+**Apple Watch.** A read-only AgentDeck app for Apple Watch now ships inside
+the iPhone app. It reads the same encrypted Remote monitoring summary your
+Mac shares to your private iCloud: an attention ring with waiting and working
+arcs and the agents' own marks, a session roster, allowance dials and four
+complications. A forwarded attention alert opens as a graphical long look
+from the Watch's last saved summary for the same Apple Account. It cannot
+answer or approve anything, and stale evidence is shown as historical with
+its original time.
+
+The macOS build also carries the Unreleased Dashboard, timeline and CI-wait
+changes above that apply to the Mac daemon.
+
 ## 2026-11-11 — Android 2.1.1
 
 - Retry USB after an automatically selected Wi-Fi connection refuses

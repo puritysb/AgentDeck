@@ -79,23 +79,37 @@ else
     echo "Installed Mac installer identity for team $TEAM_ID."
 fi
 
-echo -n "$PROFILE_BASE64" | base64 --decode -o "$PROFILE_PATH"
-PROFILE_PLIST="$RUNNER_TEMP/agentdeck-profile.plist"
-security cms -D -i "$PROFILE_PATH" > "$PROFILE_PLIST"
+install_profile() {
+    local base64="$1" path="$2" suffix="$3" app_id_key="$4" bundle_id="$5"
+    echo -n "$base64" | base64 --decode -o "$path"
+    local plist="$path.plist"
+    security cms -D -i "$path" > "$plist"
+    local uuid team app_id
+    uuid=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$plist")
+    team=$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$plist")
+    app_id=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:$app_id_key" "$plist")
+    if [[ "$team" != "$TEAM_ID" ]]; then
+        echo "::error::Provisioning profile belongs to team $team, expected $TEAM_ID."
+        exit 1
+    fi
+    if [[ "$app_id" != "$TEAM_ID.$bundle_id" ]]; then
+        echo "::error::Provisioning profile targets $app_id, expected $TEAM_ID.$bundle_id."
+        exit 1
+    fi
+    mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+    cp "$path" "$HOME/Library/MobileDevice/Provisioning Profiles/$uuid.$suffix"
+    echo "Installed App Store profile $uuid for $bundle_id."
+}
 
-PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$PROFILE_PLIST")
-PROFILE_TEAM=$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$PROFILE_PLIST")
-PROFILE_APP_ID=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:$PROFILE_APP_ID_KEY" "$PROFILE_PLIST")
+install_profile "$PROFILE_BASE64" "$PROFILE_PATH" "$PROFILE_SUFFIX" "$PROFILE_APP_ID_KEY" "$BUNDLE_ID"
 
-if [[ "$PROFILE_TEAM" != "$TEAM_ID" ]]; then
-    echo "::error::Provisioning profile belongs to team $PROFILE_TEAM, expected $TEAM_ID."
-    exit 1
+# The iOS archive embeds the Watch app and its complication extension; each is
+# signed with its own App Store profile (apple/project.yml release configs).
+if [[ "$TARGET" == "ios" ]]; then
+    : "${WATCH_PROVISIONING_PROFILE_BASE64:?WATCH_PROVISIONING_PROFILE_BASE64 is required (AgentDeck Watch AppStore)}"
+    : "${WATCH_WIDGETS_PROVISIONING_PROFILE_BASE64:?WATCH_WIDGETS_PROVISIONING_PROFILE_BASE64 is required (AgentDeck Watch Widgets AppStore)}"
+    install_profile "$WATCH_PROVISIONING_PROFILE_BASE64" "$RUNNER_TEMP/agentdeck-watch.mobileprovision" \
+        mobileprovision application-identifier "$BUNDLE_ID.watchkitapp"
+    install_profile "$WATCH_WIDGETS_PROVISIONING_PROFILE_BASE64" "$RUNNER_TEMP/agentdeck-watch-widgets.mobileprovision" \
+        mobileprovision application-identifier "$BUNDLE_ID.watchkitapp.widgets"
 fi
-if [[ "$PROFILE_APP_ID" != "$TEAM_ID.$BUNDLE_ID" ]]; then
-    echo "::error::Provisioning profile targets $PROFILE_APP_ID, expected $TEAM_ID.$BUNDLE_ID."
-    exit 1
-fi
-
-mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.$PROFILE_SUFFIX"
-echo "Installed $TARGET App Store profile $PROFILE_UUID."

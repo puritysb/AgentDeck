@@ -6,10 +6,15 @@ import subprocess
 from pathlib import Path
 
 CONTAINER = "iCloud.bound.serendipity.agent.deck"
+APP_ID = "bound.serendipity.agent.deck"
+# The read-only Watch reader and its complications ship inside the iPhone app
+# and read the same private database, so they carry the same environment.
+WATCH_BUNDLES = (("Watch/AgentDeck.app", APP_ID + ".watchkitapp"),
+                 ("Watch/AgentDeck.app/PlugIns/AgentDeckWatchWidgets.appex", APP_ID + ".watchkitapp.widgets"))
 
 
-def verify_identity(info, environment, signed):
-    if info.get("CFBundleIdentifier") != "bound.serendipity.agent.deck" or info.get("AgentDeckRemoteObservationContract") != 1:
+def verify_identity(info, environment, signed, bundle_id=APP_ID):
+    if info.get("CFBundleIdentifier") != bundle_id or info.get("AgentDeckRemoteObservationContract") != 1:
         raise ValueError("archive has the wrong bundle or remote observation contract identity")
     selected = info.get("AgentDeckRemoteObservationEnvironment")
     if selected not in ("Development", "Production") or (signed and selected != environment):
@@ -23,6 +28,8 @@ def verify_entitlements(entitlements, platform, environment):
         raise ValueError("CloudKit service entitlement is missing")
     if entitlements.get("com.apple.developer.icloud-container-environment") != environment:
         raise ValueError(f"signed CloudKit environment must be {environment}")
+    if platform == "watch" and "aps-environment" in entitlements:
+        raise ValueError("Watch reader must not register for push; alerts arrive by iPhone forwarding")
     if platform == "ios" and entitlements.get("aps-environment") != environment.lower():
         raise ValueError(f"signed APNs environment must be {environment.lower()}")
     if platform == "macos" and entitlements.get("com.apple.security.app-sandbox") is not True:
@@ -41,6 +48,8 @@ def self_test():
     }
     for platform in ("ios", "macos"):
         verify_entitlements(valid, platform, "Production")
+    watch = {key: value for key, value in valid.items() if key != "aps-environment"}
+    verify_entitlements(watch, "watch", "Production")
     invalid = [
         ("com.apple.developer.icloud-container-identifiers", ["iCloud.other"], "ios"),
         ("com.apple.developer.icloud-services", [], "ios"),
@@ -48,10 +57,12 @@ def self_test():
         ("aps-environment", "development", "ios"),
         ("com.apple.security.app-sandbox", False, "macos"),
         ("get-task-allow", True, "macos"),
+        ("aps-environment", "production", "watch"),
+        ("com.apple.developer.icloud-container-environment", "Development", "watch"),
     ]
     for key, value, platform in invalid:
         try:
-            verify_entitlements({**valid, key: value}, platform, "Production")
+            verify_entitlements({**(watch if platform == "watch" else valid), key: value}, platform, "Production")
         except ValueError:
             continue
         raise AssertionError(f"accepted invalid {key}")
@@ -64,7 +75,13 @@ def self_test():
         pass
     else:
         raise AssertionError("accepted Development storage in a Production archive")
-    print("Remote observation archive guard: 10 entitlement/identity cases passed")
+    try:
+        verify_identity(info, "Production", True, WATCH_BUNDLES[0][1])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("accepted the iPhone identity for the Watch bundle")
+    print("Remote observation archive guard: 14 entitlement/identity cases passed")
 
 
 def main():
@@ -83,10 +100,18 @@ def main():
     info_path = args.app / ("Contents/Info.plist" if macos else "Info.plist")
     info = plistlib.loads(info_path.read_bytes())
     verify_identity(info, args.environment, not args.unsigned)
+    bundles = [(args.app, "macos" if macos else "ios")]
+    if not macos:
+        for relative, bundle_id in WATCH_BUNDLES:
+            bundle = args.app / relative
+            verify_identity(plistlib.loads((bundle / "Info.plist").read_bytes()), args.environment,
+                            not args.unsigned, bundle_id)
+            bundles.append((bundle, "watch"))
     if not args.unsigned:
-        result = subprocess.run(["codesign", "-d", "--entitlements", ":-", str(args.app)],
-                                check=True, capture_output=True, timeout=15)
-        verify_entitlements(plistlib.loads(result.stdout), "macos" if macos else "ios", args.environment)
+        for bundle, platform in bundles:
+            result = subprocess.run(["codesign", "-d", "--entitlements", ":-", str(bundle)],
+                                    check=True, capture_output=True, timeout=15)
+            verify_entitlements(plistlib.loads(result.stdout), platform, args.environment)
     print("Remote observation: unsigned build identity verified" if args.unsigned
           else f"Remote observation: signed {args.environment} entitlements verified")
 
