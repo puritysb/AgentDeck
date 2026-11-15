@@ -6,7 +6,8 @@ import Foundation
 
 final class SerialModule: DeviceModule, @unchecked Sendable {
     let name = "serial"
-    let serial = ESP32Serial()
+    private static let unidentifiedCDCPorts = ESP32Serial.UnidentifiedCDCPorts()
+    let serial = ESP32Serial(unidentifiedCDCPorts: SerialModule.unidentifiedCDCPorts)
 
     /// - Parameter daemonPort: this daemon's HTTP port. The serial bridge
     ///   refuses to open a board while a sibling daemon on a LOWER port is

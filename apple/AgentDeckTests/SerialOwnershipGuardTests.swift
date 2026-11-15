@@ -1,4 +1,5 @@
 #if os(macOS)
+import Darwin
 import XCTest
 @testable import AgentDeck
 
@@ -112,6 +113,136 @@ final class ESP32SerialVendorGateTests: XCTestCase {
 
     func testSupportedVendorSet() {
         XCTAssertEqual(ESP32Serial.esp32USBVendorIDs, [0x303A, 0x1A86, 0x10C4, 0x2886])
+    }
+}
+
+final class NativeCDCIdentificationTests: XCTestCase {
+    private let cdc = ESP32Serial.DetectedPort(path: "/dev/cu.usbmodem8301", registryID: 41)
+    private let uart = ESP32Serial.DetectedPort(path: "/dev/cu.wchusbserial1", registryID: 42)
+
+    func testUnidentifiedCDCClosesAndSkipsTheSameUSBServiceUntilReplug() async throws {
+        let serial = ESP32Serial()
+        let sockets = try makeSocketPair()
+        defer { Darwin.close(sockets.peer) }
+        let openedAt = ContinuousClock.now
+        await serial.registerOpenedDescriptor(candidate: cdc, descriptor: sockets.serial, now: openedAt)
+        XCTAssertEqual(readAvailable(sockets.peer), [#"{"type":"device_info_request"}"#])
+
+        // Raw traffic or a malformed identification must not release normal
+        // traffic or keep the port open beyond the identification deadline.
+        await serial.handleReadData(port: cdc.path, data: "boot log\n{\"type\":\"device_info\",\"board\":\"\"}\n")
+        await serial.broadcast(["type": "display_state", "displayOn": true])
+        await serial.sendHeartbeat(at: openedAt.advanced(by: .seconds(31)))
+        XCTAssertEqual(readAvailable(sockets.peer), [#"{"type":"device_info_request"}"#])
+        await serial.sendHeartbeat(at: openedAt.advanced(by: .seconds(34)))
+        XCTAssertEqual(readAvailable(sockets.peer), [#"{"type":"device_info_request"}"#])
+        await serial.sendHeartbeat(at: openedAt.advanced(by: .seconds(44)))
+        XCTAssertEqual(readAvailable(sockets.peer), [])
+        let beforeDeadline = await serial.connectionCount
+        XCTAssertEqual(beforeDeadline, 1)
+
+        await serial.sendHeartbeat(at: openedAt.advanced(by: .seconds(45)))
+        let afterDeadline = await serial.connectionCount
+        XCTAssertEqual(afterDeadline, 0)
+        XCTAssertEqual(fcntl(sockets.serial, F_GETFD), -1)
+        XCTAssertEqual(errno, EBADF)
+
+        let stillPluggedIn = await serial.portsEligibleForOpen([cdc, uart])
+        XCTAssertEqual(stillPluggedIn, [uart])
+        let unknownRegistry = ESP32Serial.DetectedPort(path: cdc.path)
+        let registryUnavailable = await serial.portsEligibleForOpen([unknownRegistry])
+        XCTAssertTrue(registryUnavailable.isEmpty)
+
+        // A quick replug can reuse the BSD path without an intervening poll.
+        let replugged = ESP32Serial.DetectedPort(path: cdc.path, registryID: 43)
+        let afterQuickReplug = await serial.portsEligibleForOpen([replugged])
+        XCTAssertEqual(afterQuickReplug, [replugged])
+        await serial.stop()
+    }
+
+    func testObservedRemovalClearsExclusionWhenRegistryIdentityIsUnavailable() async throws {
+        let serial = ESP32Serial()
+        let sockets = try makeSocketPair()
+        defer { Darwin.close(sockets.peer) }
+        let port = ESP32Serial.DetectedPort(path: cdc.path)
+        let openedAt = ContinuousClock.now
+        await serial.registerOpenedDescriptor(candidate: port, descriptor: sockets.serial, now: openedAt)
+        await serial.sendHeartbeat(at: openedAt.advanced(by: .seconds(45)))
+
+        let stillPluggedIn = await serial.portsEligibleForOpen([port])
+        XCTAssertTrue(stillPluggedIn.isEmpty)
+        _ = await serial.portsEligibleForOpen([])
+        let afterReplug = await serial.portsEligibleForOpen([port])
+        XCTAssertEqual(afterReplug, [port])
+        await serial.stop()
+    }
+
+    func testReplacementSerialModuleRetainsRejectionUntilUSBServiceChanges() async throws {
+        // Isolate the synthetic attachment from other cases using the shared
+        // production store in this app process.
+        let port = ESP32Serial.DetectedPort(path: "/dev/cu.usbmodem790-test", registryID: 79)
+        let original = SerialModule(daemonPort: 19440)
+        let sockets = try makeSocketPair()
+        defer { Darwin.close(sockets.peer) }
+        let openedAt = ContinuousClock.now
+        await original.serial.registerOpenedDescriptor(candidate: port, descriptor: sockets.serial, now: openedAt)
+        await original.serial.sendHeartbeat(at: openedAt.advanced(by: .seconds(45)))
+        await original.stop()
+
+        let replacement = SerialModule(daemonPort: 9120)
+        let stillPluggedIn = await replacement.serial.portsEligibleForOpen([port])
+        XCTAssertTrue(stillPluggedIn.isEmpty)
+
+        let replugged = ESP32Serial.DetectedPort(path: port.path, registryID: 80)
+        let afterReplug = await replacement.serial.portsEligibleForOpen([replugged])
+        XCTAssertEqual(afterReplug, [replugged])
+    }
+
+    func testIdentifiedCDCAndUnidentifiedUARTKeepSendingAfterCDCDeadline() async throws {
+        let serial = ESP32Serial()
+        let cdcSockets = try makeSocketPair()
+        let uartSockets = try makeSocketPair()
+        defer {
+            Darwin.close(cdcSockets.peer)
+            Darwin.close(uartSockets.peer)
+        }
+        let openedAt = ContinuousClock.now
+        await serial.registerOpenedDescriptor(candidate: cdc, descriptor: cdcSockets.serial, now: openedAt)
+        await serial.registerOpenedDescriptor(candidate: uart, descriptor: uartSockets.serial, now: openedAt)
+        _ = readAvailable(cdcSockets.peer)
+        _ = readAvailable(uartSockets.peer)
+
+        await serial.handleReadData(port: cdc.path, data: "{\"type\":\"device_info\",\"board\":\"round_amoled\"}\n")
+        await serial.sendHeartbeat(at: openedAt.advanced(by: .seconds(46)))
+        let count = await serial.connectionCount
+        XCTAssertEqual(count, 2)
+        XCTAssertTrue(readAvailable(cdcSockets.peer).contains(#"{"type":"keepalive"}"#))
+        XCTAssertTrue(readAvailable(uartSockets.peer).contains(#"{"type":"keepalive"}"#))
+        await serial.stop()
+    }
+
+    // Exercise real descriptor teardown and outgoing bytes without opening any
+    // of the Mac's serial devices or starting discovery in the test runner.
+    private func makeSocketPair() throws -> (serial: Int32, peer: Int32) {
+        var descriptors = [Int32](repeating: -1, count: 2)
+        guard socketpair(AF_UNIX, SOCK_STREAM, 0, &descriptors) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        for fd in descriptors {
+            if fcntl(fd, F_SETFL, O_NONBLOCK) == -1 {
+                let error = POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+                for descriptor in descriptors { Darwin.close(descriptor) }
+                throw error
+            }
+        }
+        return (descriptors[0], descriptors[1])
+    }
+
+    private func readAvailable(_ socket: Int32) -> [String] {
+        var bytes = [UInt8](repeating: 0, count: 4096)
+        let count = Darwin.read(socket, &bytes, bytes.count)
+        guard count > 0 else { return [] }
+        return String(decoding: bytes.prefix(count), as: UTF8.self).split(separator: "\n").map(String.init)
     }
 }
 #endif
