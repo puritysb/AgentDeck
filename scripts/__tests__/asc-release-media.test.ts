@@ -82,6 +82,29 @@ describe('bounded Store media delivery', () => {
     expect(new Set(previews.flatMap((group: { files: { md5: string }[] }) => group.files.map(file => file.md5))).size).toBeLessThanOrEqual(1);
     expect(() => selectedMedia('2.1.1', 'IOS')).toThrow();
   });
+  it('pins the 2.2.0 iOS set with Watch screenshots and no Watch preview slot', () => {
+    const groups = selectedMedia('2.2.0', 'IOS');
+    const watch = groups.filter((group: { display: string }) => group.display === 'APP_WATCH_ULTRA');
+    expect(watch.map((group: { locale: string }) => group.locale)).toEqual(['en-US', 'ko', 'ja']);
+    expect(watch.every((group: { files: unknown[] }) => group.files.length === 6)).toBe(true);
+    expect(groups.some((group: { display: string }) => group.display === 'WATCH_ULTRA')).toBe(false);
+    const phone = groups.filter((group: { display: string }) => group.display === 'APP_IPHONE_65');
+    expect(phone.every((group: { files: { path: string }[] }) => group.files.length === 5 && group.files[1].path.endsWith('05-remote.png'))).toBe(true);
+    // The approved previews ride along, so a screenshot-only update cannot delete them.
+    expect(groups.filter((group: { preview: boolean; files: unknown[] }) => group.preview && group.files.length === 1)).toHaveLength(6);
+    expect(() => selectedMedia('2.2.0', 'MAC_OS')).toThrow();
+  });
+  it('refuses a Watch preview in a non-legacy selection', () => {
+    const f = fixture();
+    const watchFile = 'apple/appstore-submission/screenshots/en/Watch/1.png';
+    mkdirSync(join(f.root, 'apple/appstore-submission/screenshots/en/Watch'), { recursive: true });
+    writeFileSync(join(f.root, watchFile), 'w');
+    const sha256 = createHash('sha256').update('w').digest('hex');
+    const screenshots = ['en', 'ko', 'ja'].flatMap(locale => ['iPhone', 'iPad', 'Watch'].map(platform => ({ file: watchFile, sha256, platform, locale })));
+    writeFileSync(join(f.root, 'apple/appstore-submission/media-2.2.0-selection.json'),
+      JSON.stringify({ version: '2.2.0', screenshots, previews: [{ file: watchFile, sha256, platform: 'Watch' }] }));
+    expect(() => selectedMedia('2.2.0', 'IOS', f.root)).toThrow('scope');
+  });
   it('refuses a submitted draft or another app before any write', async () => {
     for (const drift of ['submitted','foreign']) { const f=fixture(); if(drift==='submitted')f.setState('WAITING_FOR_REVIEW');else f.setApp('other');
       await expect(prepareSelectedMedia({...f,version:'2.0.0',platform:'MAC_OS',versionId:'version'})).rejects.toThrow(); expect(f.calls.every(c=>c.method==='GET')).toBe(true); }

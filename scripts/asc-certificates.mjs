@@ -37,9 +37,9 @@ export function validatePlatformRelease(platform, action, version) {
   }
 }
 /** iOS versions this tool may prepare/submit; older iOS versions were never delivered through it. */
-export const IOS_RELEASE_VERSIONS = Object.freeze(['2.0.0', '2.1.0']);
+export const IOS_RELEASE_VERSIONS = Object.freeze(['2.0.0', '2.1.0', '2.2.0']);
 /** Versions whose localized listing is a checked-in file the copy must match. */
-export const LISTED_RELEASE_VERSIONS = Object.freeze(['2.0.0', '2.1.0']);
+export const LISTED_RELEASE_VERSIONS = Object.freeze(['2.0.0', '2.1.0', '2.2.0']);
 const PLATFORM = releasePlatform(process.env.ASC_RELEASE_PLATFORM);
 const REPOSITORY = 'puritysb/AgentDeck';
 const RELEASE_WORKFLOW = '.github/workflows/apple-release.yml';

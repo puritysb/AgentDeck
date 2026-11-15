@@ -12,6 +12,79 @@ Copy-ready text for the App Store Connect submission form. Each field respects A
 **Content Rating**: 4+ (no user-generated content, no ads, no external links to age-restricted sites)
 **Price**: Free
 
+## Prepared macOS 2.2.0 update text
+
+Minor milestone (Remote monitoring): promotional text and description add optional encrypted iCloud sharing. Full listing in
+[metadata-2.2.0.json](../apple/appstore-submission/metadata-2.2.0.json).
+
+### English — macOS What's New
+
+```text
+AgentDeck 2.2 lets you follow your agents from your iPhone, iPad and Apple Watch through your private iCloud.
+• Turn on Remote monitoring in Settings to share encrypted work counts and attention updates. Session and allowance details are a separate choice.
+• Prompts, project names, paths and credentials never leave this Mac. Stop sharing or delete remote data at any time; offline requests finish when the Mac reconnects.
+• Work detail keeps confirmed message deliveries; the separate message history and graph are gone.
+• The timeline shows what you typed into a Codex question, and CI waits ignore skipped or neutral checks.
+This Mac must stay running and online to share new observations.
+```
+
+### Korean — macOS 새로운 기능
+
+```text
+AgentDeck 2.2에서는 개인 iCloud를 통해 iPhone, iPad, Apple Watch에서 에이전트를 확인할 수 있습니다.
+• 설정에서 원격 모니터링을 켜면 암호화된 작업 수와 응답 요청을 공유합니다. 세션·사용량 정보는 별도로 선택합니다.
+• 프롬프트, 프로젝트 이름, 경로, 자격 증명은 Mac 밖으로 나가지 않습니다. 언제든 공유를 중지하거나 원격 데이터를 삭제할 수 있으며, 오프라인 요청은 다시 연결되면 마무리됩니다.
+• Work 상세는 확인된 메시지 전달을 유지하고, 별도 메시지 기록과 그래프는 제거했습니다.
+• 타임라인은 Codex 질문에 입력한 답을 그대로 보여 주고, CI 대기는 건너뛴(skipped/neutral) 검사를 제외합니다.
+새 관측을 공유하려면 Mac이 켜져 있고 온라인이어야 합니다.
+```
+
+### Japanese — macOS このバージョンの新機能
+
+```text
+AgentDeck 2.2では、プライベートなiCloudを通じてiPhone、iPad、Apple Watchからエージェントを確認できます。
+• 設定でリモートモニタリングをオンにすると、暗号化した作業数と応答要求を共有します。セッションと使用量の情報は別に選択します。
+• プロンプト、プロジェクト名、パス、認証情報はこのMacから出ません。共有の停止やリモートデータの削除はいつでも可能で、オフライン中の要求は再接続時に完了します。
+• Workの詳細は確認済みのメッセージ配信を保持し、個別のメッセージ履歴とグラフは削除しました。
+• タイムラインはCodexの質問に入力した回答を表示し、CI待ちはスキップ・ニュートラルのチェックを除外します。
+新しい観測を共有するにはMacが起動しオンラインである必要があります。
+```
+
+## Prepared iOS 2.2.0 update text
+
+Minor milestone (Remote monitoring and Apple Watch): promotional text and description replace the earlier "cloud and Watch not included" sentence. Full listing in
+[metadata-2.2.0.json](../apple/appstore-submission/metadata-2.2.0.json).
+
+### English — iOS What's New
+
+```text
+AgentDeck 2.2 adds Remote monitoring and an Apple Watch app.
+• Remote tab: see your Mac's work counts, sessions and allowance through your private iCloud, even away from its network. Read-only; your Mac shares only what you allow.
+• Optional attention alerts carry no prompts or project names, and Apple forwards them to a paired Watch.
+• Apple Watch: an attention ring with each agent's mark, a session roster, allowance dials and four complications. A forwarded alert shows which agents are waiting.
+Turn on Remote monitoring in AgentDeck for Mac first. Your Mac must stay running and online to share new observations.
+```
+
+### Korean — iOS 새로운 기능
+
+```text
+AgentDeck 2.2에 원격 모니터링과 Apple Watch 앱이 추가되었습니다.
+• Remote 탭: Mac의 네트워크 밖에서도 개인 iCloud로 작업 수, 세션, 사용량을 확인합니다. 읽기 전용이며 Mac은 허용한 정보만 공유합니다.
+• 선택적인 응답 요청 알림에는 프롬프트나 프로젝트 이름이 없으며, Apple이 페어링된 Watch로 전달합니다.
+• Apple Watch: 에이전트별 마크가 있는 응답 링, 세션 목록, 사용량 다이얼, 컴플리케이션 4종. 전달된 알림에서 어떤 에이전트가 기다리는지 보여 줍니다.
+먼저 Mac용 AgentDeck에서 원격 모니터링을 켜세요. 새 관측을 공유하려면 Mac이 켜져 있고 온라인이어야 합니다.
+```
+
+### Japanese — iOS このバージョンの新機能
+
+```text
+AgentDeck 2.2でリモートモニタリングとApple Watchアプリが加わりました。
+• Remoteタブ：Macのネットワーク外でも、プライベートなiCloudで作業数、セッション、使用量を確認。読み取り専用で、Macは許可した情報だけを共有します。
+• 任意の応答要求通知にはプロンプトやプロジェクト名を含まず、Appleがペアリング済みのWatchへ転送します。
+• Apple Watch：エージェントごとのマーク付き応答リング、セッション一覧、使用量ダイヤル、4種類のコンプリケーション。転送された通知で待っているエージェントを表示します。
+まずMac版AgentDeckでリモートモニタリングをオンにしてください。新しい観測を共有するにはMacが起動しオンラインである必要があります。
+```
+
 ## Prepared macOS 2.1.1 update text
 
 ### English — macOS What's New

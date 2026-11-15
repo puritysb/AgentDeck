@@ -20,6 +20,10 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>AgentDeckRemoteObservationContract</key>
+	<integer>1</integer>
+	<key>AgentDeckRemoteObservationEnvironment</key>
+	<string>$(AGENTDECK_ICLOUD_ENVIRONMENT)</string>
 	<key>NSExtension</key>
 	<dict>
 		<key>NSExtensionPointIdentifier</key>

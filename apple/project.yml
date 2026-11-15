@@ -22,7 +22,7 @@ settings:
     AGENTDECK_ICLOUD_ENVIRONMENT: Development
     AGENTDECK_APNS_ENVIRONMENT: development
     SWIFT_VERSION: "6.0"
-    MARKETING_VERSION: "2.1.1"
+    MARKETING_VERSION: "2.2.0"
     SWIFT_INCLUDE_PATHS: "$(inherited) $(PROJECT_DIR)/../shared/glance-raster/include"
     CURRENT_PROJECT_VERSION: 5
     ENABLE_USER_SCRIPT_SANDBOXING: NO
@@ -87,6 +87,11 @@ targets:
           CODE_SIGN_STYLE: Manual
           CODE_SIGN_IDENTITY: Apple Distribution
           PROVISIONING_PROFILE_SPECIFIER: AgentDeck Dashboard AppStore
+    dependencies:
+      # The read-only Watch companion ships inside the iPhone app.
+      - target: AgentDeck_watchOS
+        embed: true
+        codeSign: true
 
   AgentDeck_macOS:
     type: application
@@ -208,23 +213,29 @@ targets:
           # Keep in step with the host app's Debug conditions above.
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: "AGENTDECK_APP_STORE DEBUG $(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)"
 
-  # Development-only Watch reader for the CloudKit remote-observation PoC
-  # (docs/apple-remote-observation.md). Not embedded in the iOS app and not
-  # part of any App Store archive; installed from Xcode onto a paired Watch.
-  # It reads the private CloudKit summary directly, so it builds the PoC
-  # sources under AGENTDECK_CLOUDKIT_POC in every configuration.
+  # Read-only Watch companion for Remote observation
+  # (docs/apple-remote-observation.md). Embedded in the iOS app; it reads the
+  # Remote V1 snapshot from the private CloudKit database in the same
+  # Development/Production environment as the iOS app (AGENTDECK_ICLOUD_ENVIRONMENT).
   AgentDeck_watchOS:
     type: application
     platform: watchOS
     productName: AgentDeck
     sources:
       - path: AgentDeckWatch
+        excludes:
+          - Resources/Info.plist
       - path: AgentDeck/RemoteObservation/WatchObservationModel.swift
+      - path: AgentDeck/RemoteObservation/WatchGlance.swift
+      - path: AgentDeck/RemoteObservation/RemoteObservationModels.swift
+      - path: AgentDeck/RemoteObservation/RemoteObservationCloudStore.swift
       - path: AgentDeck/RemoteObservation/RemoteObservationProjection.swift
       - path: AgentDeck/RemoteObservation/RemoteObservationPersistence.swift
-      - path: AgentDeck/RemoteObservation/CloudKitObservationStore.swift
-      - path: AgentDeck/RemoteObservation/RemoteGlance.swift
       - path: AgentDeck/UI/Common/DesignTokens.swift
+      - path: AgentDeck/UI/Common/SessionBrand.swift
+      - path: AgentDeck/Rendering/StateColors.swift
+      - path: AgentDeck/Rendering/CreatureBrandFeatures.generated.swift
+      - path: AgentDeck/Rendering/SvgPathParser.swift
     dependencies:
       - target: AgentDeckWatchWidgets
     settings:
@@ -236,14 +247,19 @@ targets:
         INFOPLIST_KEY_WKCompanionAppBundleIdentifier: bound.serendipity.agent.deck
         INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_FILE: AgentDeckWatch/Resources/Info.plist
         CODE_SIGN_ENTITLEMENTS: AgentDeckWatch/Resources/AgentDeckWatch.entitlements
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: QF36NDHYHD
         ENABLE_PREVIEWS: true
-        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "AGENTDECK_CLOUDKIT_POC"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: ""
       configs:
         debug:
-          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG AGENTDECK_CLOUDKIT_POC"
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG"
+        release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: Apple Distribution
+          PROVISIONING_PROFILE_SPECIFIER: AgentDeck Watch AppStore
 
   AgentDeckWatchWidgets:
     type: app-extension
@@ -253,11 +269,17 @@ targets:
         excludes:
           - Resources/Info.plist
       - path: AgentDeckWatch/Shared
+      - path: AgentDeck/RemoteObservation/WatchObservationModel.swift
+      - path: AgentDeck/RemoteObservation/WatchGlance.swift
+      - path: AgentDeck/RemoteObservation/RemoteObservationModels.swift
+      - path: AgentDeck/RemoteObservation/RemoteObservationCloudStore.swift
       - path: AgentDeck/RemoteObservation/RemoteObservationProjection.swift
       - path: AgentDeck/RemoteObservation/RemoteObservationPersistence.swift
-      - path: AgentDeck/RemoteObservation/CloudKitObservationStore.swift
-      - path: AgentDeck/RemoteObservation/RemoteGlance.swift
       - path: AgentDeck/UI/Common/DesignTokens.swift
+      - path: AgentDeck/UI/Common/SessionBrand.swift
+      - path: AgentDeck/Rendering/StateColors.swift
+      - path: AgentDeck/Rendering/CreatureBrandFeatures.generated.swift
+      - path: AgentDeck/Rendering/SvgPathParser.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: bound.serendipity.agent.deck.watchkitapp.widgets
@@ -267,10 +289,14 @@ targets:
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: QF36NDHYHD
         SKIP_INSTALL: YES
-        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "AGENTDECK_CLOUDKIT_POC"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: ""
       configs:
         debug:
-          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG AGENTDECK_CLOUDKIT_POC"
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG"
+        release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: Apple Distribution
+          PROVISIONING_PROFILE_SPECIFIER: AgentDeck Watch Widgets AppStore
 
 schemes:
   AgentDeck_iOS:
@@ -371,9 +397,9 @@ schemes:
     run:
       config: CloudKitPoCDebug
 
-  AgentDeck_CloudKitPoC_watchOS:
+  AgentDeck_watchOS:
     build:
       targets:
         AgentDeck_watchOS: all
     run:
-      config: CloudKitPoCDebug
+      config: Debug

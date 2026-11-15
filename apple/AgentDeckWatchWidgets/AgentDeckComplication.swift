@@ -3,41 +3,54 @@ import WidgetKit
 
 struct GlanceEntry: TimelineEntry {
     let date: Date
-    let summary: RemoteRosterSummary?
-    var glance: RemoteGlance { RemoteGlance.make(summary, at: date) }
+    let snapshot: RemoteObservationSnapshot?
+    var glance: WatchGlance { WatchGlance.make(snapshot, at: date) }
 }
 
-/// Fetches the shared summary itself (the extension has its own container and
-/// no App Group). Entries at the summary's freshness boundaries let the face
-/// go historical, then blank, without another fetch; a failed fetch shows no
+/// Fetches the Remote V1 snapshot itself (the extension has its own container
+/// and no App Group). Entries at the snapshot's freshness and allowance
+/// boundaries let the face age without another fetch; a failed fetch shows no
 /// count rather than a guessed one.
 struct GlanceProvider: TimelineProvider {
     func placeholder(in context: Context) -> GlanceEntry {
-        GlanceEntry(date: .now, summary: RemoteRosterSummary(schemaVersion: 1, observedAt: .now, workingCount: 2, waitingCount: 1))
+        GlanceEntry(date: .now, snapshot: Self.sample)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (GlanceEntry) -> Void) {
         if context.isPreview { completion(placeholder(in: context)); return }
         let done = CompletionBox(completion)
-        Task {
-            let summary = await Self.fetch()
-            done.call(GlanceEntry(date: .now, summary: summary))
-        }
+        Task { done.call(GlanceEntry(date: .now, snapshot: await Self.fetch())) }
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<GlanceEntry>) -> Void) {
         let done = CompletionBox(completion)
         Task {
-            let summary = await Self.fetch()
+            let snapshot = await Self.fetch()
             let now = Date()
-            let entries = ([now] + RemoteGlance.transitions(for: summary, after: now))
-                .map { GlanceEntry(date: $0, summary: summary) }
+            let entries = ([now] + WatchGlance.transitions(for: snapshot, after: now))
+                .map { GlanceEntry(date: $0, snapshot: snapshot) }
             done.call(Timeline(entries: entries, policy: .after(now.addingTimeInterval(15 * 60))))
         }
     }
 
-    static func fetch() async -> RemoteRosterSummary? {
-        try? await CloudKitProbeStore().fetchRoster()
+    static func fetch() async -> RemoteObservationSnapshot? {
+        #if DEBUG
+        if let pinned = WatchFixture.fromLaunchArguments() { return pinned }
+        #endif
+        let store = RemoteObservationCloudStore()
+        guard let account = try? await store.account() else { return nil }
+        return try? await store.snapshot(account: account)
+    }
+
+    /// Gallery preview only; never shown as a live reading.
+    static var sample: RemoteObservationSnapshot? {
+        let now = Date()
+        let rows = [RemoteSessionDetail(agent: .claude, phase: .response, startedAt: now, activeSubagents: nil, backgroundJobs: nil),
+                    RemoteSessionDetail(agent: .codexCLI, phase: .working, startedAt: now, activeSubagents: nil, backgroundJobs: nil),
+                    RemoteSessionDetail(agent: .openCode, phase: .working, startedAt: now, activeSubagents: nil, backgroundJobs: nil)]
+        return RemoteObservationSnapshot(installationID: UUID(), revision: 1, sourceState: .observed, observedAt: now,
+            publishedAt: now, expiresAt: now.addingTimeInterval(3_600), workingCount: 2, waitingCount: 1, activeEventIDs: [],
+            details: RemoteObservationDetails(sessions: rows, sessionCount: 3, usage: []))
     }
 }
 
@@ -48,55 +61,15 @@ private struct CompletionBox<T>: @unchecked Sendable {
     init(_ call: @escaping (T) -> Void) { self.call = call }
 }
 
-struct GlanceComplicationView: View {
-    @Environment(\.widgetFamily) private var family
-    let entry: GlanceEntry
-
-    var body: some View {
-        let glance = entry.glance
-        switch family {
-        case .accessoryInline:
-            Text(glance.inline)
-        case .accessoryRectangular:
-            VStack(alignment: .leading, spacing: 1) {
-                Text("AgentDeck").font(.headline).widgetAccentable()
-                Text(glance.count.map { glance.headline == .allClear ? glance.title : "\($0) \(glance.title)" } ?? glance.title)
-                    .foregroundStyle(glance.tint)
-                if let observedAt = glance.observedAt {
-                    Text(glance.historical ? "Last \(observedAt, style: .time)" : "\(observedAt, style: .relative) ago")
-                        .font(.caption2).foregroundStyle(.secondary)
-                }
-            }
-        case .accessoryCorner:
-            Text(glance.count.map(String.init) ?? "—")
-                .font(.title3.weight(.bold))
-                .foregroundStyle(glance.tint)
-                .widgetLabel { Text(glance.inline) }
-        default:
-            ZStack {
-                AccessoryWidgetBackground()
-                VStack(spacing: 0) {
-                    Text(glance.count.map(String.init) ?? "—")
-                        .font(.title2.weight(.bold)).monospacedDigit()
-                    Image(systemName: glance.headline == .unavailable ? "icloud.slash" :
-                          glance.historical ? "clock.arrow.circlepath" : "person.wave.2")
-                        .font(.caption2)
-                }
-                .foregroundStyle(glance.tint)
-            }
-        }
-    }
-}
-
 @main
 struct AgentDeckComplication: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "AgentDeckGlance", provider: GlanceProvider()) { entry in
-            GlanceComplicationView(entry: entry)
+            GlanceComplicationView(glance: entry.glance)
                 .containerBackground(.clear, for: .widget)
         }
         .configurationDisplayName("AgentDeck")
-        .description("Sessions waiting for you and working, as last shared by your Mac.")
+        .description("Agents waiting for you and working, plus your tightest allowance, as last shared by your Mac.")
         .supportedFamilies([.accessoryCircular, .accessoryRectangular, .accessoryInline, .accessoryCorner])
     }
 }

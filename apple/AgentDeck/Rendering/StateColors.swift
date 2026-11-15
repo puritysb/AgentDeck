@@ -10,6 +10,7 @@ import SwiftUI
 
 enum StateColors {
 
+    #if !os(watchOS)
     // MARK: - Session state
 
     static func color(for state: AgentConnectionState, onPaper: Bool = false) -> Color {
@@ -21,6 +22,8 @@ enum StateColors {
     static func color(for stateKey: String?, onPaper: Bool = false) -> Color {
         Color(rgb: SessionTone(wire: stateKey).colorHex(onPaper: onPaper))
     }
+
+    #endif
 
     // MARK: - Agent brand
 

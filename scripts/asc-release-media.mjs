@@ -12,8 +12,12 @@ const id = value => { check(typeof value === 'string' && /^[a-zA-Z0-9-]+$/.test(
 
 export function hasSelectedMedia(version, platform) {
   return (version === '2.0.0' && ['MAC_OS', 'IOS'].includes(platform))
-    || (version === '2.1.1' && platform === 'MAC_OS');
+    || (version === '2.1.1' && platform === 'MAC_OS')
+    || (version === '2.2.0' && platform === 'IOS');
 }
+
+/** Devices a non-legacy selection may name per platform. Watch has no App Preview slot. */
+const DEVICES = { MAC_OS: ['macOS'], IOS: ['iPhone', 'iPad', 'Watch'] };
 
 export function selectedMedia(version, platform, root = ROOT) {
   check(hasSelectedMedia(version, platform), 'No selected media for this version and platform');
@@ -24,14 +28,16 @@ export function selectedMedia(version, platform, root = ROOT) {
   const legacy = version === '2.0.0';
   check(selection.version === version && Array.isArray(selection.screenshots) && Array.isArray(previews), 'Incomplete media selection');
   if (legacy) check(selection.screenshots.length === 36, 'Incomplete 2.0 media selection');
-  else check(selection.screenshots.every(s => s.platform === 'macOS' && ['en', 'ko', 'ja'].includes(s.locale))
-    && previews.every(p => p.platform === 'macOS'), 'Unexpected Mac release media scope');
+  else check(selection.screenshots.every(s => DEVICES[platform].includes(s.platform) && ['en', 'ko', 'ja'].includes(s.locale))
+    && previews.every(p => DEVICES[platform].includes(p.platform) && p.platform !== 'Watch'), 'Unexpected release media scope');
+  const devices = legacy ? (platform === 'MAC_OS' ? ['macOS'] : ['iPhone', 'iPad'])
+    : DEVICES[platform].filter(device => device !== 'Watch' || selection.screenshots.some(s => s.platform === 'Watch'));
   const groups = [];
-  for (const locale of ['en', 'ko', 'ja']) for (const device of platform === 'MAC_OS' ? ['macOS'] : ['iPhone', 'iPad']) {
-    const display = { macOS: 'DESKTOP', iPhone: 'IPHONE_65', iPad: 'IPAD_PRO_3GEN_129' }[device];
+  for (const locale of ['en', 'ko', 'ja']) for (const device of devices) {
+    const display = { macOS: 'DESKTOP', iPhone: 'IPHONE_65', iPad: 'IPAD_PRO_3GEN_129', Watch: 'WATCH_ULTRA' }[device];
     const rows = selection.screenshots.filter(s => s.locale === locale && s.platform === device);
     check(legacy ? rows.length === 4 : rows.length >= 1 && rows.length <= 10, 'Invalid selected screenshot count');
-    for (const preview of [false, true]) {
+    for (const preview of device === 'Watch' ? [false] : [false, true]) {
       const files = preview ? previews.filter(s => s.platform === device) : rows;
       if (preview) check(legacy ? files.length === 1 : files.length <= 1, 'Invalid selected preview count');
       groups.push({ locale: locale === 'en' ? 'en-US' : locale, setType: preview ? 'appPreviewSets' : 'appScreenshotSets',
