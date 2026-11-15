@@ -20,6 +20,7 @@ final class RemoteObservationController: ObservableObject {
     @Published private(set) var notificationStatus = ""
     #if os(iOS)
     private var pushRegistrationConfirmed: Bool?
+    private var pushRegistrationRequested = false
     #endif
     @Published private(set) var attentionStatus = ""
     @Published var selectedTab = CompanionTab.local
@@ -366,6 +367,7 @@ final class RemoteObservationController: ObservableObject {
         if automaticLifecycle {
             UIApplication.shared.unregisterForRemoteNotifications()
             pushRegistrationConfirmed = nil
+            pushRegistrationRequested = false
         }
         #endif
         var storageReady = true
@@ -399,7 +401,9 @@ final class RemoteObservationController: ObservableObject {
             let account = try await transport.account()
             guard token == generation, account.identity == reader.account else { throw RemoteObservationError.accountChanged }
             #if os(iOS)
-            if automaticLifecycle { registerForPush() }
+            if automaticLifecycle {
+                guard await preparePushRegistration(generation: token) else { return }
+            }
             #endif
             try await transport.subscribe(installation: installation, receiver: reader.receiverID, enabled: true, account: account)
             guard token == generation else { return }
@@ -434,22 +438,41 @@ final class RemoteObservationController: ObservableObject {
         case true?:
             return "Notifications enabled. Apple may delay or suppress alerts and forwards eligible alerts to your Watch."
         case false?:
-            return "CloudKit subscription saved. This iPhone could not register for push notifications."
+            return "This iPhone could not register for push notifications. Try notification setup again."
         case nil:
-            return "CloudKit subscription saved. This iPhone is waiting for push registration."
+            return "This iPhone is waiting for push registration. Try notification setup again if it does not finish."
         }
     }
 
     private func registerForPush() {
-        if UIApplication.shared.isRegisteredForRemoteNotifications {
-            pushRegistrationConfirmed = true
-        }
+        pushRegistrationRequested = true
         UIApplication.shared.registerForRemoteNotifications()
+    }
+
+    /// Wait for APNs before creating the CloudKit subscription. A CloudKit
+    /// save alone cannot establish that this process registered with APNs.
+    private func preparePushRegistration(generation token: Int) async -> Bool {
+        if pushRegistrationConfirmed == true { return true }
+        pushRegistrationConfirmed = nil
+        registerForPush()
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(RemoteObservationPolicy.networkTimeout))
+        while token == generation, pushRegistrationConfirmed == nil, clock.now < deadline {
+            do { try await clock.sleep(for: .milliseconds(100)) }
+            catch { return false }
+        }
+        guard token == generation else { return false }
+        guard pushRegistrationConfirmed == true else {
+            notificationStatus = pushSetupStatus
+            return false
+        }
+        return true
     }
 
     func pushRegistrationChanged(confirmed: Bool) {
         guard reader.receiving else { return }
         pushRegistrationConfirmed = confirmed
+        pushRegistrationRequested = confirmed
         if reader.notifications { notificationStatus = pushSetupStatus }
     }
     #endif
@@ -475,7 +498,7 @@ final class RemoteObservationController: ObservableObject {
             }
             guard reader.receiving else { status = "Receiving stopped. This phone's subscription and saved reader were cleared."; return }
             #if os(iOS)
-            if automaticLifecycle && reader.notifications { registerForPush() }
+            if automaticLifecycle, reader.notifications, !pushRegistrationRequested { registerForPush() }
             #endif
             // A missing local iCloud token withholds offline contents; online account verification can restore them.
             if snapshot == nil, let cache = disk.read("reader.json", as: RemoteObservationCache.self),
@@ -509,10 +532,6 @@ final class RemoteObservationController: ObservableObject {
                     attentionEvent = event?.installationID == fetched.installationID ? event : nil
                     pendingEventID = nil
                     attentionStatus = attentionEvent == nil ? "This alert is unavailable or was deleted. No current wait is confirmed." : ""
-                }
-                if reader.notifications {
-                    try await transport.subscribe(installation: fetched.installationID, receiver: reader.receiverID, enabled: true, account: account)
-                    guard token == generation else { return }
                 }
                 try disk.write(RemoteObservationCache(account: account.identity, localIdentity: localIdentity(),
                     snapshot: fetched, event: attentionEvent), to: "reader.json")
@@ -571,6 +590,7 @@ final class RemoteObservationController: ObservableObject {
         if automaticLifecycle {
             UIApplication.shared.unregisterForRemoteNotifications()
             pushRegistrationConfirmed = nil
+            pushRegistrationRequested = false
         }
         #endif
         var storageReady = true

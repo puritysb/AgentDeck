@@ -336,7 +336,27 @@ actor RemoteObservationCloudStore: RemoteObservationTransport {
                 else { Self.finishMutation(result, results: results, expected: 1, done: done) }
             }
         }
-        if enabled {
+        if let expected = subscriptions.first as? CKQuerySubscription {
+            let fetch = CKFetchSubscriptionsOperation(subscriptionIDs: [id])
+            let received: CKSubscription = try await perform(fetch, account: account) { done in
+                fetch.perSubscriptionResultBlock = { _, result in done.finish(result) }
+                fetch.fetchSubscriptionsResultBlock = { result in
+                    switch result {
+                    case .success: done.finish(.failure(RemoteObservationError.invalidData))
+                    case .failure(let error): done.finish(.failure(error))
+                    }
+                }
+            }
+            guard let query = received as? CKQuerySubscription,
+                  query.subscriptionID == id,
+                  query.recordType == expected.recordType,
+                  query.zoneID == expected.zoneID,
+                  query.querySubscriptionOptions == expected.querySubscriptionOptions,
+                  query.predicate == expected.predicate,
+                  query.notificationInfo?.alertBody == expected.notificationInfo?.alertBody,
+                  query.notificationInfo?.category == expected.notificationInfo?.category else {
+                throw RemoteObservationError.invalidData
+            }
             guard let current = try await snapshot(account: account), current.installationID == installation else {
                 // A phone paused across the Mac's deletion must not resurrect its subscription.
                 try await subscribe(installation: installation, receiver: receiver, enabled: false, account: account)
