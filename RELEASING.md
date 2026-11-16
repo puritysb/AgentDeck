@@ -95,6 +95,22 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### Stream Deck and Ulanzi 2.1.1 candidate (2026-11-16)
+
+Both GitHub packages last shipped at 2.1.0. Elgato lists Stream Deck 2.1
+publicly. The Ulanzi 2.1.0 submission is recorded in the Workshop listing
+history. Confirm the current Workshop version and both portals' occupied
+versions before upload.
+
+Both 2.1.1 candidates improve session and option key legibility. Stream Deck
+updates its bundled WebSocket library. The published Ulanzi 2.1.0 GitHub ZIP
+already contains ws 8.22.1, so the Ulanzi packer now takes the exact version
+from the installed workspace dependency. Verify the Stream Deck
+profiles and SDK 3 manifest, then exercise keys and all four assigned dials on
+the DRM-processed build. Verify the Ulanzi WASM bundle and fonts, then exercise
+keys and reconnection in Studio on a D200H. Keep the GitHub and marketplace
+delivery states separate until each destination can be read back.
+
 ### Apple 2.2.0 release decision (2026-11-14)
 
 | Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |

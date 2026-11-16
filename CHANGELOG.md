@@ -132,6 +132,15 @@ its original time.
 The macOS build also carries the Unreleased Dashboard, timeline and CI-wait
 changes above that apply to the Mac daemon.
 
+## 2026-11-16 — Stream Deck 2.1.1, Ulanzi 2.1.1
+
+- Update the WebSocket library bundled with Stream Deck to include the fix for
+  [CVE-2026-62389](https://github.com/advisories/GHSA-73jw-fp74-p77x).
+  Package Ulanzi with the same WebSocket version used in workspace tests.
+  [#747](https://github.com/puritysb/AgentDeck/pull/747)
+- Keep status and detail pills clear of titles, fit long session names on the
+  key, and wrap option labels at word boundaries when space permits.
+
 ## 2026-11-11 — Android 2.1.1
 
 - Retry USB after an automatically selected Wi-Fi connection refuses
