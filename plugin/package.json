@@ -13,7 +13,7 @@
     "@agentdeck/shared": "workspace:*",
     "@elgato/streamdeck": "^2.1.2",
     "@elgato/utils": "^0.4.5",
-    "ws": "^8.22.1"
+    "ws": "^8.23.0"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^29.0.2",
