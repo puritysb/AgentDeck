@@ -113,6 +113,23 @@ signed iOS archive with the two Watch profiles passing
 and a complication capture from a real face. The device TLS listener included
 in the macOS build stays opt-in and unadvertised; its review note describes it.
 
+### npm 2.1.3 release decision (2026-11-16)
+
+| Target / routes | Last verified public version | Proposed version | User-visible reason |
+| --- | --- | --- | --- |
+| CLI and Node daemon / npm | 2.1.2 for bridge, hooks, shared and setup | 2.1.3 | Preserve opted-in device TLS custody across macOS app and CLI handovers, and deliver the terminal dashboard, session activity and CI status fixes. |
+
+The patch keeps device TLS opt-in. Existing device pairing continues on its
+current transport until an operator provisions the secure listener and device
+credentials. The four npm packages ship together.
+
+Before tagging, verify the packaged CLI through the installed command, run the
+three-mode daemon soak, and exercise TLS credential continuity through both
+ownership directions with a compatible signed macOS app. Include the case
+where Swift serves the daemon port with a TLS replica and Node retains the
+owner credentials. Verify the published package versions and setup installer
+after the registry finishes processing all four uploads.
+
 ### npm 2.1.2 release decision (2026-11-11)
 
 | Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |

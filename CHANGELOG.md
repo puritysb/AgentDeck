@@ -108,6 +108,24 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 - **4.2-inch e-ink.** A waiting session's question wraps to as many lines as
   fit instead of being cut to one.
 
+## 2026-11-16 — npm 2.1.3
+
+- Keep the macOS app open when starting the Node daemon while Swift holds
+  a device TLS replica and the CLI profile already owns the credentials.
+  [#792](https://github.com/puritysb/AgentDeck/pull/792)
+- Add an opt-in TLS listener for compatible read-only devices. Each device can
+  have its own revocable credential. Existing pairing continues to work.
+  [#785](https://github.com/puritysb/AgentDeck/pull/785)
+- Put sessions that need attention first in the terminal dashboard and use
+  `n` to move to the next request. Show the question on waiting session cards.
+  [#779](https://github.com/puritysb/AgentDeck/pull/779)
+- Count completed CI checks correctly when some results are skipped or
+  neutral, and read beyond the first 30 checks.
+  [#778](https://github.com/puritysb/AgentDeck/pull/778)
+- Show typed Codex answers in the timeline and keep internal session IDs out
+  of activity labels. [#778](https://github.com/puritysb/AgentDeck/pull/778)
+  [#770](https://github.com/puritysb/AgentDeck/pull/770)
+
 ## 2026-11-14 — Apple 2.2.0
 
 **Remote monitoring (iCloud).** The Mac app can share encrypted work counts,
