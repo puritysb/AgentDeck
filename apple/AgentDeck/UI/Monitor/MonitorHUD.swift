@@ -126,6 +126,33 @@ enum DashboardHUDLayout {
         return edgePadding + sessionPanelWidth(availableWidth: availableWidth) + timelineClearance
     }
 
+    static let attentionPreferredWidth: CGFloat = 460
+    static let attentionMinimumGapWidth: CGFloat = 300
+    static func rightRailWidth(availableWidth: CGFloat) -> CGFloat {
+        min(availableWidth * 0.32, 300)
+    }
+
+    /// Landscape attention card placement between the two top rails.
+    ///
+    /// The card is centred on screen at 460 pt. Where that would cover both
+    /// rails but the gap between them still holds a readable card (the
+    /// unfolded, fully flat iPhone Duo at ~856 pt), it narrows to the gap
+    /// and centres on it instead. Narrower gaps (phone landscape) keep the
+    /// established centred card; wider ones (iPad) never reach the rails.
+    static func landscapeAttentionPlacement(
+        availableWidth: CGFloat,
+        showsSessions: Bool,
+        showsSystem: Bool
+    ) -> (width: CGFloat, centreOffset: CGFloat) {
+        let leading = edgePadding + (showsSessions ? sessionPanelWidth(availableWidth: availableWidth) + timelineClearance : 0)
+        let trailing = edgePadding + (showsSystem ? rightRailWidth(availableWidth: availableWidth) + timelineClearance : 0)
+        let gap = availableWidth - leading - trailing
+        guard gap < attentionPreferredWidth, gap >= attentionMinimumGapWidth else {
+            return (attentionPreferredWidth, 0)
+        }
+        return (gap, (leading - trailing) / 2)
+    }
+
     static func usesCompactSessionRows(sessionCount: Int) -> Bool {
         sessionCount > 6
     }
@@ -145,6 +172,8 @@ private enum CompactDashboardHUDPage: String, CaseIterable, Identifiable {
 struct MonitorHUD: View {
     @EnvironmentObject private var stateHolder: AgentStateHolder
     @EnvironmentObject private var preferences: AppPreferences
+    /// Folded-display frames (iPhone Duo); nil keeps the form-factor layouts.
+    var fold: DashboardFoldFrames? = nil
     @State private var compactPage: CompactDashboardHUDPage = .sessions
     #if os(macOS)
     @EnvironmentObject private var daemonService: DaemonService
@@ -168,7 +197,9 @@ struct MonitorHUD: View {
                 availableHeight: geo.size.height
             )
 
-            if usesSingleRail {
+            if let fold {
+                foldHUD(fold)
+            } else if usesSingleRail {
                 compactHUD(geo: geo)
             } else if isLandscape {
                 // iPad landscape: matches Android Box layout
@@ -196,7 +227,7 @@ struct MonitorHUD: View {
                             HStack {
                                 Spacer()
                                 dashboardRightRail(maxHeight: panelMaxHeight)
-                                    .frame(maxWidth: min(geo.size.width * 0.32, rightRailWidth))
+                                    .frame(maxWidth: DashboardHUDLayout.rightRailWidth(availableWidth: geo.size.width))
                                     .padding(.trailing, DashboardHUDLayout.edgePadding)
                                     .padding(.top, DashboardHUDLayout.edgePadding)
                             }
@@ -256,8 +287,6 @@ struct MonitorHUD: View {
         preferences.showTankStatus || preferences.showDeviceDiagnostic
     }
 
-    private var rightRailWidth: CGFloat { 300 }
-
     #if os(macOS)
     private func macHUD(size: CGSize) -> some View {
         let edge = DashboardHUDLayout.edgePadding
@@ -306,6 +335,20 @@ struct MonitorHUD: View {
     /// line lengths and its own bounded scroll position.
     @ViewBuilder
     private func compactHUD(geo: GeometryProxy) -> some View {
+        let contentMaxHeight = DashboardHUDLayout.compactPanelMaxHeight(
+            availableHeight: geo.size.height,
+            showsTimeline: preferences.showTimeline
+        )
+        switchedRail(contentMaxHeight: contentMaxHeight)
+            .frame(width: DashboardHUDLayout.compactPanelWidth(availableWidth: geo.size.width))
+            .padding(.top, 8)
+            .frame(maxWidth: .infinity, alignment: .top)
+    }
+
+    /// Sessions and System behind one explicit switch, each page keeping its
+    /// own bounded scroll. Shared by compact portrait and the folded deck.
+    @ViewBuilder
+    private func switchedRail(contentMaxHeight: CGFloat) -> some View {
         let showsSessions = preferences.showSessionList
         let pages: [CompactDashboardHUDPage] = [
             showsSessions ? .sessions : nil,
@@ -314,10 +357,6 @@ struct MonitorHUD: View {
         let resolvedPage: CompactDashboardHUDPage? = pages.contains(compactPage)
             ? compactPage
             : pages.first
-        let contentMaxHeight = DashboardHUDLayout.compactPanelMaxHeight(
-            availableHeight: geo.size.height,
-            showsTimeline: preferences.showTimeline
-        )
 
         VStack(spacing: DashboardHUDLayout.compactSwitcherGap) {
             if pages.count > 1 {
@@ -340,9 +379,33 @@ struct MonitorHUD: View {
                 }
             }
         }
-        .frame(width: DashboardHUDLayout.compactPanelWidth(availableWidth: geo.size.width))
-        .padding(.top, 8)
-        .frame(maxWidth: .infinity, alignment: .top)
+    }
+
+    /// Folded display: each rail stays inside its pane.
+    @ViewBuilder
+    private func foldHUD(_ fold: DashboardFoldFrames) -> some View {
+        ZStack(alignment: .topLeading) {
+            if fold.sharesRail, let rail = fold.sessions {
+                let pageCount = (preferences.showSessionList ? 1 : 0) + (showsRightPanel ? 1 : 0)
+                let switcher = pageCount > 1
+                    ? DashboardHUDLayout.compactSwitcherHeight + DashboardHUDLayout.compactSwitcherGap : 0
+                switchedRail(contentMaxHeight: rail.height - switcher)
+                    .frame(width: rail.width, alignment: .top)
+                    .offset(x: rail.minX, y: rail.minY)
+            } else {
+                if let rail = fold.sessions, rail.height >= DashboardHUDLayout.minimumPanelHeight {
+                    SessionListPanel(maxHeight: rail.height)
+                        .frame(width: rail.width)
+                        .offset(x: rail.minX, y: rail.minY)
+                }
+                if let rail = fold.system, rail.height >= DashboardHUDLayout.minimumPanelHeight {
+                    dashboardRightRail(maxHeight: rail.height)
+                        .frame(width: rail.width)
+                        .offset(x: rail.minX, y: rail.minY)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     #endif
