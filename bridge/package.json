@@ -63,7 +63,7 @@
     "qrcode": "^1.5.4",
     "sharp": "^0.35.5",
     "strip-ansi": "^7.2.0",
-    "ws": "^8.22.1"
+    "ws": "^8.23.0"
   },
   "optionalDependencies": {
     "@picovoice/porcupine-node": "^4.0.2",
