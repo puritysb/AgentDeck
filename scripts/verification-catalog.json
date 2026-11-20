@@ -1326,14 +1326,15 @@
         "static",
         "compile"
       ],
-      "where": "macos-26",
+      "where": "macos-26-intel (Ubuntu for prose-only PR decisions)",
       "workflow": ".github/workflows/codeql.yml",
       "job": "swift",
-      "trigger": "Every PR, master push, weekly and manual",
+      "trigger": "PRs check scope first. Master pushes, weekly and manual runs always analyze both Swift targets.",
       "blocking": true,
       "required": true,
       "command": "xcodebuild build -scheme AgentDeck_macOS CODE_SIGNING_ALLOWED=NO",
       "proves": [
+        "An allowlisted prose-only PR records the omission under both required job names. Unknown scope runs both builds.",
         "Clean manual macOS and iOS Simulator builds supply Swift sources to security-extended queries; build, extraction or analysis failure fails the job."
       ],
       "does_not_prove": [
@@ -1701,6 +1702,7 @@
         "scripts/__tests__/native-palette.test.ts",
         "scripts/__tests__/app-icons.test.ts",
         "scripts/__tests__/verification-catalog.test.ts",
+        "scripts/__tests__/codeql-swift-scope.test.ts",
         "scripts/__tests__/apple-dot-build.test.ts",
         "scripts/__tests__/local-main-deploy.test.ts",
         "scripts/__tests__/android-install.test.ts",

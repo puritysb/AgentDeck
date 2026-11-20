@@ -28,6 +28,12 @@ PlatformIO/Arduino dependency inventory and inspection of every installed user
 environment still require separate checks.
 See the [Snyk trial](#snyk-trial-2026-11-08) for the measured coverage and baseline decisions.
 
+## Swift PR scope
+
+The two required Swift jobs record a scope decision on Linux for PRs limited to ordinary prose files on the [allowlist](../scripts/codeql-swift-scope.py). Both jobs run their full Mac builds for every other PR, including mixed changes, executable or symlink entries, unknown diffs and changes to the classifier itself. Master pushes, weekly scans and manual runs always analyze both targets. A prose-only summary records an omission. It supplies no Swift scan result. The other CodeQL languages keep their usual schedule.
+
+On November 20 two PR runs took [26 minutes](https://github.com/puritysb/AgentDeck/actions/runs/44721796980) and [85 minutes](https://github.com/puritysb/AgentDeck/actions/runs/44709534566). In the longer run iOS waited 58m 36s before the job began and then ran for 26m 20s. Compare queue time and job duration separately when assessing the effect of this change.
+
 ## Action runtimes
 
 JavaScript Actions use reviewed full-commit pins whose upstream metadata declares
