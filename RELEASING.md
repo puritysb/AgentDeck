@@ -95,6 +95,26 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### Apple 2.2.1 release decision (2026-11-20)
+
+Readback first: App Store Connect (`asc-certificates.yml store-status`, run
+44664584186, 2026-11-20) reports **iOS 2.2.0 and macOS 2.2.0 both
+`READY_FOR_SALE`**, from review submissions of 2026-11-15 (iOS 11:20Z, macOS
+11:11Z, both `COMPLETE`). The latest processed build is 12101. No
+`apple-v2.2.0` tag exists; the 2.2.0 decision below remains the scope record.
+
+| Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
+| --- | --- | --- | --- | --- | --- |
+| iOS + iPadOS + embedded watchOS / TestFlight external, then App Store | 2.2.0 (build per ASC; highest processed 12101) | None for 2.2.1 | 2.2.1 / next CI-assigned build above 12101 | Patch: the Dashboard follows the iPhone Duo's fold (book and propped-half-open layouts) instead of placing the attention card on the crease; completes the form-factor-readable Dashboard. | Existing 2.2 scope; no new milestone. |
+
+macOS is not delivered: it compiles the fold layout but never receives a display
+division, so its behavior is unchanged. Delivery is a manual iOS-only
+`apple-release.yml` dispatch (`platform=ios`, `upload=true`), not an Apple tag,
+which would build and upload both platforms. The build goes to an external
+TestFlight group so the #799 reporter can verify it on hardware before App Store
+submission. Evidence so far is the iPhone Duo simulator (iOS 27.1) and
+`DashboardFoldLayoutTests`.
+
 ### Apple 2.2.0 release decision (2026-11-14)
 
 | Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
