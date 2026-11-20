@@ -153,8 +153,13 @@ jobs:
             DEVELOPMENT_TEAM=QF36NDHYHD \
             ENABLE_PREVIEWS=NO
 
+      # Xcode's export runs /usr/bin/rsync (openrsync), whose copy side is
+      # whatever `rsync` PATH finds. On a self-hosted Mac that is often Homebrew
+      # rsync 3.x, and the protocol mismatch fails the export with "Copy failed"
+      # (run 44762694518). System paths first keeps both ends on openrsync.
       - name: Export iOS IPA
         run: |
+          export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/AgentDeck_iOS.xcarchive" \
             -exportOptionsPlist apple/ExportOptions.plist \
