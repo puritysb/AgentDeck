@@ -108,6 +108,16 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 - **4.2-inch e-ink.** A waiting session's question wraps to as many lines as
   fit instead of being cut to one.
 
+## 2026-11-20 — npm 2.1.4
+
+- List an `agentdeck claude` session once. With the CLI daemon running, the
+  session also appeared as a second, observed session after its first prompt.
+  [#803](https://github.com/puritysb/AgentDeck/pull/803)
+- Allow bleak 3.1 for the iDotMatrix and Timebox BLE clients prepared by
+  `agentdeck ble setup`. [#797](https://github.com/puritysb/AgentDeck/pull/797)
+- Update the bundled `ws` WebSocket library to 8.23.0.
+  [#795](https://github.com/puritysb/AgentDeck/pull/795)
+
 ## 2026-11-16 — npm 2.1.3
 
 - Keep the macOS app open when starting the Node daemon while Swift holds

@@ -113,6 +113,23 @@ signed iOS archive with the two Watch profiles passing
 and a complication capture from a real face. The device TLS listener included
 in the macOS build stays opt-in and unadvertised; its review note describes it.
 
+### npm 2.1.4 release decision (2026-11-20)
+
+| Target / routes | Last verified public version | Proposed version | User-visible reason |
+| --- | --- | --- | --- |
+| CLI and Node daemon / npm | 2.1.3 for bridge, hooks, shared and setup | 2.1.4 | Patch: list a managed `agentdeck claude` session once (#802, user report), accept bleak 3.1 in the managed BLE runtime, update `ws`. |
+
+Previous behavior: with the CLI daemon running, the managed session also showed
+as an `observed:claude:` row after its first prompt, because the observer
+deduplicated only inside a scan started by a caller with no managed list. New
+behavior and test: `collect()` applies the caller's managed list to every read
+(`passive-observer.test.ts`, regression case fails on 2.1.3). bleak 3.1 was
+exercised live: both configured panels (iDotMatrix, Timebox) reconnected under
+it. The four npm packages ship together.
+
+Unchanged: Android, ESP32, Stream Deck and Ulanzi. Apple 2.2.0 follows its own
+decision above and goes to external TestFlight before App Store submission.
+
 ### npm 2.1.3 release decision (2026-11-16)
 
 | Target / routes | Last verified public version | Proposed version | User-visible reason |
