@@ -968,6 +968,37 @@ describe('passive-observer scan resilience', () => {
     }
   });
 
+  it('hides a managed PTY agent even when the scan was started by a caller with no managed list (#802)', async () => {
+    // The daemon calls collect([]) from hook/timeline lookups; if one of them
+    // starts the scan, the cached roster holds the managed bridge's own Claude.
+    // The sessions_list enricher names its managed sessions and must not
+    // publish that row a second time.
+    const directory = mkdtempSync(join(tmpdir(), 'agentdeck-managed-dedupe-'));
+    vi.stubEnv('HOME', directory);
+    vi.stubEnv('CLAUDE_CONFIG_DIR', join(directory, '.claude'));
+    mkdirSync(join(directory, '.claude', 'sessions'), { recursive: true });
+    const bridge = { pid: 500, ppid: 1, rssKb: 100, command: 'node /opt/homebrew/bin/agentdeck claude' };
+    const managedClaude = { pid: 501, ppid: 500, rssKb: 100, command: 'claude' };
+    const terminalClaude = { pid: 600, ppid: 1, rssKb: 100, command: 'claude' };
+    for (const { pid } of [managedClaude, terminalClaude]) {
+      writeFileSync(join(directory, '.claude', 'sessions', `${pid}.json`), JSON.stringify({
+        pid, sessionId: `dup-${pid}`, cwd: directory, startedAt: Date.now(),
+      }));
+    }
+    const observer = new PassiveSessionObserver(async () => [...table, bridge, managedClaude, terminalClaude],
+      async () => ({ processes: [], exited: 0, unknownPids: [] }), undefined, async () => []);
+    const managed = [{ id: 'managed-bridge', pid: 500, port: 9121, projectName: 'p', alive: true }];
+    try {
+      observer.collect([]); await settle();
+      expect(observer.collect([]).map(row => row.id).sort())
+        .toEqual(['observed:claude:dup-501', 'observed:claude:dup-600']);
+      expect(observer.collect(managed as never).map(row => row.id)).toEqual(['observed:claude:dup-600']);
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it('recovers a partial nonempty scan and preserves freshness when revalidation is unknown', async () => {
     const claude = { pid: 42, ppid: 1, rssKb: 1024, command: 'claude' };
     let processes = [...table, claude];
