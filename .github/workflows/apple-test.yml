@@ -12,28 +12,12 @@ on:
       - 'generated/protocol/**'
       - 'docs/appstore-metadata-draft.md'
       - '.github/workflows/apple-test.yml'
-  pull_request:
-    branches: [master]
-    paths:
-      - 'apple/**'
-      - 'shared/**'
-      - 'bridge/assets/fonts/**'
-      - 'bridge/src/glance-frame.ts'
-      - 'scripts/generate-glance-policy.mjs'
-      - 'generated/protocol/**'
-      - 'docs/appstore-metadata-draft.md'
-      - '.github/workflows/apple-test.yml'
+  workflow_call:
 
 # Explicit bash enables -o pipefail; xcbeautify must not hide xcodebuild failures.
 defaults:
   run:
     shell: bash
-
-# Only newer commits on the same PR supersede a run. Master, scheduled and
-# explicitly dispatched runs retain independent execution and audit history.
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

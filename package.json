@@ -110,18 +110,18 @@
     "@types/w3c-web-serial": "^1.0.9",
     "@vitest/coverage-v8": "^4.1.12",
     "ajv": "^8.20.0",
-    "eslint": "^10.14.0",
+    "eslint": "^10.15.0",
     "eslint-config-prettier": "^10.1.8",
     "esptool-js": "^0.6.1",
     "globals": "^17.13.0",
-    "prettier": "^3.9.10",
+    "prettier": "^3.10.1",
     "quicktype": "^26.0.0",
     "serialport": "^13.0.0",
     "sharp": "^0.35.5",
     "ts-json-schema-generator": "^2.9.0",
     "tsx": "^4.23.15",
-    "typescript-eslint": "^8.72.1",
-    "vite": "^8.3.6",
+    "typescript-eslint": "^8.72.2",
+    "vite": "^8.3.8",
     "vitest": "^4.1.12"
   }
 }

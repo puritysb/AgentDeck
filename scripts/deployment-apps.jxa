@@ -1,0 +1,19 @@
+// Run with osascript -l JavaScript on the deployment Mac.
+ObjC.import('AppKit');
+function run(args) {
+  const apps = $.NSRunningApplication.runningApplicationsWithBundleIdentifier('bound.serendipity.agent.deck');
+  const result = [];
+  for (let i = 0; i < apps.count; i++) {
+    const app = apps.objectAtIndex(i);
+    if (app.isTerminated) continue;
+    const pid = app.processIdentifier;
+    const path = ObjC.unwrap(app.bundleURL.path);
+    if (args[0] === 'quit' && pid === Number(args[1]) && path === args[2]) {
+      if (!app.terminate) throw Error('Backup refused normal termination');
+      return;
+    }
+    result.push({ pid, path });
+  }
+  if (args.length) throw Error('Backup process identity changed before quit');
+  return JSON.stringify(result);
+}

@@ -17,12 +17,15 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync } from 'fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { DEVICE_CREDENTIALS, DEVICE_SECURITY } from '@agentdeck/shared';
 import { negotiateIncumbentDaemon, isForeignDaemon } from '../daemon-takeover.js';
 import { findDaemonPortAsync } from '../session-registry.js';
 import { localPeerOwnership } from '../auth.js';
+import { captureDeviceSecurity } from '../device-security-handover.js';
+import { DeviceSecurityStore } from '../device-security-store.js';
 
 /** Every side effect the takeover can have, recorded. */
 function spies(overrides: Partial<Record<string, unknown>> = {}) {
@@ -304,6 +307,78 @@ describe('negotiateIncumbentDaemon', () => {
       { port: 9120, incumbent: { mode: 'session', pid: 1 }, portWasExplicit: false }, { ...deps, ownership: MINE },
     )).toBe('proceed');
     expect(calls).toEqual([]);
+  });
+});
+
+describe('takeover from a Swift TLS replica', () => {
+  let dir: string;
+  let store: DeviceSecurityStore;
+  const ownerConfig = {
+    version: 1, role: 'owner', hostname: 'agentdeck-test.local', port: 9443,
+    pfx: 'dGVzdA==', password: 'test-only', caDER: 'dGVzdA==',
+  };
+  const args = {
+    port: 9120, portWasExplicit: false, localBuild: 'new',
+    incumbent: {
+      mode: 'daemon', pid: process.pid, isSwift: true, build: 'old',
+      deviceSecurity: { version: 1, state: 'replica' },
+    },
+  };
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'daemon-tls-takeover-'));
+    vi.stubEnv('AGENTDECK_DATA_DIR', dir);
+    vi.stubGlobal('fetch', vi.fn());
+    store = new DeviceSecurityStore(dir);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('stands Swift down and keeps the local TLS owner and its credentials', async () => {
+    store.install(ownerConfig);
+    const device = store.credentials.issue('Dock', ['sessions.read']);
+    const { calls, deps } = spies({ captureDeviceSecurity });
+
+    expect(await negotiateIncumbentDaemon({ ...args, deferSwiftHandover: true }, deps))
+      .toBe('deferred-to-foreground');
+    expect(calls).toEqual([]);
+
+    expect(await negotiateIncumbentDaemon(args, deps)).toBe('proceed');
+    expect(calls).toEqual(['adopt', 'stand-down']);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(store.read()).toEqual(ownerConfig);
+    expect(store.credentials.authenticate(device.token)).toEqual(device.device);
+  });
+
+  it.each(['missing', 'replica', 'corrupt configuration', 'corrupt credentials'])
+    ('keeps Swift running when local TLS custody is %s', async (state) => {
+      if (state === 'replica' || state === 'corrupt credentials') store.install(ownerConfig);
+      if (state === 'replica') store.seal('1'.repeat(32));
+      if (state === 'corrupt configuration') writeFileSync(join(dir, DEVICE_SECURITY.file), '{broken');
+      if (state === 'corrupt credentials') writeFileSync(join(dir, DEVICE_CREDENTIALS.file), '{broken');
+      const { calls, deps } = spies({ captureDeviceSecurity });
+
+      expect(await negotiateIncumbentDaemon(args, deps)).toBe('refuse');
+      expect(calls).toEqual(['adopt']);
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+  it.each([
+    { isSwift: false },
+    { pid: undefined },
+    { deviceSecurity: { version: 2, state: 'replica' } },
+  ])('requires a same-user Swift replica on the supported protocol (%j)', async (changes) => {
+    store.install(ownerConfig);
+    const { calls, deps } = spies({ captureDeviceSecurity });
+
+    expect(await negotiateIncumbentDaemon({ ...args, incumbent: { ...args.incumbent, ...changes } }, deps))
+      .toBe('refuse');
+    expect(calls).toEqual(['adopt']);
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 

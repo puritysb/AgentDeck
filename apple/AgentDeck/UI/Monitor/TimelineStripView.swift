@@ -6,6 +6,12 @@ import SwiftUI
 enum TimelineLayoutMode {
     case compact, regular
 
+    /// Narrower than this, a strip cannot give the detail pane a readable
+    /// column next to the list. Only a folded display's pane reaches it while
+    /// reporting a regular size class; every iPhone landscape and iPad strip
+    /// is wider.
+    static let minimumRegularPaneWidth: CGFloat = 560
+
     #if os(macOS)
     static func forDashboard(width: CGFloat) -> Self {
         // Give the 35% detail pane roughly 320 pt before showing both columns.
@@ -113,7 +119,14 @@ struct TimelineStripView: View {
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var hSizeClass
     @Environment(\.verticalSizeClass) private var vSizeClass
+    /// Size class first; a folded pane narrower than a phone-landscape strip
+    /// drops the side detail pane even though the window is regular width.
     private var layoutMode: TimelineLayoutMode {
+        if availableWidth < TimelineLayoutMode.minimumRegularPaneWidth { return .compact }
+        return sizeClassLayoutMode
+    }
+
+    private var sizeClassLayoutMode: TimelineLayoutMode {
         resolveTimelineLayoutMode(horizontal: hSizeClass, vertical: vSizeClass)
     }
     #else
@@ -124,7 +137,9 @@ struct TimelineStripView: View {
         #if os(macOS)
         .regular
         #else
-        layoutMode == .compact ? .compact : .regular
+        // Type follows the device class, not the pane: a folded Duo pane keeps
+        // the inner display's reading size while it drops the detail column.
+        sizeClassLayoutMode == .compact ? .compact : .regular
         #endif
     }
 

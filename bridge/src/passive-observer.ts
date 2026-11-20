@@ -383,9 +383,15 @@ export class PassiveSessionObserver {
         });
     }
     // Do not renew file-source leases when the process scan is unknown or stalled.
-    return this.cached.filter(row => row.agentType !== 'antigravity' ||
+    const visible = this.cached.filter(row => row.agentType !== 'antigravity' ||
       (typeof row.lastActivityAt === 'number' && row.lastActivityAt <= Date.now() + ANTIGRAVITY_POLICY.futureSkewMs &&
        Date.now() - row.lastActivityAt <= (row.state === 'processing' ? ANTIGRAVITY_POLICY.activeWindowMs : ANTIGRAVITY_POLICY.rosterWindowMs)));
+    // The scan dedupes against whichever caller happened to start it, and most
+    // daemon call sites pass no managed sessions (`collect([])` for lookups).
+    // A scan started by one of those caches the managed PTY's own agent as an
+    // observed row, so every reader that names its managed sessions must apply
+    // them here too — otherwise `agentdeck claude` shows up twice (#802).
+    return managedSessions.length ? dedupeObservedSessions(visible, managedSessions, this.lastProcesses) : visible;
   }
 
   private async scan(managedSessions: EnrichedSession[]): Promise<void> {

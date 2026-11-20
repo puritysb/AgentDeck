@@ -1,8 +1,8 @@
 {
   "$comment": "What AgentDeck verifies, where, and what it does not. Rendered as the 'What we verify' tab of the GitHub Pages Build Health report (scripts/generate-html-report.py). Gated by scripts/__tests__/verification-catalog.test.ts: every workflow must be listed, every path must exist, and every test file must match a domain (domains are ordered; the first match wins). Edit this file in the same commit as a new gate, workflow or test area. Gate fields: `blocking` means a failure turns its workflow red; `required` means master branch protection lists the gate's check, so GitHub refuses the merge while it fails. Branch protection is a repository setting that CI cannot read, so `merge_policy.as_of` records when `required` was last checked against it.",
   "merge_policy": {
-    "as_of": "2026-11-05",
-    "summary": "Branch protection on master requires ESP32 simulator, modern TTGO and legacy TC001 build checks, npm/Python/Rust dependency audits, dependency review, all eight hosted-validated CodeQL analysis jobs, the CodeQL result check and security pipeline freshness. Administrator enforcement and up-to-date branch checks are enabled. Target build and native analysis jobs are promoted only after hosted validation."
+    "as_of": "2026-11-20",
+    "summary": "Master requires Product verification for applicable product suites, the ESP32 simulator, TTGO and TC001 builds, dependency audits and review, CodeQL checks and security pipeline freshness. Administrator enforcement and up-to-date branch checks are enabled."
   },
   "levels": {
     "unit": "One module in isolation; collaborators faked.",
@@ -937,6 +937,20 @@
       ]
     },
     {
+      "id": "product-verification",
+      "name": "Product verification",
+      "level": ["integration"],
+      "where": "GitHub Actions",
+      "workflow": ".github/workflows/ci.yml",
+      "job": "product",
+      "required": true,
+      "trigger": "Every pull request to master",
+      "blocking": true,
+      "command": "Check all product job conclusions against the changed paths",
+      "proves": ["Required product suites completed, including applicable Apple and Android suites"],
+      "does_not_prove": ["Physical device behaviour or release signing"]
+    },
+    {
       "id": "pages-report",
       "name": "This report",
       "level": [
@@ -949,9 +963,9 @@
       "job": "report",
       "trigger": "Every push to master",
       "blocking": false,
-      "command": "vitest --coverage, pnpm test:e2e, gradlew testDebugUnitTest, then generate-html-report.py",
+      "command": "Restore CI artifacts from the same workflow run, then generate-html-report.py",
       "proves": [
-        "re-runs the Vitest, E2E and Android suites on the merged master commit and publishes every result"
+        "publishes the merged commit’s Vitest and E2E results, and Android results when the suite applied"
       ],
       "does_not_prove": [
         "Apple, hardware or release gates — those run in their own workflows and are linked, not re-run here"

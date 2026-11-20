@@ -17,7 +17,7 @@
     "@agentdeck/shared": "workspace:*",
     "@resvg/resvg-wasm": "2.6.2",
     "gifenc": "^1.0.3",
-    "ws": "^8.22.1"
+    "ws": "^8.23.0"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

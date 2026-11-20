@@ -200,8 +200,20 @@ struct MonitorScreen: View {
         GeometryReader { geo in
             let disconnected = !stateHolder.state.bridgeConnected
             let compactTimelineControls = usesCompactTimelineControls(width: geo.size.width, disconnected: disconnected)
+            let fold = foldFrames(geo: geo, disconnected: disconnected)
             ZStack {
-                terrariumLayer
+                if let fold, fold.deck != nil {
+                    // The habitat stops at the crease; from there to the bottom
+                    // edge (crease band and tab bar included) the control deck
+                    // continues the sand bed the Timeline normally sits on.
+                    VStack(spacing: 0) {
+                        Color.clear.frame(height: fold.terrarium.maxY)
+                        TerrariumColors.sandBase
+                    }
+                    .ignoresSafeArea(edges: .bottom)
+                    .allowsHitTesting(false)
+                }
+                terrariumLayer(fold: fold)
                 if preferences.effectiveDashboardType != .aquarium3D && shellHomePresent {
                     Canvas { context,size in
                         ShellHome2D.draw(context:&context,cx:size.width*CGFloat(TerrariumRules.hermesHomeCanvasX),cy:size.height*CGFloat(TerrariumRules.hermesHomeCanvasY),
@@ -209,7 +221,7 @@ struct MonitorScreen: View {
                     }.allowsHitTesting(false)
                 }
 
-                dashboardContent(geo: geo, disconnected: disconnected, compactTimelineControls: compactTimelineControls)
+                dashboardContent(geo: geo, disconnected: disconnected, compactTimelineControls: compactTimelineControls, fold: fold)
 
                 #if os(macOS)
                 if showsWork {
@@ -224,7 +236,7 @@ struct MonitorScreen: View {
                 }
                 #endif
 
-                toastLayer(geo: geo)
+                toastLayer(geo: geo, fold: fold)
 
                 if dashboardIsVisible && shouldShowEmptyGuide {
                     MonitorEmptyGuideOverlay(
@@ -249,9 +261,11 @@ struct MonitorScreen: View {
         #endif
     }
 
-    private func dashboardContent(geo: GeometryProxy, disconnected: Bool, compactTimelineControls: Bool) -> some View {
+    private func dashboardContent(
+        geo: GeometryProxy, disconnected: Bool, compactTimelineControls: Bool, fold: DashboardFoldFrames?
+    ) -> some View {
         ZStack {
-            hudLayer(geo: geo, disconnected: disconnected, compactTimelineControls: compactTimelineControls)
+            hudLayer(geo: geo, disconnected: disconnected, compactTimelineControls: compactTimelineControls, fold: fold)
             #if AGENTDECK_DOT_PREVIEW
             if preferences.effectiveDashboardType != .aquarium3D && stateHolder.state.bridgeConnected,
                let dot = stateHolder.state.dot {
@@ -261,8 +275,8 @@ struct MonitorScreen: View {
             if disconnected && showsConnectionOverlay {
                 ConnectionOverlay()
             }
-            attentionTheaterLayer(geo: geo)
-            setupNeededLayer(geo: geo)
+            attentionTheaterLayer(geo: geo, fold: fold)
+            setupNeededLayer(geo: geo, fold: fold)
             #if os(macOS)
             if !compactTimelineControls {
                 settingsLayer
@@ -416,12 +430,29 @@ struct MonitorScreen: View {
         return scene
     }
 
+    /// On a folded display the habitat occupies only its pane: the full
+    /// screen side by side (art may span the crease, controls may not), the
+    /// upper half when stacked. It stays attached to the top edge so the
+    /// status-bar region keeps showing water.
     @ViewBuilder
-    private var terrariumLayer: some View {
+    private func terrariumLayer(fold: DashboardFoldFrames?) -> some View {
+        if let fold {
+            VStack(spacing: 0) {
+                terrariumHabitat(attentionClearance: 0)
+                    .frame(height: fold.terrarium.maxY)
+                Spacer(minLength: 0)
+            }
+        } else {
+            terrariumHabitat(attentionClearance: hudHidden || !showsAttentionCard ? 0 : attentionHeight + 24)
+        }
+    }
+
+    @ViewBuilder
+    private func terrariumHabitat(attentionClearance: CGFloat) -> some View {
         if preferences.effectiveDashboardType == .aquarium3D {
             if #available(iOS 18.0, macOS 15.0, *) {
                 GeometryReader { geometry in
-                    let top = hudHidden || !showsFloatingAttention || featuredAwaitingSession == nil ? 0 : attentionHeight + 24
+                    let top = attentionClearance
                     ZStack(alignment: .top) {
                         TerrariumColors.deepSea
                         livingAquariumScene()
@@ -470,22 +501,30 @@ struct MonitorScreen: View {
     /// of the timeline. Hidden-but-mounted keeps ConnectionOverlay's look (it
     /// draws its own scrim on top) while the state survives the round trip.
     @ViewBuilder
-    private func hudLayer(geo: GeometryProxy, disconnected: Bool, compactTimelineControls: Bool) -> some View {
-        MonitorHUD()
+    private func hudLayer(
+        geo: GeometryProxy, disconnected: Bool, compactTimelineControls: Bool, fold: DashboardFoldFrames?
+    ) -> some View {
+        MonitorHUD(fold: fold)
             .opacity(hudHidden || disconnected ? 0 : 1)
             .allowsHitTesting(!hudHidden && !disconnected)
             .animation(.easeInOut(duration: 0.25), value: hudHidden)
 
         if preferences.showTimeline {
-            VStack {
-                Spacer()
-                TimelineStripView(
-                    usesMetalHabitat: preferences.effectiveDashboardType == .aquarium3D,
-                    availableWidth: geo.size.width,
-                    headerControls: compactTimelineControls ? AnyView(compactTimelineActions) : nil
-                )
-                    .frame(height: geo.size.height * MonitorLayout.sandFraction)
-            }
+            // One placement path for every posture: the strip keeps its view
+            // identity (scroll offset, sticky-bottom, expansion) when the
+            // device folds or unfolds; only its frame moves.
+            let rect = fold?.timeline ?? CGRect(
+                x: 0, y: geo.size.height * (1 - MonitorLayout.sandFraction),
+                width: geo.size.width, height: geo.size.height * MonitorLayout.sandFraction)
+            TimelineStripView(
+                usesMetalHabitat: preferences.effectiveDashboardType == .aquarium3D,
+                availableWidth: rect.width,
+                headerControls: compactTimelineControls ? AnyView(compactTimelineActions) : nil
+            )
+            .frame(width: rect.width, height: rect.height)
+            .offset(x: rect.minX, y: rect.minY)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .opacity(fold != nil && rect.height < DashboardFoldLayout.minimumTimelineHeight ? 0 : 1)
             .opacity(disconnected || (preferences.effectiveDashboardType == .aquarium3D && hudHidden) ? 0 : 1)
             .allowsHitTesting(!disconnected && !(preferences.effectiveDashboardType == .aquarium3D && hudHidden))
         }
@@ -548,26 +587,49 @@ struct MonitorScreen: View {
         )
     }
 
+    /// The floating attention card is on screen.
+    private var showsAttentionCard: Bool {
+        showsFloatingAttention && !hudHidden && stateHolder.state.bridgeConnected
+            && featuredAwaitingSession != nil
+    }
+
     @ViewBuilder
-    private func attentionTheaterLayer(geo: GeometryProxy) -> some View {
-        if showsFloatingAttention, !hudHidden, stateHolder.state.bridgeConnected,
-           let featured = featuredAwaitingSession {
+    private func attentionTheaterLayer(geo: GeometryProxy, fold: DashboardFoldFrames?) -> some View {
+        if showsAttentionCard, let featured = featuredAwaitingSession {
             let landscape = geo.size.width > geo.size.height
-            VStack {
-                attentionCard(for: featured)
-                    .frame(maxWidth: landscape ? 460 : .infinity)
+            let card = attentionCard(for: featured)
                 .background(GeometryReader { size in
                     Color.clear
                         .onAppear { attentionHeight = size.size.height }
                         .onChange(of: size.size.height) { _, height in attentionHeight = height }
                 })
-                .padding(.horizontal, landscape ? 0 : 12)
-                #if os(macOS)
-                .padding(.top, DashboardHUDLayout.headerHeight + 6)
-                #else
-                .padding(.top, landscape ? 14 : 10)
-                #endif
-                Spacer()
+            Group {
+                if let fold {
+                    // Pinned inside one pane so its answer buttons never sit
+                    // on the crease: above the roster side by side, at the
+                    // top of the control deck when stacked.
+                    card
+                        .frame(width: fold.attention.width)
+                        .offset(x: fold.attention.minX, y: fold.attention.minY)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                } else {
+                    let placement = DashboardHUDLayout.landscapeAttentionPlacement(
+                        availableWidth: geo.size.width,
+                        showsSessions: preferences.showSessionList,
+                        showsSystem: preferences.showTankStatus || preferences.showDeviceDiagnostic)
+                    VStack {
+                        card
+                            .frame(maxWidth: landscape ? placement.width : .infinity)
+                            .offset(x: landscape ? placement.centreOffset : 0)
+                            .padding(.horizontal, landscape ? 0 : 12)
+                            #if os(macOS)
+                            .padding(.top, DashboardHUDLayout.headerHeight + 6)
+                            #else
+                            .padding(.top, landscape ? 14 : 10)
+                            #endif
+                        Spacer()
+                    }
+                }
             }
             .transition(.move(edge: .top).combined(with: .opacity))
             .animation(.easeInOut(duration: 0.25), value: featured.id)
@@ -593,7 +655,7 @@ struct MonitorScreen: View {
     }
 
     @ViewBuilder
-    private func setupNeededLayer(geo: GeometryProxy) -> some View {
+    private func setupNeededLayer(geo: GeometryProxy, fold: DashboardFoldFrames?) -> some View {
         if stateHolder.state.bridgeConnected {
             #if os(macOS)
             let items = stateHolder.setupNeededItems(
@@ -603,7 +665,16 @@ struct MonitorScreen: View {
             #else
             let items = stateHolder.setupNeededItems(preferences: preferences)
             #endif
-            if !items.isEmpty, !isCaptureFeedPinned {
+            if !items.isEmpty, !isCaptureFeedPinned, let fold {
+                // Bottom of the pane that has open water, clear of the crease.
+                setupCard(items: items)
+                    .frame(width: fold.notice.width - 2 * DashboardFoldLayout.edgePadding,
+                           height: max(0, fold.notice.height - 14), alignment: .bottomLeading)
+                    .offset(x: fold.notice.minX + DashboardFoldLayout.edgePadding, y: fold.notice.minY)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    .animation(.easeInOut(duration: 0.25), value: items.count)
+            } else if !items.isEmpty, !isCaptureFeedPinned {
                 let setupLeadingInset = DashboardHUDLayout.setupCardLeadingInset(
                     availableWidth: geo.size.width,
                     isLandscape: geo.size.width > geo.size.height,
@@ -840,15 +911,38 @@ struct MonitorScreen: View {
     #endif
 
     @ViewBuilder
-    private func toastLayer(geo: GeometryProxy) -> some View {
+    private func toastLayer(geo: GeometryProxy, fold: DashboardFoldFrames?) -> some View {
         if let toast = toastManager.currentToast {
-            VStack {
-                Spacer()
+            if let fold {
                 ToastOverlay(message: toast.message, icon: toast.icon)
-                    .padding(.bottom, geo.size.height * MonitorLayout.sandFraction + 8)
+                    .frame(width: fold.notice.width)
+                    .frame(height: fold.notice.maxY - 8, alignment: .bottom)
+                    .offset(x: fold.notice.minX)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .animation(.easeInOut(duration: 0.3), value: toast.message)
+            } else {
+                VStack {
+                    Spacer()
+                    ToastOverlay(message: toast.message, icon: toast.icon)
+                        .padding(.bottom, geo.size.height * MonitorLayout.sandFraction + 8)
+                }
+                .animation(.easeInOut(duration: 0.3), value: toast.message)
             }
-            .animation(.easeInOut(duration: 0.3), value: toast.message)
         }
+    }
+
+    /// Folded-display composition, or nil on every continuous display.
+    /// Viewing mode and the disconnected overlay keep the full-screen
+    /// composition: the habitat alone may span the crease.
+    private func foldFrames(geo: GeometryProxy, disconnected: Bool) -> DashboardFoldFrames? {
+        guard !hudHidden, !disconnected else { return nil }
+        return DashboardFoldLayout.frames(
+            posture: DashboardFoldGeometry.posture(of: geo),
+            bounds: geo.size,
+            sandFraction: MonitorLayout.sandFraction,
+            attentionHeight: showsAttentionCard ? attentionHeight : 0,
+            showsSessions: preferences.showSessionList,
+            showsSystem: preferences.showTankStatus || preferences.showDeviceDiagnostic)
     }
 
     // MARK: - Actions

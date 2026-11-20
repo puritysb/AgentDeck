@@ -40,7 +40,16 @@ if [[ "$TARGET" == "macos" ]]; then
 fi
 
 security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-security list-keychain -d user -s "$KEYCHAIN_PATH"
+# Add the signing keychain in front of the existing user search list instead of
+# replacing it: on a self-hosted Mac, `-s "$KEYCHAIN_PATH"` alone would drop the
+# user's login keychain. cleanup-ci-signing-assets.sh restores the saved list.
+security list-keychains -d user | sed -e 's/^[[:space:]]*"//' -e 's/"[[:space:]]*$//' \
+    > "$RUNNER_TEMP/original-keychains.txt"
+ORIGINAL_KEYCHAINS=()
+while IFS= read -r keychain; do
+    [[ -n "$keychain" ]] && ORIGINAL_KEYCHAINS+=("$keychain")
+done < "$RUNNER_TEMP/original-keychains.txt"
+security list-keychains -d user -s "$KEYCHAIN_PATH" ${ORIGINAL_KEYCHAINS[@]+"${ORIGINAL_KEYCHAINS[@]}"}
 
 DIST_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
     | sed -n 's/.*"\(Apple Distribution: .* (QF36NDHYHD)\)".*/\1/p' \
@@ -96,12 +105,23 @@ install_profile() {
         echo "::error::Provisioning profile targets $app_id, expected $TEAM_ID.$bundle_id."
         exit 1
     fi
+    python3 apple/scripts/check-profile-entitlements.py "$plist" "$6"
+    local installed="$HOME/Library/MobileDevice/Provisioning Profiles/$uuid.$suffix"
     mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-    cp "$path" "$HOME/Library/MobileDevice/Provisioning Profiles/$uuid.$suffix"
+    # Remove only what this job added; a profile already present (a maintainer's
+    # own Xcode copy on a self-hosted Mac) is left in place at cleanup.
+    if [[ ! -e "$installed" ]]; then
+        echo "$installed" >> "$RUNNER_TEMP/installed-profiles.txt"
+    fi
+    cp "$path" "$installed"
     echo "Installed App Store profile $uuid for $bundle_id."
 }
 
-install_profile "$PROFILE_BASE64" "$PROFILE_PATH" "$PROFILE_SUFFIX" "$PROFILE_APP_ID_KEY" "$BUNDLE_ID"
+case "$TARGET" in
+    ios) requested=apple/AgentDeck/Resources/AgentDeck-iOS.entitlements ;;
+    macos) requested=apple/AgentDeck/Resources/AgentDeck.entitlements ;;
+esac
+install_profile "$PROFILE_BASE64" "$PROFILE_PATH" "$PROFILE_SUFFIX" "$PROFILE_APP_ID_KEY" "$BUNDLE_ID" "$requested"
 
 # The iOS archive embeds the Watch app and its complication extension; each is
 # signed with its own App Store profile (apple/project.yml release configs).
@@ -109,7 +129,7 @@ if [[ "$TARGET" == "ios" ]]; then
     : "${WATCH_PROVISIONING_PROFILE_BASE64:?WATCH_PROVISIONING_PROFILE_BASE64 is required (AgentDeck Watch AppStore)}"
     : "${WATCH_WIDGETS_PROVISIONING_PROFILE_BASE64:?WATCH_WIDGETS_PROVISIONING_PROFILE_BASE64 is required (AgentDeck Watch Widgets AppStore)}"
     install_profile "$WATCH_PROVISIONING_PROFILE_BASE64" "$RUNNER_TEMP/agentdeck-watch.mobileprovision" \
-        mobileprovision application-identifier "$BUNDLE_ID.watchkitapp"
+        mobileprovision application-identifier "$BUNDLE_ID.watchkitapp" apple/AgentDeckWatch/Resources/AgentDeckWatch.entitlements
     install_profile "$WATCH_WIDGETS_PROVISIONING_PROFILE_BASE64" "$RUNNER_TEMP/agentdeck-watch-widgets.mobileprovision" \
-        mobileprovision application-identifier "$BUNDLE_ID.watchkitapp.widgets"
+        mobileprovision application-identifier "$BUNDLE_ID.watchkitapp.widgets" apple/AgentDeckWatchWidgets/Resources/AgentDeckWatchWidgets.entitlements
 fi

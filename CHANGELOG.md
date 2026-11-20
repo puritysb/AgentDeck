@@ -108,6 +108,52 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 - **4.2-inch e-ink.** A waiting session's question wraps to as many lines as
   fit instead of being cut to one.
 
+## 2026-11-20 — Apple 2.2.1
+
+**iPhone Duo.** On the unfolded inner display, the Dashboard lays out around
+the fold instead of across it. Held like a book, the attention card and the
+full session list sit on one side and Usage & Services with the Timeline on
+the other. Propped half open, the aquarium fills the upper half and the
+attention card, the Sessions/System list and the Timeline sit on the lower
+half within reach. The cover display and a fully flat inner display keep the
+existing layouts; on the flat display the attention card now fits between the
+side panels instead of covering them. Other iPhone and iPad layouts are
+unchanged. Verified in the iPhone Duo simulator (iOS 27.1); physical-device
+feedback is requested through external TestFlight.
+[#800](https://github.com/puritysb/AgentDeck/pull/800)
+
+## 2026-11-20 — npm 2.1.4
+
+- List an `agentdeck claude` session once. With the CLI daemon running, the
+  session also appeared as a second, observed session after its first prompt.
+  [#803](https://github.com/puritysb/AgentDeck/pull/803)
+- Allow bleak 3.1 for the iDotMatrix and Timebox BLE clients. The BLE
+  requirements changed, so an environment prepared by an earlier version
+  reports "not prepared" and the panels stay disconnected until you run
+  `agentdeck ble setup` once after upgrading. If you set
+  `AGENTDECK_BLE_PYTHON`, update bleak in that Python environment instead.
+  [#797](https://github.com/puritysb/AgentDeck/pull/797)
+- Update the bundled `ws` WebSocket library to 8.23.0.
+  [#795](https://github.com/puritysb/AgentDeck/pull/795)
+
+## 2026-11-16 — npm 2.1.3
+
+- Keep the macOS app open when starting the Node daemon while Swift holds
+  a device TLS replica and the CLI profile already owns the credentials.
+  [#792](https://github.com/puritysb/AgentDeck/pull/792)
+- Add an opt-in TLS listener for compatible read-only devices. Each device can
+  have its own revocable credential. Existing pairing continues to work.
+  [#785](https://github.com/puritysb/AgentDeck/pull/785)
+- Put sessions that need attention first in the terminal dashboard and use
+  `n` to move to the next request. Show the question on waiting session cards.
+  [#779](https://github.com/puritysb/AgentDeck/pull/779)
+- Count completed CI checks correctly when some results are skipped or
+  neutral, and read beyond the first 30 checks.
+  [#778](https://github.com/puritysb/AgentDeck/pull/778)
+- Show typed Codex answers in the timeline and keep internal session IDs out
+  of activity labels. [#778](https://github.com/puritysb/AgentDeck/pull/778)
+  [#770](https://github.com/puritysb/AgentDeck/pull/770)
+
 ## 2026-11-14 — Apple 2.2.0
 
 **Remote monitoring (iCloud).** The Mac app can share encrypted work counts,

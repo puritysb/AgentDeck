@@ -373,7 +373,6 @@
   "the Xtensa build, flashing, or behaviour on a board": "Xtensa 빌드·설치·실제 보드 동작.",
   "a fresh dependency install compiles and links TTGO on the release Xtensa toolchain without static DRAM overflow": "새 의존성 설치로 릴리스 Xtensa 도구에서 정적 DRAM 초과 없이 TTGO를 컴파일·링크합니다.",
   "runtime heap headroom, firmware boot, rendering, flashing, or other board targets": "런타임 힙 여유·펌웨어 부팅·렌더링·설치·다른 보드 대상.",
-  "re-runs the Vitest, E2E and Android suites on the merged master commit and publishes every result": "master 병합 커밋에서 Vitest·E2E·Android를 다시 실행하고 모든 결과를 게시합니다.",
   "Apple, hardware or release gates — those run in their own workflows and are linked, not re-run here": "Apple·하드웨어·릴리스 검사. 별도 워크플로로 실행하고 여기서는 링크만 제공합니다.",
   "the firmware flashes, boots, parses the serial JSON protocol and meets heap/latency budgets on real boards": "실제 보드에서 펌웨어 설치·부팅·시리얼 JSON 파싱·힙과 지연 시간 기준을 검사합니다.",
   "anything in GitHub CI — no hosted runner has the boards, so this page shows it as not run": "GitHub CI의 하드웨어 동작. 실제 보드를 가진 실행 환경이 없어 미실행으로 표시합니다.",
@@ -556,6 +555,7 @@
   "Physical X4 acceptance is deferred to companion-app integration": "X4 실기 검증은 컴패니언 앱 연동 시 진행합니다.",
   "Opt-in display-only mode measures actual Mac sleep/wake edge delivery to isolated wire clients in Swift-only, Node-only and combined configurations": "선택 실행하는 화면 소등 모드는 Swift 단독·Node 단독·동시 실행에서 실제 Mac 화면 꺼짐과 복원의 격리 클라이언트 전달 시간을 측정합니다.",
   "Known vulnerable npm dependencies": "알려진 npm 의존성 취약점 검사",
+  "Latest Snyk PR check": "최신 PR의 Snyk 검사",
   "Snyk monthly comparison": "Snyk 월간 비교",
   "1st of each month and manual": "매월 1일 및 수동 실행",
   "Snyk Open Source (pnpm workspaces, Android release/sideload runtime) and Snyk Code ran with the repository token; findings absent from the triaged baseline open or update one tracking issue; raw results are kept for 90 days.": "저장소 토큰으로 Snyk Open Source(pnpm 워크스페이스, Android release/sideload 런타임)와 Snyk Code를 실행하고, 분류된 기준선에 없는 결과는 추적 이슈 하나를 열거나 갱신합니다. 원본 결과는 90일간 보관합니다.",
@@ -616,7 +616,7 @@
   "ESP32 legacy TC001 firmware build": "ESP32 레거시 TC001 펌웨어 빌드",
   "The legacy Arduino 2 / GCC 8 target compiles and links with build-local SDK security backports; per-source original/patched hashes and applied rules are retained.": "레거시 Arduino 2·GCC 8 대상에 빌드별 SDK 보안 패치를 적용해 컴파일·링크합니다. 파일별 원본·패치 해시와 적용 규칙을 보존합니다.",
   "Installed firmware, boot, optical acceptance, complete SDK advisory coverage or protection of older installed builds.": "설치된 펌웨어, 부팅, 광학 검증, 전체 SDK 보안 권고 검사 또는 이전 설치본의 보호를 입증하지 않습니다.",
-  "Branch protection on master requires ESP32 simulator, modern TTGO and legacy TC001 build checks, npm/Python/Rust dependency audits, dependency review, all eight hosted-validated CodeQL analysis jobs, the CodeQL result check and security pipeline freshness. Administrator enforcement and up-to-date branch checks are enabled. Target build and native analysis jobs are promoted only after hosted validation.": "master 브랜치 보호는 ESP32 시뮬레이터·최신 TTGO·구형 TC001 빌드, npm·Python·Rust 의존성 감사, 의존성 검토, CI 검증을 마친 CodeQL 분석 8개와 결과 검사, 보안 파이프라인의 최신 상태를 요구합니다. 관리자에게도 적용하며 최신 브랜치 상태를 확인합니다. 대상 빌드와 네이티브 분석은 CI에서 검증한 뒤 필수 검사로 등록합니다.",
+  "Master requires Product verification for applicable product suites, the ESP32 simulator, TTGO and TC001 builds, dependency audits and review, CodeQL checks and security pipeline freshness. Administrator enforcement and up-to-date branch checks are enabled.": "master 병합에는 변경 범위에 맞는 제품 검증, ESP32 시뮬레이터·TTGO·TC001 빌드, 의존성 감사와 검토, CodeQL 및 보안 검사 상태 확인이 필요합니다. 관리자에게도 적용되며 최신 master 기준으로 검사를 통과해야 합니다.",
   "Scope, limits and command": "검증 범위·한계·실행 명령",
   "Workflow snapshot time unavailable.": "워크플로 상태를 수집한 시각을 확인할 수 없습니다.",
   "Workflow snapshot:": "워크플로 상태 수집 시각:",
@@ -626,5 +626,10 @@
   "Scoped device TLS projects only granted session/usage fields, fences revocation and legacy fallback, and admits custody receipts by socket, process and fresh challenge; actual Swift TLS and cross-profile store execution run on macOS.": "기기별 TLS는 허용된 세션·사용량 필드만 제공하고 폐기 상태와 기존 인증 경로 우회를 검사합니다. 인계 확인은 소켓·프로세스·일회용 확인값에 묶이며, 실제 Swift TLS와 서로 다른 저장소의 상호운용 검사는 macOS에서 실행합니다.",
   "macOS CloudKit transport and read-only monitoring XCTest": "macOS CloudKit 전송과 읽기 전용 원격 모니터링 XCTest",
   "CloudKit tests use injected stores and temporary files to exercise account isolation, durable stop/delete/subscription intents, ambiguous event resolution, source invalidation and stale reader state without contacting iCloud; standard builds include the read-only product and the development PoC compiles separately": "CloudKit 테스트는 주입한 저장소와 임시 파일로 iCloud에 접속하지 않고 계정 격리, 중단·삭제·구독 해제 요청의 영속 복구, 불확실한 이벤트 저장 결과, 소스 무효화와 과거 조회 상태를 검증합니다. 일반 빌드에는 읽기 전용 원격 모니터링이 포함되고 개발 PoC도 별도로 빌드합니다.",
-  "the offline remote-observation archive guard rejects wrong container, service, environment, iOS APNs, macOS Sandbox and debug entitlements; unsigned build identity never establishes Production signing or cloud delivery": "오프라인 원격 모니터링 archive 검사는 잘못된 컨테이너·서비스·환경·iOS APNs·macOS Sandbox 및 디버그 entitlement를 거부합니다. 서명 없는 빌드 식별 검사로 Production 서명이나 클라우드 전달을 입증하지 않습니다."
+  "the offline remote-observation archive guard rejects wrong container, service, environment, iOS APNs, macOS Sandbox and debug entitlements; unsigned build identity never establishes Production signing or cloud delivery": "오프라인 원격 모니터링 archive 검사는 잘못된 컨테이너·서비스·환경·iOS APNs·macOS Sandbox 및 디버그 entitlement를 거부합니다. 서명 없는 빌드 식별 검사로 Production 서명이나 클라우드 전달을 입증하지 않습니다.",
+  "Product verification": "제품 검증",
+  "Every pull request to master": "master에 병합할 모든 PR",
+  "Required product suites completed, including applicable Apple and Android suites": "변경 범위에 해당하는 Apple·Android 검사를 포함해 필요한 제품 검사를 모두 통과했는지 확인합니다.",
+  "Physical device behaviour or release signing": "실제 기기 동작과 릴리즈 서명은 별도로 확인합니다.",
+  "publishes the merged commit’s Vitest and E2E results, and Android results when the suite applied": "병합 커밋의 Vitest와 E2E 결과를 게시하고, Android 검사를 실행한 경우 그 결과도 함께 표시합니다."
 }
