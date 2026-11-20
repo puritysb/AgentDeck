@@ -146,8 +146,9 @@ build.
   BLE panels stayed off. `agentdeck ble setup` rewrote the marker (bleak 3.1.0),
   and a daemon restart was needed before the workers started. The CHANGELOG
   entry now tells upgrading users to run it, as 2.1.2 did for cryptography.
-  iDotMatrix then connected. Timebox kept reporting "device not found", the
-  open advertising problem noted with #575.
+  iDotMatrix then connected. Timebox reported "device not found" because it
+  was powered off; once switched on it connected under the same bleak 3.1.0
+  environment (restored daemon, same BLE code as the candidate).
 - **Both, Node first:** Node held the only 9120 listener and the app was its
   client; a headless Codex turn was ingested.
 - **CLI only:** after quitting the app, a Codex turn was ingested; Pixoo online
