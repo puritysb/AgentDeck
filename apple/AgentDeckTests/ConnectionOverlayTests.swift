@@ -1,3 +1,4 @@
+import Combine
 import XCTest
 @testable import AgentDeck
 
@@ -144,12 +145,13 @@ final class ForegroundSearchBoundTests: XCTestCase {
         )
     }
 
-    /// Spin the main run loop — `Timer` and `DispatchQueue.main.asyncAfter` work
-    /// inside the waterfall, and neither fires under a plain sleep.
-    private func settle(_ seconds: TimeInterval) {
-        let done = expectation(description: "run loop settled")
-        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { done.fulfill() }
-        wait(for: [done], timeout: seconds + 5)
+    private func waitForSearchToEnd() {
+        let ended = expectation(description: "foreground search ended")
+        let observation = holder.$isAutoConnecting.first(where: { !$0 }).sink { _ in
+            ended.fulfill()
+        }
+        defer { observation.cancel() }
+        wait(for: [ended], timeout: 6)
     }
 
     func testIndicatorStopsWithoutAnyBridge() {
@@ -157,7 +159,7 @@ final class ForegroundSearchBoundTests: XCTestCase {
         XCTAssertTrue(holder.isAutoConnecting, "waterfall should light the indicator")
         XCTAssertEqual(phase(), .searching)
 
-        settle(1.0)
+        waitForSearchToEnd()
 
         XCTAssertFalse(holder.isAutoConnecting, "the bounded search must end on its own")
         XCTAssertEqual(phase(), .notFound, "and settle on the actionable terminal state")
@@ -214,7 +216,7 @@ final class ForegroundSearchBoundTests: XCTestCase {
         XCTAssertTrue(holder.isAutoConnecting, "Search Again must restart the search")
         XCTAssertEqual(phase(), .searching)
 
-        settle(1.0)
+        waitForSearchToEnd()
         XCTAssertEqual(phase(), .notFound, "and the restarted search is bounded too")
     }
 
@@ -223,7 +225,7 @@ final class ForegroundSearchBoundTests: XCTestCase {
     func testRepeatedStartsDoNotLeakAnUnboundedIndicator() {
         holder.startConnectionWaterfall()
         holder.startConnectionWaterfall()  // no-ops on the stage guard
-        settle(1.0)
+        waitForSearchToEnd()
 
         XCTAssertFalse(holder.isAutoConnecting)
         XCTAssertEqual(phase(), .notFound)
