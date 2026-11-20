@@ -130,6 +130,38 @@ it. The four npm packages ship together.
 Unchanged: Android, ESP32, Stream Deck and Ulanzi. Apple 2.2.0 follows its own
 decision above and goes to external TestFlight before App Store submission.
 
+
+#### npm 2.1.4 pre-tag acceptance (2026-11-20)
+
+Candidate `8f0fb2a7` passed `verify:full --record`
+([receipt](verification/receipts/2026-11-20-71c010c.json); e2e and the Windows
+runtime run in CI) and the isolated packaged-daemon acceptance with a 30-second
+soak. The four tarballs were then installed globally over the maintainer's
+`agentdeck` command (Node 26.5.0, `diag native` ready, daemon build
+`e9e43cb3dce4`). The counterpart was a local macOS 2.2.0 build 5, not the Store
+build.
+
+- **Upgrade finding:** the BLE requirements digest changed with #797, so the
+  installed candidate reported the existing environment "not prepared" and both
+  BLE panels stayed off. `agentdeck ble setup` rewrote the marker (bleak 3.1.0),
+  and a daemon restart was needed before the workers started. The CHANGELOG
+  entry now tells upgrading users to run it, as 2.1.2 did for cryptography.
+  iDotMatrix then connected. Timebox kept reporting "device not found", the
+  open advertising problem noted with #575.
+- **Both, Node first:** Node held the only 9120 listener and the app was its
+  client; a headless Codex turn was ingested.
+- **CLI only:** after quitting the app, a Codex turn was ingested; Pixoo online
+  with a frame, 12 serial ports, iDotMatrix connected.
+- **Swift only:** after `daemon stop`, the app bound 9120 in 160 s; a Codex turn
+  appeared in its timeline (completed, 6 s).
+- **Both, takeover:** `daemon start` over the Swift daemon took 9120 in 46 s;
+  the app reconnected as a client and a further Codex turn was ingested.
+- **#802:** the maintainer's `agentdeck claude` session (bridge pid 67365,
+  claude pid 67374) appeared once in the roster, with no observed duplicate.
+
+The previous mode (CLI linked to the source checkout, Node daemon build
+`884cbfaed924`, app as client) was restored.
+
 ### npm 2.1.3 release decision (2026-11-16)
 
 | Target / routes | Last verified public version | Proposed version | User-visible reason |

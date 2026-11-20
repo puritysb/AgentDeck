@@ -113,8 +113,12 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 - List an `agentdeck claude` session once. With the CLI daemon running, the
   session also appeared as a second, observed session after its first prompt.
   [#803](https://github.com/puritysb/AgentDeck/pull/803)
-- Allow bleak 3.1 for the iDotMatrix and Timebox BLE clients prepared by
-  `agentdeck ble setup`. [#797](https://github.com/puritysb/AgentDeck/pull/797)
+- Allow bleak 3.1 for the iDotMatrix and Timebox BLE clients. The BLE
+  requirements changed, so an environment prepared by an earlier version
+  reports "not prepared" and the panels stay disconnected until you run
+  `agentdeck ble setup` once after upgrading. If you set
+  `AGENTDECK_BLE_PYTHON`, update bleak in that Python environment instead.
+  [#797](https://github.com/puritysb/AgentDeck/pull/797)
 - Update the bundled `ws` WebSocket library to 8.23.0.
   [#795](https://github.com/puritysb/AgentDeck/pull/795)
 
