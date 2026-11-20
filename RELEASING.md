@@ -21,6 +21,22 @@ component matches. Minor and patch values are ignored in both directions for
 compatibility: for example, `1.0.9` and `1.3.0` are compatible regardless of which
 side is newer.
 
+## Close out a release branch
+
+When a release ships from a branch, verify that the next build from `master` will include the shipped fixes. Record the channel, version, build or artifact identifier, and the full source commit from the build that produced it. Link the build run or provenance record. If a submission was replaced, use the build that actually shipped. Platforms sharing a version can ship from different commits.
+
+Set `shipped_sha` to the recorded commit. Run the ancestry check only after the fetch succeeds.
+
+```sh
+git fetch origin && git merge-base --is-ancestor "$shipped_sha" origin/master
+```
+
+- If the ancestry check exits **0**, remote `master` contains the shipped commit. Record the verified `master` SHA in the release record or merge PR.
+- If it exits **1**, inspect the changes through the shipped commit. If fixes are missing, open or continue a PR into `master` within the current authorization. Prefer a merge commit that preserves the shipped history. Review any later branch work separately. After the PR merges, fetch again and repeat the check.
+- If the fetch fails or the ancestry check reports another error, keep the integration status unverified until the remote history and both commits are available.
+
+If the project intentionally used a squash, cherry-pick or selective backport, record the integration commit, compare each shipped fix and its tests against current `origin/master`, and explain any intentional differences. Keep a durable reference to the exact shipped source. Before deleting the release branch or its worktree, account for later commits, local changes and any active owner. If integration is pending at handoff, include the shipped SHA, the open PR or missing fixes, and the next action.
+
 ## Choosing a version
 
 **Version scope follows the user-visible contract, not implementation effort,

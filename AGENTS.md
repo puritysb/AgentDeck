@@ -4,17 +4,9 @@ Stream Deck+ controller for AI coding agents — a bidirectional local control s
 
 ## How this file is organised
 
-This is the repository's only root instruction file; there is no `CLAUDE.md`. Claude Code (2.1.277+) loads
-`AGENTS.md` whenever no `CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md` exists in the working directory or
-any directory above it — never add one of those here, it would silently replace this file. Codex injects the
-root→cwd `AGENTS.md` chain and stops adding files once the combined size reaches `project_doc_max_bytes`
-(32 KiB default), so this file plus `esp32/AGENTS.md` must stay under that together (`pnpm docs:check` gates both the
-budget and any shadowing `CLAUDE.md`); OpenCode and Antigravity
-read it by convention. It is the **map**; **the rule bodies live in `.claude/rules/*.md` (tracked in git).** Each rule file
-declares `paths:` globs; Claude Code loads it automatically when a file matching those globs is touched. Codex,
-OpenCode and Antigravity have no path-conditional loading and must read the matching file **before the first edit**
-in that area (`.codex/rules` is exec policy, not instructions). Measurements behind a rule are in the topic doc it
-links; incidents are in `docs/devlog/entries/` (grep them; see `DEVELOPMENT_LOG.md`).
+Start here. Before editing, read every applicable rule in `.claude/rules/`. The table summarizes each domain. The `paths:` globs in the rule files give the full scope. Claude Code can load matching rules on demand. Other agents should open them explicitly. For any work under `esp32/`, also read [esp32/AGENTS.md](esp32/AGENTS.md), including when the session started at the repository root.
+
+Keep the checkout free of `CLAUDE.md` and `CLAUDE.local.md` so Claude Code's default discovery reaches this map. Keep each root-to-directory instruction chain within the repository's 32 KiB budget. `pnpm docs:check` checks both conventions. For client settings and discovery details, see [docs/agent-harness.md](docs/agent-harness.md).
 
 | Rule file | Loads when touching | Covers |
 |---|---|---|
@@ -31,9 +23,7 @@ links; incidents are in `docs/devlog/entries/` (grep them; see `DEVELOPMENT_LOG.
 | [apple-release](.claude/rules/apple-release.md) | `apple/**`, `RELEASING.md`, `.github/workflows/**` | App Store invariants, five release states, CHANGELOG-rendered release bodies |
 
 Two constraints on editing this layout: a rule that more than one domain needs stays in this file, and a rule body
-is moved, never paraphrased — the headline sentence is the rule, the rest is the evidence. `esp32/AGENTS.md` is the
-nested instruction file for work under `esp32/`: Claude Code loads it when it first reads a file there, Codex when
-its working directory is under `esp32/`.
+is moved, never paraphrased — the headline sentence is the rule, the rest is the evidence.
 
 ## Monorepo
 
@@ -111,8 +101,8 @@ pnpm plugin:check           # verify installed source and running bundle identit
 This repo is built by switching between Claude Code, Codex, OpenCode, and Antigravity. **[docs/agent-harness.md](docs/agent-harness.md)** is the canonical map of how each agent enters the repo, what it reads, and what it auto-discovers.
 
 - **Repo instructions**: this file is the entry point for every agent (see above). **The devlog is one file per entry in `docs/devlog/entries/`** and nothing else is committed (`pnpm devlog:check` gates CI; `pnpm devlog:build` writes a git-ignored reading view). Add an entry only for what the diff and PR cannot say — measurements, incidents, pitfalls, decisions with their rejected alternatives — as a new file (first line `# YYYY-MM-DD — title`, links relative to the repo root).
-- **Repo skills (SSOT)**: canonical skills live in `.agents/skills/<name>/SKILL.md` — the only copy. Codex discovers that directory natively; Claude Code discovers `.claude/skills/<name>`, which is a tracked **symlink** to the same directory. Add a skill under `.agents/skills/` and add the symlink; never write a pointer or a second copy.
-- **Workflow originals** live in `.agents/workflows/` (OpenCode has no skill auto-discovery — point it there explicitly). **Session handoff**: run the `session-end` skill before `/clear`, `/new`, or handing work to another session.
+- **Repo skills (SSOT)**: canonical skills live in `.agents/skills/<name>/SKILL.md` — the only copy. Codex, OpenCode and Antigravity discover that directory natively; Claude Code discovers `.claude/skills/<name>`, which is a tracked **symlink** to the same directory. Add a skill under `.agents/skills/` and add the symlink; never write a pointer or a second copy.
+- **Workflow originals** live in `.agents/workflows/`. **Session handoff**: run the `session-end` skill before `/clear`, `/new`, or handing work to another session.
 - **Domain rules (SSOT)**: `.claude/rules/<domain>.md` are tracked in git and are the canonical text of every domain invariant (table above). Claude Code loads them by `paths:`; other agents read the matching file before editing in that area. Add a rule to the domain file, not to this map; a genuinely cross-cutting rule goes under Key Conventions here.
 
 ### Agent working agreements
@@ -188,7 +178,7 @@ Cross-cutting rules that more than one domain needs; domain invariants are in th
 
 ## Design System
 
-Aquarium-tide design system. Spec: [DESIGN.md](DESIGN.md); token SSOT [design/tokens.css](design/tokens.css); resource map [design/RESOURCES.md](design/RESOURCES.md). Seven rules enforced by `bash design/lint.sh` (no raw hex, two type faces, semantic status colours, marketing never touches `--ui-*`, upstream brand SVGs, real assets over drawn ones). Token mirrors (JS/TS/Swift/Kotlin + three non-binding copies) are checked by `python3 design/verify-tokens-sync.py`. **Adding a file under `docs/` requires a catalog entry or a stated exclusion in the same commit** (`pnpm design-system:check`), and `pnpm docs:check` validates Markdown links. Full rules, mirrors and gates: [.claude/rules/design-system.md](.claude/rules/design-system.md).
+Read [DESIGN.md](DESIGN.md) for the Aquarium-tide specification and [design/RESOURCES.md](design/RESOURCES.md) for token and asset ownership. Follow the [design system rule](.claude/rules/design-system.md) for UI and documentation edits, including catalog coverage for new documents.
 
 ## App Store build invariants
 
