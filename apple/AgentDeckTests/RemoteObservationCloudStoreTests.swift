@@ -29,6 +29,8 @@ final class RemoteObservationCloudStoreTests: XCTestCase {
         private let lock = NSLock()
         private var records: [CKRecord.ID: CKRecord] = [:]
         private var savedSubscriptions: [CKSubscription] = []
+        private let changesCategory: Bool
+        init(changesCategory: Bool = false) { self.changesCategory = changesCategory }
         var subscriptions: [CKSubscription] {
             lock.lock(); defer { lock.unlock() }; return savedSubscriptions
         }
@@ -48,6 +50,26 @@ final class RemoteObservationCloudStoreTests: XCTestCase {
                     save.perRecordSaveBlock?(record.recordID, .success(record))
                 }
                 save.modifyRecordsResultBlock?(.success(()))
+            } else if let fetch = operation as? CKFetchSubscriptionsOperation {
+                for id in fetch.subscriptionIDs ?? [] {
+                    if let subscription = savedSubscriptions.last(where: { $0.subscriptionID == id }) {
+                        if changesCategory, let query = subscription as? CKQuerySubscription, let recordType = query.recordType {
+                            let altered = CKQuerySubscription(recordType: recordType, predicate: query.predicate,
+                                                              subscriptionID: id, options: query.querySubscriptionOptions)
+                            altered.zoneID = query.zoneID
+                            let info = CKSubscription.NotificationInfo()
+                            info.alertBody = query.notificationInfo?.alertBody
+                            info.category = "WRONG_CATEGORY"
+                            altered.notificationInfo = info
+                            fetch.perSubscriptionResultBlock?(id, .success(altered))
+                        } else {
+                            fetch.perSubscriptionResultBlock?(id, .success(subscription))
+                        }
+                    } else {
+                        fetch.perSubscriptionResultBlock?(id, .failure(CKError(.unknownItem)))
+                    }
+                }
+                fetch.fetchSubscriptionsResultBlock?(.success(()))
             } else if let save = operation as? CKModifySubscriptionsOperation {
                 for subscription in save.subscriptionsToSave ?? [] {
                     savedSubscriptions.append(subscription)
@@ -77,7 +99,7 @@ final class RemoteObservationCloudStoreTests: XCTestCase {
         XCTAssertEqual(received?.installationID, summary.installationID)
         let subscription = try XCTUnwrap(database.subscriptions.first as? CKQuerySubscription)
         XCTAssertEqual(subscription.recordType, "AttentionEvent")
-        XCTAssertEqual(subscription.zoneID?.zoneName, "RemoteObservationV1")
+        XCTAssertNil(subscription.zoneID)
         XCTAssertEqual(subscription.subscriptionID,
                        "remote-observation-v1-\(summary.installationID.uuidString)-\(receiverID.uuidString)")
         // CloudKit returns a securely decoded predicate with evaluation disabled.
@@ -92,6 +114,21 @@ final class RemoteObservationCloudStoreTests: XCTestCase {
         try await receiver.subscribe(installation: summary.installationID, receiver: receiverID,
                                      enabled: true, account: receiverAccount)
         XCTAssertEqual(database.subscriptions.last?.subscriptionID, subscription.subscriptionID)
+    }
+
+    func testSavedSubscriptionWithWrongAlertCategoryFailsReadback() async throws {
+        let database = Database(changesCategory: true)
+        let store = RemoteObservationCloudStore(account: { $0(.success("same-account")) }, submit: database.submit)
+        let account = try await store.account()
+        let summary = snapshot()
+        try await store.publish(summary, events: [], account: account)
+        do {
+            try await store.subscribe(installation: summary.installationID, receiver: UUID(),
+                                      enabled: true, account: account)
+            XCTFail("A server subscription without the Watch alert category must not be accepted")
+        } catch {
+            XCTAssertEqual(error as? RemoteObservationError, .invalidData)
+        }
     }
 
     func testPartialBatchFailureCannotBeAcknowledgedByTheFirstSavedRecord() async throws {
