@@ -113,6 +113,56 @@ signed iOS archive with the two Watch profiles passing
 and a complication capture from a real face. The device TLS listener included
 in the macOS build stays opt-in and unadvertised; its review note describes it.
 
+### npm 2.1.4 release decision (2026-11-20)
+
+| Target / routes | Last verified public version | Proposed version | User-visible reason |
+| --- | --- | --- | --- |
+| CLI and Node daemon / npm | 2.1.3 for bridge, hooks, shared and setup | 2.1.4 | Patch: list a managed `agentdeck claude` session once (#802, user report), accept bleak 3.1 in the managed BLE runtime, update `ws`. |
+
+Previous behavior: with the CLI daemon running, the managed session also showed
+as an `observed:claude:` row after its first prompt, because the observer
+deduplicated only inside a scan started by a caller with no managed list. New
+behavior and test: `collect()` applies the caller's managed list to every read
+(`passive-observer.test.ts`, regression case fails on 2.1.3). bleak 3.1 was
+exercised live: both configured panels (iDotMatrix, Timebox) reconnected under
+it. The four npm packages ship together.
+
+Unchanged: Android, ESP32, Stream Deck and Ulanzi. Apple 2.2.0 follows its own
+decision above and goes to external TestFlight before App Store submission.
+
+
+#### npm 2.1.4 pre-tag acceptance (2026-11-20)
+
+Candidate `8f0fb2a7` passed `verify:full --record`
+([receipt](verification/receipts/2026-11-20-71c010c.json); e2e and the Windows
+runtime run in CI) and the isolated packaged-daemon acceptance with a 30-second
+soak. The four tarballs were then installed globally over the maintainer's
+`agentdeck` command (Node 26.5.0, `diag native` ready, daemon build
+`e9e43cb3dce4`). The counterpart was a local macOS 2.2.0 build 5, not the Store
+build.
+
+- **Upgrade finding:** the BLE requirements digest changed with #797, so the
+  installed candidate reported the existing environment "not prepared" and both
+  BLE panels stayed off. `agentdeck ble setup` rewrote the marker (bleak 3.1.0),
+  and a daemon restart was needed before the workers started. The CHANGELOG
+  entry now tells upgrading users to run it, as 2.1.2 did for cryptography.
+  iDotMatrix then connected. Timebox reported "device not found" because it
+  was powered off; once switched on it connected under the same bleak 3.1.0
+  environment (restored daemon, same BLE code as the candidate).
+- **Both, Node first:** Node held the only 9120 listener and the app was its
+  client; a headless Codex turn was ingested.
+- **CLI only:** after quitting the app, a Codex turn was ingested; Pixoo online
+  with a frame, 12 serial ports, iDotMatrix connected.
+- **Swift only:** after `daemon stop`, the app bound 9120 in 160 s; a Codex turn
+  appeared in its timeline (completed, 6 s).
+- **Both, takeover:** `daemon start` over the Swift daemon took 9120 in 46 s;
+  the app reconnected as a client and a further Codex turn was ingested.
+- **#802:** the maintainer's `agentdeck claude` session (bridge pid 67365,
+  claude pid 67374) appeared once in the roster, with no observed duplicate.
+
+The previous mode (CLI linked to the source checkout, Node daemon build
+`884cbfaed924`, app as client) was restored.
+
 ### npm 2.1.3 release decision (2026-11-16)
 
 | Target / routes | Last verified public version | Proposed version | User-visible reason |
