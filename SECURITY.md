@@ -46,4 +46,4 @@ Ordinary bugs without a security impact should use the public bug-report form.
 
 Dependency auditing, static analysis, exception expiry and the current coverage
 limits are documented in [the security scanning runbook](docs/security-scanning.md).
-A successful scan does not replace private reporting or product-specific review.
+Maintainers can follow the [response flow and per-channel decision record (한국어)](docs/security-response.ko.md) from intake through release.

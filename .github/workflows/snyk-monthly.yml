@@ -61,7 +61,6 @@ jobs:
             --json-file-output="$OUT/oss-workspace.json" > "$OUT/oss-workspace.txt" 2>&1
           code=$?
           set -e
-          tail -5 "$OUT/oss-workspace.txt"
           [ "$code" -le 1 ]
       # Release and sideload runtime only: the default scan also reads unit-test
       # and test-platform configurations (Robolectric's netty/bouncycastle).
@@ -74,7 +73,6 @@ jobs:
             --json-file-output="../$OUT/oss-android.json" > "../$OUT/oss-android.txt" 2>&1
           code=$?
           set -e
-          tail -5 "../$OUT/oss-android.txt"
           [ "$code" -le 1 ]
       - name: Snyk Code
         run: |
@@ -82,22 +80,25 @@ jobs:
           pnpm dlx "$SNYK_CLI" code test --sarif-file-output="$OUT/code.sarif" > "$OUT/code.txt" 2>&1
           code=$?
           set -e
-          tail -5 "$OUT/code.txt"
           [ "$code" -le 1 ]
       - name: Compare with the baseline
         run: |
-          node scripts/snyk-monthly.mjs --code "$OUT/code.sarif" \
-            --oss "$OUT/oss-workspace.json" --oss "$OUT/oss-android.json" --out "$OUT"
-          cat "$OUT/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          if ! node scripts/snyk-monthly.mjs --code "$OUT/code.sarif" \
+            --oss "$OUT/oss-workspace.json" --oss "$OUT/oss-android.json" --out "$OUT" > "$OUT/comparison.log" 2>&1; then
+            echo "Snyk comparison failed. Review the pinned scan privately." >&2
+            exit 2
+          fi
+          jq -r '"Snyk findings: \(.total) total, \(.new) new, \(.gone) baseline entries absent."' \
+            "$OUT/public-counts.json" >> "$GITHUB_STEP_SUMMARY"
       - name: Open or update the tracking issue
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          count=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$OUT/new-findings.json','utf8')).length)")
+          count=$(jq -er '.new' "$OUT/public-counts.json")
           [ "$count" -eq 0 ] && exit 0
           body="$OUT/issue.md"
-          { cat "$OUT/summary.md"; echo; echo "Run: $RUN_URL"; } > "$body"
+          printf '%s new findings. Maintainer review requested.\n\nRun: %s\n' "$count" "$RUN_URL" > "$body"
           existing=$(gh issue list --state open --search 'in:title "Snyk monthly:"' --json number --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body-file "$body"
@@ -105,9 +106,8 @@ jobs:
             gh issue create --title "Snyk monthly: $count new findings to triage" --body-file "$body"
           fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
         with:
-          name: snyk-monthly
-          path: diagnostics/snyk/
+          name: snyk-monthly-counts
+          path: diagnostics/snyk/public-counts.json
           retention-days: 90
-          if-no-files-found: ignore
+          if-no-files-found: error

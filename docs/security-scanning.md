@@ -1,7 +1,7 @@
 # Security scanning
 
 This runbook owns dependency scanning, static analysis, triage and evidence. It
-complements [the reporting policy](../SECURITY.md) and [testing](testing.md).
+complements [the reporting policy](../SECURITY.md) and [testing](testing.md). For the decision flow, per-channel case record and proposed AI assistance, see the [maintainer response guide (한국어)](security-response.ko.md).
 
 ## Automated checks
 
@@ -17,7 +17,7 @@ complements [the reporting policy](../SECURITY.md) and [testing](testing.md).
 | CodeQL `security-extended` | PR, master push, weekly, manual | Extraction/analysis failures fail the job; alerts need separate triage | GitHub Security → Code scanning |
 | Dependabot | Continuous alerts; weekly version PRs | Maintainer review, no automatic merge | Security → Dependabot, update PRs |
 | Secret scanning + push protection | GitHub service | Existing provider-secret protections retained | GitHub Security → Secret scanning |
-| Snyk monthly (`snyk-monthly.yml`) | 1st of each month, manual | Never blocks; findings missing from `security/snyk-baseline.json` open or update one `Snyk monthly:` issue; a missing `SNYK_TOKEN` or a Snyk failure fails the run | Code SARIF and open-source JSON; 90-day artifact |
+| Snyk monthly (`snyk-monthly.yml`) | 1st of each month, manual | Never blocks; findings missing from `security/snyk-baseline.json` open or update one `Snyk monthly:` issue; a missing `SNYK_TOKEN` or a Snyk failure fails the run | Aggregate counts only (90-day artifact) |
 
 CodeQL currently covers JavaScript/TypeScript, Python, Actions, C/C++ and Rust,
 using `build-mode: none`. C++ without target headers/build flags has limited
@@ -26,10 +26,13 @@ both macOS and iOS Simulator targets; native extraction is verified by its actua
 hosted build and analysis result, not workflow presence. A complete
 PlatformIO/Arduino dependency inventory and inspection of every installed user
 environment still require separate checks.
-Dependabot additionally checks Gradle manifests and GitHub Actions. A configured
-workflow and a completed analysis are separate states; inspect the actual run.
-Snyk runs monthly as a non-blocking second opinion; see [Snyk trial](#snyk-trial-2026-11-08). These checks provide a baseline without an
-additional external service account.
+See the [Snyk trial](#snyk-trial-2026-11-08) for the measured coverage and baseline decisions.
+
+## Swift PR scope
+
+The two required Swift jobs record a scope decision on Linux for PRs limited to ordinary prose files on the [allowlist](../scripts/codeql-swift-scope.py). Both jobs run their full Mac builds for every other PR, including mixed changes, executable or symlink entries, unknown diffs and changes to the classifier itself. Master pushes, weekly scans and manual runs always analyze both targets. A prose-only summary records an omission. It supplies no Swift scan result. The other CodeQL languages keep their usual schedule.
+
+On November 20 two PR runs took [26 minutes](https://github.com/puritysb/AgentDeck/actions/runs/44721796980) and [85 minutes](https://github.com/puritysb/AgentDeck/actions/runs/44709534566). In the longer run iOS waited 58m 36s before the job began and then ran for 26m 20s. Compare queue time and job duration separately when assessing the effect of this change.
 
 ## Action runtimes
 
@@ -399,7 +402,9 @@ every baseline finding has been individually reviewed: the 339-entry baseline
 contains 23 error-level code findings with reviewed reasons; warnings and notes
 are recorded without individual review.
 
-To triage an issue: fix the finding, or rerun the comparison with
+The public issue, job summary and uploaded receipt carry counts. The scanner output, detailed comparison, SARIF and dependency reports stay in the ephemeral runner. For private triage, check out the run's commit in a restricted workspace, use the CLI version, Java, pnpm and three scan commands from that revision's workflow with your authorized Snyk account, then run the same baseline comparison. Inspect `diagnostics/snyk/new-findings.json` locally. Record the scan time and CLI version: the advisory database may have changed between runs. If the counts differ, keep the original alert open pending explanation. Earlier runs used the previous publication policy.
+
+Coordinate undisclosed product findings through private reporting. Add only disclosure-reviewed details to the tracked baseline. For a reviewed finding, fix it or rerun the comparison with
 `--write-baseline` and write the reason in that entry's `decision`. Error-level
 entries in the 2026-11-08 baseline each carry a reviewed reason; warnings and
 notes say `recorded, not individually reviewed`.
