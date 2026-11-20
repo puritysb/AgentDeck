@@ -49,7 +49,7 @@
       "name": "Vobot pairing and attention regressions",
       "gate": "vobot-python",
       "tiers": ["changed", "quick", "full"],
-      "run": "python3 integrations/vobot/test_pairing.py && python3 integrations/vobot/test_attention.py && python3 integrations/vobot/test_tls_peer.py && python3 integrations/vobot/test_tls_transport.py",
+      "run": "python3 integrations/vobot/test_pairing.py && python3 integrations/vobot/test_attention.py && python3 integrations/vobot/test_display.py && python3 integrations/vobot/test_tls_peer.py && python3 integrations/vobot/test_tls_transport.py",
       "requires": { "commands": ["python3"] },
       "paths": ["integrations/vobot/**"]
     },
@@ -435,9 +435,9 @@
       "workflow": ".github/workflows/ci.yml",
       "job": "vobot-python",
       "blocking": true,
-      "command": "python3 integrations/vobot/test_pairing.py && python3 integrations/vobot/test_attention.py && python3 integrations/vobot/test_tls_peer.py && python3 integrations/vobot/test_tls_transport.py",
-      "evidence": ["integrations/vobot/test_pairing.py", "integrations/vobot/test_attention.py", "integrations/vobot/test_tls_peer.py", "integrations/vobot/test_tls_transport.py"],
-      "proves": ["Pairing redemption and credential-file cleanup on CPython with loopback sockets and temporary files.", "Attention state transitions with mocked display peripherals.", "TLS peer pin and validity policy, bounded response parsing and credential withholding before peer verification with mocked sockets."],
+      "command": "python3 integrations/vobot/test_pairing.py && python3 integrations/vobot/test_attention.py && python3 integrations/vobot/test_display.py && python3 integrations/vobot/test_tls_peer.py && python3 integrations/vobot/test_tls_transport.py",
+      "evidence": ["integrations/vobot/test_pairing.py", "integrations/vobot/test_attention.py", "integrations/vobot/test_display.py", "integrations/vobot/test_tls_peer.py", "integrations/vobot/test_tls_transport.py"],
+      "proves": ["Pairing redemption and credential-file cleanup on CPython with loopback sockets and temporary files.", "Attention state transitions with mocked display peripherals.", "Host display sleep and dim mapping to the dock LCD and rear light with mocked peripherals.", "TLS peer pin and validity policy, bounded response parsing and credential withholding before peer verification with mocked sockets."],
       "does_not_prove": ["MicroPython firmware compatibility, physical device settings lifecycle, filesystem isolation, TLS or server-enforced least privilege.", "Gallery packaging or publication; this check does not establish physical device acceptance."]
     },
     {

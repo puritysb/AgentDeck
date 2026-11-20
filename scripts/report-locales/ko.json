@@ -4,6 +4,7 @@
   "Every pull request and push to master; local changed, quick and full verification": "모든 PR과 master 푸시 및 로컬 변경 범위·빠른 검사·전체 검증",
   "Pairing redemption and credential-file cleanup on CPython with loopback sockets and temporary files.": "CPython에서 루프백 소켓과 임시 파일을 사용해 페어링 코드 교환과 자격증명 파일 정리를 검증합니다.",
   "Attention state transitions with mocked display peripherals.": "화면 주변장치를 모의 구현해 주의 알림 상태 전이를 검증합니다.",
+  "Host display sleep and dim mapping to the dock LCD and rear light with mocked peripherals.": "주변장치를 모의 구현해 호스트 화면 꺼짐·디밍이 독 LCD와 후면 조명에 반영되는지 검증합니다.",
   "MicroPython firmware compatibility, physical device settings lifecycle, filesystem isolation, TLS or server-enforced least privilege.": "MicroPython 펌웨어 호환성, 실제 기기의 설정 화면 전환, 파일시스템 격리, TLS 또는 서버가 강제하는 최소 권한은 검증하지 않습니다.",
   "Gallery packaging or publication; this check does not establish physical device acceptance.": "Gallery 패키징이나 게시를 검증하지 않습니다. 이 검사만으로 실제 기기 검증 완료를 판단할 수 없습니다.",
   "Transient public GitHub release download failures use the exact official asset API identity only after full size and SHA-256 verification; unpinned missing digests and partial/corrupt transfers fail closed.": "공개 GitHub 릴리스 다운로드가 일시적으로 실패하면 공식 자산 API의 동일한 파일을 전체 크기와 SHA-256 검증 후 사용합니다. 해시가 없고 검토된 고정값도 없거나, 전송이 불완전하거나 변조되면 실패 처리합니다.",

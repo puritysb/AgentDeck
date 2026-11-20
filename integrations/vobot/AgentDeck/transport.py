@@ -17,7 +17,7 @@ REGISTER = {
         "clientId": IDENTITY,
         "productId": IDENTITY,
         "clientVersion": "0.3.0",
-        "profiles": [{"id": PROFILE, "capabilities": ["sessions.read", "usage.read"]}],
+        "profiles": [{"id": PROFILE, "capabilities": ["sessions.read", "usage.read", "display-state.read"]}],
     },
 }
 

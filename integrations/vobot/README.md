@@ -11,6 +11,13 @@ waiting session takes its place. The dashboard returns when none are left. The
 rear light pulses amber while the alert is active. The dock
 resumes control of the light when the app pauses, closes, or loses its connection.
 
+While AgentDeck is open, the dock follows the computer's display. When the
+display sleeps, the LCD goes black and the rear light stays off. If the
+daemon's display dimming is set to `min`, the LCD dims to that level instead
+and stays readable. When the display wakes, the app restores the brightness
+it saw before dimming. The same happens when the app pauses, closes, or loses
+its connection.
+
 Claude shows the reported quota windows and up to three readings, including
 Fable when the daemon reports that model limit. Codex shows the reported plan
 windows or the applicable credit balance and Luna reserve. The Luna number
@@ -192,6 +199,9 @@ amber. Add a second waiting session and check that the first remains on screen
 with `+1`. Resolve the first to reveal the second, then resolve the second to
 restore the dashboard and turn the strip off. In a brightly lit room, check
 whether the pulse is visible from your usual viewing position. Leave the app
-and check that the dock resumes its ambient light setting.
+and check that the dock resumes its ambient light setting. With the app open, put the
+computer's display to sleep (`pmset displaysleepnow`). Within about 15 seconds,
+check that the LCD is black and the strip is off. Wake the display and check
+that the LCD returns to its previous brightness.
 
 Regenerate the bundled LCD icons and palette with `python3 integrations/vobot/generate_assets.py` from the repository root after changing their AgentDeck sources.
