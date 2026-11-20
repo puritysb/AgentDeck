@@ -1,3 +1,7 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { cell, codeFindings, compare, ossFindings, summary } from '../snyk-monthly.mjs';
 
@@ -31,7 +35,24 @@ describe('snyk monthly comparison', () => {
 
   it('refuses inputs that are not Snyk output instead of reporting zero', () => {
     expect(() => codeFindings({})).toThrow();
+    expect(() => ossFindings([])).toThrow();
+    expect(() => ossFindings([{ vulnerabilities: [] }, {}])).toThrow();
     expect(() => ossFindings({ error: 'Authentication failed' })).toThrow(/snyk test failed/);
+  });
+
+  it('writes only counts to the public receipt and retains detail for local triage', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'snyk-comparison-'));
+    try {
+      const source = join(dir, 'sample.sarif');
+      const baseline = join(dir, 'baseline.json');
+      writeFileSync(source, JSON.stringify(sarif([codeResult('id-private', 'h-private')])));
+      writeFileSync(baseline, JSON.stringify({ findings: [] }));
+      execFileSync(process.execPath, ['scripts/snyk-monthly.mjs', '--code', source, '--baseline', baseline, '--out', dir]);
+      expect(JSON.parse(readFileSync(join(dir, 'public-counts.json'), 'utf8'))).toEqual({ total: 1, new: 1, gone: 0 });
+      expect(readFileSync(join(dir, 'new-findings.json'), 'utf8')).toContain('id-private');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('escapes table separators in the summary', () => {

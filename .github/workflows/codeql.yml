@@ -95,11 +95,37 @@ jobs:
         with:
           category: /language:java-kotlin
 
+  swift-scope:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      docs_only: ${{ steps.diff.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          sparse-checkout: /scripts/codeql-swift-scope.py
+          sparse-checkout-cone-mode: false
+      - id: diff
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # Use the base revision's policy. On the introducing PR the default is a full scan.
+          if git show "$BASE:scripts/codeql-swift-scope.py" > "$RUNNER_TEMP/swift-scope.py"; then
+            python3 "$RUNNER_TEMP/swift-scope.py" "$BASE" HEAD >> "$GITHUB_OUTPUT"
+          fi
+
   swift:
+    needs: swift-scope
+    if: always() && !cancelled()
+    env:
+      DOCS_ONLY: ${{ needs.swift-scope.result == 'success' && needs.swift-scope.outputs.docs_only == 'true' }}
     name: CodeQL (swift-${{ matrix.target }})
     # Intel is supported by CodeQL and avoids the arm64 hosted-capacity queue.
     # The extracted app target stays arm64 with the same pinned Xcode below.
-    runs-on: macos-26-intel
+    runs-on: ${{ needs.swift-scope.result == 'success' && needs.swift-scope.outputs.docs_only == 'true' && 'ubuntu-latest' || 'macos-26-intel' }}
     # A cold macOS trace completed analysis at the old 45m deadline, then
     # timed out during cleanup. On 2026-11-05 two consecutive PR #731 attempts
     # on the same macos-26-intel image spent 49m and 51m in extraction (25m on
@@ -120,11 +146,17 @@ jobs:
       contents: read
       security-events: write
     steps:
+      - name: Record documentation-only PR
+        if: env.DOCS_ONLY == 'true'
+        run: echo "Swift analysis omitted for a prose-only PR." >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.DOCS_ONLY != 'true'
       - uses: dtolnay/rust-toolchain@7dcc700092a1a8b9c17ba0e140b4e34e93000946 # 1.90.0
+        if: env.DOCS_ONLY != 'true'
         with:
           targets: aarch64-apple-darwin
       - name: Select Xcode and generate project
+        if: env.DOCS_ONLY != 'true'
         run: |
           # Xcode 27 / Swift 6.4 cannot be traced by CodeQL. Do not select the
           # newest preview installed on the runner. Missing support fails closed.
@@ -137,11 +169,13 @@ jobs:
           cd apple
           xcodegen generate
       - uses: github/codeql-action/init@793b778da9c9275a0f276522b27cb5fc14bba279 # v4
+        if: env.DOCS_ONLY != 'true'
         with:
           languages: swift
           build-mode: manual
           queries: security-extended
       - name: Compile app for extraction
+        if: env.DOCS_ONLY != 'true'
         run: |
           xcodebuild build -project apple/AgentDeck.xcodeproj -scheme '${{ matrix.scheme }}' \
             -configuration Debug -destination '${{ matrix.destination }}' \
@@ -150,5 +184,6 @@ jobs:
             SWIFT_USE_INTEGRATED_DRIVER=NO COMPILATION_CACHE_ENABLE_CACHING=NO SWIFT_ENABLE_COMPILE_CACHE=NO \
             SWIFT_COMPILATION_MODE=wholemodule SWIFT_OPTIMIZATION_LEVEL=-Onone
       - uses: github/codeql-action/analyze@793b778da9c9275a0f276522b27cb5fc14bba279 # v4
+        if: env.DOCS_ONLY != 'true'
         with:
           category: /language:swift-${{ matrix.target }}
