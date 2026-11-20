@@ -38,3 +38,13 @@ which the App Store app cannot install or prompt for under the self-contained ru
 authenticated read → claim → report cycle, fresh-user install, lifecycle and signed Swift-only
 gates (G0b–G6 in [the release plan](docs/dot-store-release-plan.md)) are untouched. The prepared
 OpenAI questions 4–6 can now be asked with this measurement attached.
+
+**OpenAI answer (support case 20560617, 2026-11-20).** The questions were sent through help.openai.com
+with this measurement attached. Support replied that a desktop-installed plugin's bundled stdio MCP
+server used from dot-created local tasks is not documented as a supported path, so ongoing
+compatibility and plan or region coverage cannot be confirmed. Local MCP submissions stay limited to
+approved partners via an OpenAI representative, and there is no published application route for
+developers without one. Thread identity forwarding, local-plugin events, and in-flight behaviour when
+ChatGPT quits or the Mac sleeps are not confirmed either. The loopback Streamable HTTP + OAuth
+alternative went unanswered. The Dot feature therefore stays held: the route works today but is
+unsupported, and a public listing has no reachable path.
