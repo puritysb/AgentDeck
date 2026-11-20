@@ -95,6 +95,26 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### Apple 2.2.1 release decision (2026-11-20)
+
+Readback first: App Store Connect (`asc-certificates.yml store-status`, run
+44664584186, 2026-11-20) reports **iOS 2.2.0 and macOS 2.2.0 both
+`READY_FOR_SALE`**, from review submissions of 2026-11-15 (iOS 11:20Z, macOS
+11:11Z, both `COMPLETE`). The latest processed build is 12101. No
+`apple-v2.2.0` tag exists; the 2.2.0 decision below remains the scope record.
+
+| Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
+| --- | --- | --- | --- | --- | --- |
+| iOS + iPadOS + embedded watchOS / TestFlight external, then App Store | 2.2.0 (build per ASC; highest processed 12101) | None for 2.2.1 | 2.2.1 / next CI-assigned build above 12101 | Patch: the Dashboard follows the iPhone Duo's fold (book and propped-half-open layouts) instead of placing the attention card on the crease; completes the form-factor-readable Dashboard. | Existing 2.2 scope; no new milestone. |
+
+macOS is not delivered: it compiles the fold layout but never receives a display
+division, so its behavior is unchanged. Delivery is a manual iOS-only
+`apple-release.yml` dispatch (`platform=ios`, `upload=true`), not an Apple tag,
+which would build and upload both platforms. The build goes to an external
+TestFlight group so the #799 reporter can verify it on hardware before App Store
+submission. Evidence so far is the iPhone Duo simulator (iOS 27.1) and
+`DashboardFoldLayoutTests`.
+
 ### Apple 2.2.0 release decision (2026-11-14)
 
 | Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
@@ -3750,6 +3770,28 @@ looking correct while the server still holds the previous text.
 3. For a coordinated iOS + macOS delivery, tag and push `apple-v<APPLE_VERSION>`; CI archives and uploads both to TestFlight. For a macOS-only delivery, dispatch `apple-release.yml` on the reviewed commit with `release_version=<APPLE_VERSION>`, `platform=macos`, and `upload=false` to prepare the signed candidate. Use `upload=true` only for the authorized App Store Connect delivery. A manual run does not publish a GitHub Release; do not push an Apple tag for a single-platform delivery because tags still build and upload both platforms.
 
 CI owns `CURRENT_PROJECT_VERSION` — `apple-release.yml` injects `github.run_number * 100 + github.run_attempt` into both archive steps, so the build number rises on every run and ASC never sees a duplicate `(version, build)` pair. Do not bump it by hand; the value in `apple/project.yml` is only a local-build default.
+
+#### Store media keeps its richness
+
+**Replace only the media that has gone stale; never leave a listing poorer than
+the version before it.** macOS 2.1.1 dropped the 28-second preview because its
+second half showed the removed Collaboration panel, and replaced four
+aquarium screenshots with two synthetic Work captures. Both reasons were
+correct, but the result shipped through 2.2.0: no video and a text-heavy first
+screenshot on the Mac App Store, while the still-accurate aquarium captures and
+the accurate first half of the video sat unused in
+`apple/appstore-submission/`. A media selection therefore starts from the
+previous version's set and the full asset inventory (`screenshots/<locale>/<platform>/`,
+`previews/<platform>/`), removes each item only for a stated reason (it shows a
+removed or changed feature), and replaces it in the same selection — a removed
+preview is re-recorded from the current build (`RECORDING_RUNBOOK.md`, demo
+feed `scripts/appstore-demo-orchestrator.mjs`), not dropped. Lead with the live
+aquarium and the attention flow; feature captures such as Work follow it. Record
+the before/after counts per platform and locale in the release decision.
+
+Pending for the next macOS version: restore a preview video (re-recorded
+without the Collaboration panel) and lead with the current-feature aquarium,
+attention, devices and CI captures, keeping the Work captures after them.
 
 #### Guarded Apple review delivery
 
