@@ -558,7 +558,7 @@
   "Latest Snyk PR check": "최신 PR의 Snyk 검사",
   "Snyk monthly comparison": "Snyk 월간 비교",
   "1st of each month and manual": "매월 1일 및 수동 실행",
-  "Snyk Open Source (pnpm workspaces, Android release/sideload runtime) and Snyk Code ran with the repository token; findings absent from the triaged baseline open or update one tracking issue; raw results are kept for 90 days.": "저장소 토큰으로 Snyk Open Source(pnpm 워크스페이스, Android release/sideload 런타임)와 Snyk Code를 실행하고, 분류된 기준선에 없는 결과는 추적 이슈 하나를 열거나 갱신합니다. 원본 결과는 90일간 보관합니다.",
+  "Snyk compares workspace and Android runtime dependencies and source findings against the baseline. New findings trigger a count-only tracking issue. The 90-day receipt contains aggregate counts.": "Snyk이 워크스페이스·Android 런타임 의존성과 소스 검사 결과를 기준선과 대조합니다. 새 발견은 추적 이슈에 건수만 알리고, 집계 결과를 90일간 보관합니다.",
   "Anything CodeQL and the dependency audits do not; the 2026-11-08 trial found neither tool reported the three published advisories. Warnings and notes in the baseline were recorded without individual review. It never fails a PR.": "CodeQL과 의존성 감사 이상의 보장은 하지 않습니다. 2026-11-08 시험에서 두 도구 모두 공개된 권고 세 건을 보고하지 않았습니다. 기준선의 warning·note는 개별 검토 없이 기록됐습니다. PR을 실패시키지 않습니다.",
   "Every PR, master push and schedule (dependency review: PR only)": "모든 PR·master 푸시·예약 실행. 의존성 변경 검토는 PR에서만 실행합니다.",
   "All and production pnpm lockfile scopes are queried against the current registry; unreviewed high/critical advisories and expired exact-version exceptions fail; raw results and hashes are retained.": "전체·운영 pnpm 잠금 파일을 현재 데이터베이스와 대조합니다. 검토되지 않은 High·Critical 경고와 만료된 정확한 버전 예외는 실패하며 원본 결과와 해시를 보존합니다.",

@@ -17,7 +17,7 @@ complements [the reporting policy](../SECURITY.md) and [testing](testing.md). Fo
 | CodeQL `security-extended` | PR, master push, weekly, manual | Extraction/analysis failures fail the job; alerts need separate triage | GitHub Security → Code scanning |
 | Dependabot | Continuous alerts; weekly version PRs | Maintainer review, no automatic merge | Security → Dependabot, update PRs |
 | Secret scanning + push protection | GitHub service | Existing provider-secret protections retained | GitHub Security → Secret scanning |
-| Snyk monthly (`snyk-monthly.yml`) | 1st of each month, manual | Never blocks; findings missing from `security/snyk-baseline.json` open or update one `Snyk monthly:` issue; a missing `SNYK_TOKEN` or a Snyk failure fails the run | Code SARIF and open-source JSON; 90-day artifact |
+| Snyk monthly (`snyk-monthly.yml`) | 1st of each month, manual | Never blocks; findings missing from `security/snyk-baseline.json` open or update one `Snyk monthly:` issue; a missing `SNYK_TOKEN` or a Snyk failure fails the run | Aggregate counts only (90-day artifact) |
 
 CodeQL currently covers JavaScript/TypeScript, Python, Actions, C/C++ and Rust,
 using `build-mode: none`. C++ without target headers/build flags has limited
@@ -402,7 +402,9 @@ every baseline finding has been individually reviewed: the 339-entry baseline
 contains 23 error-level code findings with reviewed reasons; warnings and notes
 are recorded without individual review.
 
-To triage an issue: fix the finding, or rerun the comparison with
+The public issue, job summary and uploaded receipt carry counts. The scanner output, detailed comparison, SARIF and dependency reports stay in the ephemeral runner. For private triage, check out the run's commit in a restricted workspace, use the CLI version, Java, pnpm and three scan commands from that revision's workflow with your authorized Snyk account, then run the same baseline comparison. Inspect `diagnostics/snyk/new-findings.json` locally. Record the scan time and CLI version: the advisory database may have changed between runs. If the counts differ, keep the original alert open pending explanation. Earlier runs used the previous publication policy.
+
+Coordinate undisclosed product findings through private reporting. Add only disclosure-reviewed details to the tracked baseline. For a reviewed finding, fix it or rerun the comparison with
 `--write-baseline` and write the reason in that entry's `decision`. Error-level
 entries in the 2026-11-08 baseline each carry a reviewed reason; warnings and
 notes say `recorded, not individually reviewed`.

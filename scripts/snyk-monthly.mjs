@@ -41,11 +41,13 @@ export function codeFindings(sarif) {
 /** Open-source results, one per advisory and package version. */
 export function ossFindings(json) {
   const projects = Array.isArray(json) ? json : [json];
+  if (!projects.length) throw new Error('No Snyk project results');
   const out = new Map();
   for (const p of projects) {
     if (!p || typeof p !== 'object') throw new Error('Not a snyk test JSON file');
     if (p.error && !Array.isArray(p.vulnerabilities)) throw new Error(`snyk test failed: ${String(p.error).slice(0, 200)}`);
-    for (const v of p.vulnerabilities ?? []) {
+    if (!Array.isArray(p.vulnerabilities)) throw new Error('Missing Snyk vulnerability list');
+    for (const v of p.vulnerabilities) {
       const key = `${v.id}@${v.packageName}@${v.version}`;
       if (!out.has(key)) {
         out.set(key, {
@@ -121,6 +123,8 @@ function main() {
   }
   const { fresh, gone } = compare(findings, baseline);
   mkdirSync(a.out, { recursive: true });
+  const counts = { total: findings.length, new: fresh.length, gone: gone.length };
+  writeFileSync(join(a.out, 'public-counts.json'), JSON.stringify(counts) + '\n');
   writeFileSync(join(a.out, 'summary.md'), summary({ findings, fresh, gone }));
   writeFileSync(join(a.out, 'new-findings.json'), JSON.stringify(fresh, null, 2) + '\n');
   console.log(`${findings.length} findings, ${fresh.length} new, ${gone.length} gone`);
