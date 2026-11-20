@@ -96,12 +96,17 @@ install_profile() {
         echo "::error::Provisioning profile targets $app_id, expected $TEAM_ID.$bundle_id."
         exit 1
     fi
+    python3 apple/scripts/check-profile-entitlements.py "$plist" "$6"
     mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
     cp "$path" "$HOME/Library/MobileDevice/Provisioning Profiles/$uuid.$suffix"
     echo "Installed App Store profile $uuid for $bundle_id."
 }
 
-install_profile "$PROFILE_BASE64" "$PROFILE_PATH" "$PROFILE_SUFFIX" "$PROFILE_APP_ID_KEY" "$BUNDLE_ID"
+case "$TARGET" in
+    ios) requested=apple/AgentDeck/Resources/AgentDeck-iOS.entitlements ;;
+    macos) requested=apple/AgentDeck/Resources/AgentDeck.entitlements ;;
+esac
+install_profile "$PROFILE_BASE64" "$PROFILE_PATH" "$PROFILE_SUFFIX" "$PROFILE_APP_ID_KEY" "$BUNDLE_ID" "$requested"
 
 # The iOS archive embeds the Watch app and its complication extension; each is
 # signed with its own App Store profile (apple/project.yml release configs).
@@ -109,7 +114,7 @@ if [[ "$TARGET" == "ios" ]]; then
     : "${WATCH_PROVISIONING_PROFILE_BASE64:?WATCH_PROVISIONING_PROFILE_BASE64 is required (AgentDeck Watch AppStore)}"
     : "${WATCH_WIDGETS_PROVISIONING_PROFILE_BASE64:?WATCH_WIDGETS_PROVISIONING_PROFILE_BASE64 is required (AgentDeck Watch Widgets AppStore)}"
     install_profile "$WATCH_PROVISIONING_PROFILE_BASE64" "$RUNNER_TEMP/agentdeck-watch.mobileprovision" \
-        mobileprovision application-identifier "$BUNDLE_ID.watchkitapp"
+        mobileprovision application-identifier "$BUNDLE_ID.watchkitapp" apple/AgentDeckWatch/Resources/AgentDeckWatch.entitlements
     install_profile "$WATCH_WIDGETS_PROVISIONING_PROFILE_BASE64" "$RUNNER_TEMP/agentdeck-watch-widgets.mobileprovision" \
-        mobileprovision application-identifier "$BUNDLE_ID.watchkitapp.widgets"
+        mobileprovision application-identifier "$BUNDLE_ID.watchkitapp.widgets" apple/AgentDeckWatchWidgets/Resources/AgentDeckWatchWidgets.entitlements
 fi

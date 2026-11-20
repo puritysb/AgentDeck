@@ -4,7 +4,7 @@ import { realpathSync, readFileSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { beforeSwap, detachedEnv, hasAppStoreReceipt, installMacApp, launchInstalledApp, pruneAppBackups, validateCheckout, waitForDaemonHealth } from '../deploy-local-main.mjs';
+import { beforeSwap, detachedEnv, hasAppStoreReceipt, installMacApp, isDeploymentBackup, launchInstalledApp, pruneAppBackups, validateCheckout, waitForDaemonHealth } from '../deploy-local-main.mjs';
 
 const roots: string[] = [];
 function fixture() {
@@ -62,13 +62,24 @@ describe('local deployment checkout ownership', () => {
 });
 
 describe('local deployment runtime handover', () => {
+  it('hands over only the runner’s archived copies', () => {
+    const { root } = fixture();
+    for (const [path, expected] of [
+      ['diagnostics/release-candidates/npm-2.1.3/mac-app-backups/AgentDeck 2.app', true],
+      ['diagnostics/backups/AgentDeck-1795094507375.app', true],
+      ['diagnostics/release-candidates/npm-2.1.3/mac-app-backups/public-store/AgentDeck.app', false],
+      ['apple/DerivedData/Build/Products/Debug/AgentDeck.app', false],
+    ] as const) {
+      const app = join(root, path);
+      mkdirSync(app, { recursive: true });
+      expect(isDeploymentBackup(root, app)).toBe(expected);
+    }
+  });
+
   it('requests a new instance of the exact installed app without inheriting runner cleanup', () => {
     const run = vi.fn();
     const env = { RUNNER_TRACKING_ID: 'github_1234', PATH: '/usr/bin' };
-    const probe = vi.fn(() => { throw Object.assign(new Error('no match'), { status: 1 }); });
-    launchInstalledApp('/Applications/AgentDeck.app', run, env, probe);
-    expect(probe).toHaveBeenCalledWith('pgrep', ['-f', '^/Applications/AgentDeck\\.app/Contents/MacOS/AgentDeck$'],
-      { encoding: 'utf8', timeout: 5_000 });
+    launchInstalledApp('/Applications/AgentDeck.app', run, env, () => []);
     expect(run).toHaveBeenCalledExactlyOnceWith('open-app', 'open',
       ['-n', '/Applications/AgentDeck.app'], 60_000,
       { PATH: '/usr/bin', RUNNER_TRACKING_ID: '' });
@@ -77,7 +88,7 @@ describe('local deployment runtime handover', () => {
 
   it('keeps the exact installed process during recovery from a quit timeout', () => {
     const run = vi.fn();
-    launchInstalledApp('/Applications/AgentDeck.app', run, {}, () => '42\n');
+    launchInstalledApp('/Applications/AgentDeck.app', run, {}, () => [{ path: '/Applications/AgentDeck.app', pid: 42 }]);
     expect(run).not.toHaveBeenCalled();
   });
 
@@ -85,7 +96,6 @@ describe('local deployment runtime handover', () => {
     const run = vi.fn();
     const denied = Object.assign(new Error('probe denied'), { status: 2 });
     expect(() => launchInstalledApp('/Applications/AgentDeck.app', run, {}, () => { throw denied; })).toThrow(denied);
-    expect(() => launchInstalledApp('/Applications/AgentDeck.app', run, {}, () => '')).toThrow('no valid PID');
     expect(run).not.toHaveBeenCalled();
   });
 
