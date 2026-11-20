@@ -1,7 +1,7 @@
 # Security scanning
 
 This runbook owns dependency scanning, static analysis, triage and evidence. It
-complements [the reporting policy](../SECURITY.md) and [testing](testing.md).
+complements [the reporting policy](../SECURITY.md) and [testing](testing.md). For the decision flow, per-channel case record and proposed AI assistance, see the [maintainer response guide (한국어)](security-response.ko.md).
 
 ## Automated checks
 
@@ -26,10 +26,7 @@ both macOS and iOS Simulator targets; native extraction is verified by its actua
 hosted build and analysis result, not workflow presence. A complete
 PlatformIO/Arduino dependency inventory and inspection of every installed user
 environment still require separate checks.
-Dependabot additionally checks Gradle manifests and GitHub Actions. A configured
-workflow and a completed analysis are separate states; inspect the actual run.
-Snyk runs monthly as a non-blocking second opinion; see [Snyk trial](#snyk-trial-2026-11-08). These checks provide a baseline without an
-additional external service account.
+See the [Snyk trial](#snyk-trial-2026-11-08) for the measured coverage and baseline decisions.
 
 ## Action runtimes
 
