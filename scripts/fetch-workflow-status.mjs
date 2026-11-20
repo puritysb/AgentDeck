@@ -3,11 +3,8 @@
  * Latest completed run of every workflow the verification catalog names, for
  * the Build Health page (scripts/generate-html-report.py reads the output).
  *
- * The Pages job re-runs Vitest, E2E and Android itself; Apple XCTest, the
- * macOS/Windows runtime jobs, the ESP32 compile and the release workflows run
- * elsewhere, and before this the page could only say "not run here" about
- * them. This records what those workflows last concluded, on which commit, so
- * the page can link the evidence without ever counting it as its own.
+ * Pages consumes test artifacts from its caller. Look up independent workflows
+ * separately and identify the Android producer by its published test report.
  *
  * Fail-soft by design: a rate limit or a missing token writes an empty map and
  * exits 0. The page then claims nothing about those workflows, which is the
@@ -50,6 +47,28 @@ const result = { fetched_at: new Date().toISOString(), repository: repo, workflo
 for (const workflow of workflows) {
   try {
     const file = workflow.split('/').pop();
+    if (file === 'android-test.yml') {
+      const headers = { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}` };
+      const read = async (path) => {
+        const response = await fetch(`https://api.github.com/repos/${repo}/actions/${path}`,
+          { headers, signal: AbortSignal.timeout(15_000) });
+        if (!response.ok) throw new Error(`Android evidence: HTTP ${response.status}`);
+        return response.json();
+      };
+      const { artifacts } = await read('artifacts?name=android-unit-test-report&per_page=100');
+      const artifact = artifacts.find(a => a.workflow_run?.head_branch === 'master' &&
+        a.workflow_run.head_repository_id === a.workflow_run.repository_id);
+      if (artifact) {
+        const { jobs } = await read(`runs/${artifact.workflow_run.id}/jobs?per_page=100`);
+        const job = jobs.find(j => j.name.endsWith('Compile + JUnit') && j.status === 'completed');
+        if (job) {
+          result.workflows[workflow] = { scope: 'master', name: job.name, conclusion: job.conclusion,
+            event: 'push', head_branch: 'master', head_sha: artifact.workflow_run.head_sha,
+            created_at: job.started_at, html_url: job.html_url };
+          continue;
+        }
+      }
+    }
     const recent = await runs(file, '');
     const onMaster = [...(await runs(file, '&branch=master')), ...recent].filter((run) => run.head_branch === 'master');
     // Master first; PR-only workflows (ESP32 compile) and tag-only release

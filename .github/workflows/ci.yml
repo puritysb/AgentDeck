@@ -32,7 +32,76 @@ jobs:
           python3 integrations/vobot/test_tls_peer.py
           python3 integrations/vobot/test_tls_transport.py
 
+  scope:
+    runs-on: ubuntu-latest
+    outputs:
+      apple: ${{ steps.paths.outputs.apple }}
+      android: ${{ steps.paths.outputs.android }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          sparse-checkout: /scripts/product-ci-scope.py
+          sparse-checkout-cone-mode: false
+      - id: paths
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 scripts/product-ci-scope.py "$BASE" "$HEAD" >> "$GITHUB_OUTPUT"
+
+  apple:
+    needs: scope
+    if: github.event_name == 'pull_request' && needs.scope.outputs.apple == 'true'
+    uses: ./.github/workflows/apple-test.yml
+
+  android:
+    needs: scope
+    if: needs.scope.outputs.android == 'true'
+    uses: ./.github/workflows/android-test.yml
+
+  product:
+    name: Product verification
+    needs: [scope, test, vobot-python, macos-native-parity, windows-native-runtime, android, apple]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PYTHON'
+          import json, os
+          results = json.loads(os.environ["RESULTS"])
+          scope = results["scope"]["outputs"]
+          for job, data in results.items():
+              expected = "skipped" if job in ("android", "apple") and scope.get(job) == "false" else "success"
+              if data["result"] != expected:
+                  raise SystemExit(f"{job}: expected {expected}, got {data['result']}")
+          PYTHON
+
+  report-outcomes:
+    needs: [test, android, scope]
+    if: always() && !cancelled() && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Record suite outcomes for Pages
+        env:
+          ANDROID: ${{ needs.scope.result == 'success' && needs.android.result || 'failure' }}
+          VITEST: ${{ needs.test.outputs.vitest }}
+          E2E: ${{ needs.test.outputs.e2e }}
+        run: |
+          jq -n '{sha: env.GITHUB_SHA, android: env.ANDROID, vitest: env.VITEST, e2e: env.E2E}' > suites.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: report-outcomes
+          path: suites.json
+          overwrite: true
+          retention-days: 7
+
   test:
+    outputs:
+      vitest: ${{ steps.vitest.outcome }}
+      e2e: ${{ steps.e2e.outcome }}
     runs-on: ubuntu-latest
 
     steps:
@@ -68,7 +137,8 @@ jobs:
       # and additionally enforces the thresholds in vitest.config.ts. Running
       # both cost a full extra pass (~60 s) for no additional signal.
       - name: Test + coverage thresholds
-        run: npx vitest run --coverage
+        id: vitest
+        run: pnpm exec vitest run --coverage --reporter=default --reporter=json --outputFile=coverage/test-report/vitest.json
         env:
           COLORTERM: truecolor
           TZ: Asia/Seoul
@@ -77,9 +147,24 @@ jobs:
       # every device module off (tests/e2e/daemon-hub.e2e.test.ts). Needs the
       # build above; takes a few seconds.
       - name: Daemon hub end-to-end
-        run: pnpm test:e2e
+        id: e2e
+        run: pnpm test:e2e --reporter=default --reporter=json --outputFile=coverage/test-report/e2e.json
         env:
           TZ: Asia/Seoul
+
+      - name: Upload merged commit report inputs
+        if: always() && github.event_name == 'push'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pages-inputs
+          overwrite: true
+          retention-days: 7
+          path: |
+            bridge/dist/
+            shared/dist/
+            hooks/dist/
+            coverage/coverage-summary.json
+            coverage/test-report/*.json
 
       - name: Preview mirror sync check
         run: node scripts/check-preview-mirror-sync.mjs

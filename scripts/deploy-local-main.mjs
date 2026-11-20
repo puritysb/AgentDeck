@@ -3,7 +3,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, openSync, closeSync, readFileSync, readdirSync, writeFileSync,
   renameSync, rmSync, realpathSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 
@@ -33,17 +33,8 @@ export function detachedEnv(env = process.env) {
 }
 
 /** Start this installed copy even when another checkout's app has the same ID. */
-export function launchInstalledApp(target, run, env = process.env, probe = execFileSync) {
-  const executable = join(target, 'Contents/MacOS/AgentDeck');
-  const pattern = `^${executable.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
-  try {
-    const pids = probe('pgrep', ['-f', pattern], { encoding: 'utf8', timeout: 5_000 }).trim();
-    if (!/^\d+(?:\n\d+)*$/.test(pids)) throw new Error('Installed app process probe returned no valid PID');
-    // Recovery after a quit timeout can reach this while the original is alive.
-    return;
-  } catch (error) {
-    if (error.status !== 1) throw error;
-  }
+export function launchInstalledApp(target, run, env, runningCopies) {
+  if (runningCopies().some(app => app.path === target)) return;
   // Without -n, LaunchServices can reuse a running XCTest/development copy and
   // return success while the installed application has no process at all.
   return run('open-app', 'open', ['-n', target], 60_000, detachedEnv(env));
@@ -119,6 +110,13 @@ export function hasAppStoreReceipt(target, stat = statSync) {
   }
 }
 
+/** Only a deployment-owned backup is eligible for automatic graceful handover. */
+export function isDeploymentBackup(root, path) {
+  const name = relative(join(root, 'diagnostics'), realpathSync(path));
+  return /^backups\/AgentDeck-\d+\.app$/.test(name)
+    || /^release-candidates\/[^/]+\/mac-app-backups\/[^/]+\.app$/.test(name);
+}
+
 /** Preserve Store delivery; development swaps recover the original even when
  * moving it to the backup fails (e.g. macOS denies app-management access). */
 export async function installMacApp({ target, staged, backup, prepare, quit, launch,
@@ -170,6 +168,7 @@ async function deploy() {
   if (process.platform !== 'darwin') throw new Error('Local deployment requires macOS');
   const root = realpathSync(process.env.AGENTDECK_MAIN_CHECKOUT || process.cwd());
   const sha = validateCheckout(root, process.env.GITHUB_SHA);
+  console.log(`Deployment trigger ${process.env.GITHUB_SHA || sha}, checkout ${sha}`);
   const logs = join(root, 'diagnostics/logs');
   mkdirSync(logs, { recursive: true });
   const lock = join(root, 'diagnostics/local-main-deploy.lock');
@@ -201,29 +200,48 @@ async function deploy() {
     if (realpathSync('/opt/homebrew/bin/agentdeck') !== join(root, 'bridge/dist/cli.js')) {
       throw new Error('CLI is not linked to the persistent main checkout');
     }
+    const runningCopies = () => JSON.parse(execFileSync('/usr/bin/osascript',
+      ['-l', 'JavaScript', join(root, 'scripts/deployment-apps.jxa')], { encoding: 'utf8', timeout: 10_000 }));
+    const copies = runningCopies();
+    console.log('App instances before deployment:', JSON.stringify(copies));
     const appDeployment = await installMacApp({ target, staged, backup,
       prepare: async () => {
         run('stage-app', 'ditto', [sourceApp, staged]);
         run('app-signature', 'codesign', ['--verify', '--deep', '--strict', staged]);
       },
       quit: async () => {
-        let appPid;
-        try { appPid = execFileSync('pgrep', ['-f', '^/Applications/AgentDeck.app/Contents/MacOS/AgentDeck$'], { encoding: 'utf8' }).trim(); }
-        catch (error) { if (error.status !== 1) throw error; }
-        for (const pid of (appPid || '').split('\n').filter(Boolean)) process.kill(Number(pid), 'SIGTERM');
+        const current = runningCopies();
+        const external = current.find(app => app.path !== target && !isDeploymentBackup(root, app.path));
+        if (external) throw new Error(`Close the other AgentDeck copy before deployment: ${external.path} (PID ${external.pid})`);
+        const pids = [];
+        for (const app of current) {
+          if (app.path === target) {
+            process.kill(app.pid, 'SIGTERM');
+          } else {
+            // Address the exact registered copy. Sending a quit by bundle ID
+            // could select an unrelated Xcode host or the installed Store app.
+            execFileSync('/usr/bin/osascript', ['-l', 'JavaScript', join(root, 'scripts/deployment-apps.jxa'),
+              'quit', String(app.pid), app.path], { timeout: 10_000 });
+            console.log(`Requested graceful quit of backup PID ${app.pid} at ${app.path}`);
+          }
+          pids.push(app.pid);
+        }
         // The app handles SIGTERM on its main queue, so a busy main thread delays
         // it. The handler ran 5 to 6 s (2026-10-17) and about 40 s (10-18) after this
         // signal, both times after a 10 s wait had given up. The app quit anyway,
         // and the Mac had no app until the next deployment, 43 min and 8 h 49 min
         // later.
-        for (let attempt = 0; appPid && attempt < 120; attempt++) {
-          const alive = appPid.split('\n').some(pid => { try { process.kill(Number(pid), 0); return true; } catch (e) { if (e.code === 'ESRCH') return false; throw e; } });
-          if (!alive) { appPid = ''; break; }
+        for (let attempt = 0; pids.length && attempt < 120; attempt++) {
+          const alive = pids.some(pid => { try { process.kill(pid, 0); return true; } catch (e) { if (e.code === 'ESRCH') return false; throw e; } });
+          if (!alive) return;
           await new Promise(resolve => setTimeout(resolve, 500));
         }
-        if (appPid) throw new Error('Installed app did not quit within 60 s; preserving it');
+        if (pids.length) throw new Error('Installed app did not quit within 60 s; preserving it');
       },
-      launch: async () => { launchInstalledApp(target, run); },
+      launch: async () => {
+        launchInstalledApp(target, run, process.env, runningCopies);
+        console.log('App instances after launch request:', JSON.stringify(runningCopies()));
+      },
     });
     console.log(`macOS app: ${appDeployment.action}`);
     // An unsupervised restart spawns the daemon detached with this environment.
@@ -235,11 +253,13 @@ async function deploy() {
     if (!build) throw new Error('Installed daemon build identity is unknown');
     const { registry, health } = await waitForDaemonHealth({ build, stableForMs: 45_000,
       readRegistry: () => JSON.parse(readFileSync(join(homedir(), '.agentdeck/daemon.json'), 'utf8')) });
-    let runningAppPid = null;
-    try { runningAppPid = execFileSync('pgrep', ['-f', '^/Applications/AgentDeck.app/Contents/MacOS/AgentDeck$'],
-      { encoding: 'utf8', timeout: 5000 }).trim(); }
-    catch (error) { if (error.status !== 1 || appDeployment.action !== 'preserved-app-store') throw error; }
-    const receipt = { verifiedAt: new Date().toISOString(), commit: sha, trigger: process.env.GITHUB_EVENT_NAME || 'manual',
+    const finalCopies = runningCopies();
+    console.log('App instances after deployment:', JSON.stringify(finalCopies));
+    const runningAppPid = finalCopies.find(app => app.path === target)?.pid ?? null;
+    if (appDeployment.action.endsWith('-development') && !runningAppPid) {
+      throw new Error('Installed development app exited before deployment verification');
+    }
+    const receipt = { verifiedAt: new Date().toISOString(), commit: sha, triggerSha: process.env.GITHUB_SHA || sha, trigger: process.env.GITHUB_EVENT_NAME || 'manual',
       workflowRun: process.env.GITHUB_RUN_ID || null, daemon: { pid: health.pid, port: registry.port, build },
       macOS: { path: target, pid: runningAppPid, ...appDeployment }, pixoo: health.modules?.pixoo, plugin: { verified: true } };
     const receiptPath = join(root, 'diagnostics/latest-main-deployment.json');
