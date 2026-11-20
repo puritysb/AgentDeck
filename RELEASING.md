@@ -3771,6 +3771,28 @@ looking correct while the server still holds the previous text.
 
 CI owns `CURRENT_PROJECT_VERSION` — `apple-release.yml` injects `github.run_number * 100 + github.run_attempt` into both archive steps, so the build number rises on every run and ASC never sees a duplicate `(version, build)` pair. Do not bump it by hand; the value in `apple/project.yml` is only a local-build default.
 
+#### Store media keeps its richness
+
+**Replace only the media that has gone stale; never leave a listing poorer than
+the version before it.** macOS 2.1.1 dropped the 28-second preview because its
+second half showed the removed Collaboration panel, and replaced four
+aquarium screenshots with two synthetic Work captures. Both reasons were
+correct, but the result shipped through 2.2.0: no video and a text-heavy first
+screenshot on the Mac App Store, while the still-accurate aquarium captures and
+the accurate first half of the video sat unused in
+`apple/appstore-submission/`. A media selection therefore starts from the
+previous version's set and the full asset inventory (`screenshots/<locale>/<platform>/`,
+`previews/<platform>/`), removes each item only for a stated reason (it shows a
+removed or changed feature), and replaces it in the same selection — a removed
+preview is re-recorded from the current build (`RECORDING_RUNBOOK.md`, demo
+feed `scripts/appstore-demo-orchestrator.mjs`), not dropped. Lead with the live
+aquarium and the attention flow; feature captures such as Work follow it. Record
+the before/after counts per platform and locale in the release decision.
+
+Pending for the next macOS version: restore a preview video (re-recorded
+without the Collaboration panel) and lead with the current-feature aquarium,
+attention, devices and CI captures, keeping the Work captures after them.
+
 #### Guarded Apple review delivery
 
 The `asc-certificates.yml` maintenance workflow supports authorized Apple review
