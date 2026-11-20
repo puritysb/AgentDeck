@@ -4,6 +4,8 @@ Reviewed: **2026-10-11**. This is a conditional delivery plan, not a declaration
 
 ## Current release boundary — 2026-10-12
 
+**Update 2026-11-20:** a Dot-created local task now launches and calls a stdio MCP server from a desktop-installed plugin through the remote executor on the Mac ([measurement](devlog/entries/2026-11-20-dot-local-plugin-reaches-remote-executor.md)). G0a's transport question is answered for that route; partner-gated public distribution, the plugin's separate executable and gates G0b–G6 still block a release.
+
 Dot development continues in this repository, but all Dot support is excluded from the
 standard macOS and iOS builds. Explicit DotPreview configurations retain the native
 implementation and tests. The [build/release contract](../RELEASING.md#dot-development-and-store-builds)
