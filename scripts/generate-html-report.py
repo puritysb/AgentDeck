@@ -1184,6 +1184,8 @@ def _render_verify(catalog, metadata, workflow_status=None, recorded=None, commi
         wf = gate.get("workflow")
         link = (f'<a href="https://github.com/{repo}/actions/workflows/{_esc(wf.rsplit("/", 1)[-1])}">{_esc(wf.rsplit("/", 1)[-1])} runs</a>'
                 if wf else '<span class="quiet">No hosted runner — the pre-release receipt records it</span>')
+        if gate["id"] == "snyk-monthly":
+            link += ' · <a href="../#snyk-status">Latest Snyk PR check</a>'
         tiers = sorted({t for st in steps_by_gate.get(gate["id"], []) for t in st["tiers"]}, key=list(TIER_LABEL).index)
         tier_tags = "".join(f'<span class="tag">{_esc(TIER_LABEL[t])}</span>' for t in tiers) or '<span class="quiet">hosted only</span>'
         evidence = "" if gate["id"] == "pages-report" else _hosted_line(_hosted_run(workflow_status or {}, gate), commit)
