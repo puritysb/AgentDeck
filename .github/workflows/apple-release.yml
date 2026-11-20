@@ -25,6 +25,14 @@ on:
         required: true
         default: false
         type: boolean
+      ios_runner:
+        description: 'iOS archive runner: github-hosted, or this repo''s ephemeral self-hosted Mac with Xcode 27 (ITMS-90725)'
+        required: true
+        default: github-hosted
+        type: choice
+        options:
+          - github-hosted
+          - self-hosted-xcode27
 
 permissions:
   contents: write
@@ -48,7 +56,12 @@ jobs:
   build-ios:
     if: github.event_name == 'push' || inputs.platform != 'macos'
     needs: validate-submission
-    runs-on: macos-15
+    # GitHub-hosted images stop at Xcode 26.6, and from April 2027 iOS uploads
+    # need the iOS 27 SDK (ITMS-90725, #811). The self-hosted option targets an
+    # ephemeral runner registered for one job with a unique label; it is a
+    # maintainer's Mac, so every step below keeps out of $HOME and the user's
+    # keychain search list (see install/cleanup-ci-signing-assets.sh).
+    runs-on: ${{ (github.event_name == 'workflow_dispatch' && inputs.ios_runner == 'self-hosted-xcode27') && fromJSON('["self-hosted","macOS","agentdeck-xcode27"]') || 'macos-15' }}
     timeout-minutes: 30
 
     steps:
@@ -64,11 +77,19 @@ jobs:
           node scripts/verify-release-version.mjs apple "$VERSION"
           node scripts/verify-version-sync.mjs
 
+      # DEVELOPER_DIR instead of `sudo xcode-select`: it selects the toolchain
+      # for this job only and needs no password on a self-hosted Mac.
       - name: Select Xcode
         run: |
           XCODE=$(find /Applications -maxdepth 1 -type d -name 'Xcode*.app' | sort -V | tail -1)
           echo "Using: $XCODE"
-          sudo xcode-select -s "$XCODE/Contents/Developer"
+          echo "DEVELOPER_DIR=$XCODE/Contents/Developer" >> "$GITHUB_ENV"
+          VERSION=$(DEVELOPER_DIR="$XCODE/Contents/Developer" xcodebuild -version | head -1)
+          echo "$VERSION"
+          if [[ "${{ inputs.ios_runner }}" == "self-hosted-xcode27" && ! "$VERSION" =~ ^Xcode\ (2[7-9]|[3-9][0-9]) ]]; then
+            echo "::error::The self-hosted iOS runner must provide Xcode 27 or later; found $VERSION."
+            exit 1
+          fi
 
       # Archive the project derived from project.yml rather than the committed
       # .xcodeproj, so a project.yml edit whose pbxproj was never regenerated
@@ -76,7 +97,7 @@ jobs:
       # not a viable gate: xcodegen orders targets differently between patch
       # releases, so the check would fail on tool-version skew, not real drift.)
       - name: Install XcodeGen
-        run: brew install xcodegen
+        run: command -v xcodegen >/dev/null || brew install xcodegen
 
       - name: Regenerate Xcode project
         working-directory: apple
@@ -160,8 +181,9 @@ jobs:
       - name: Upload iOS to TestFlight
         if: ${{ github.event_name == 'push' || inputs.upload }}
         run: |
-          mkdir -p ~/private_keys
-          echo -n "${{ secrets.ASC_API_KEY_BASE64 }}" | base64 --decode -o ~/private_keys/AuthKey_${{ secrets.ASC_API_KEY_ID }}.p8
+          export API_PRIVATE_KEYS_DIR="$RUNNER_TEMP/private_keys"
+          mkdir -p "$API_PRIVATE_KEYS_DIR"
+          echo -n "${{ secrets.ASC_API_KEY_BASE64 }}" | base64 --decode -o "$API_PRIVATE_KEYS_DIR/AuthKey_${{ secrets.ASC_API_KEY_ID }}.p8"
           xcrun altool --upload-app \
             -f "$RUNNER_TEMP/export_ios/AgentDeck.ipa" \
             -t ios \
@@ -170,10 +192,7 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: |
-          security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" || true
-          rm -f "$RUNNER_TEMP/apple-distribution.p12"
-          rm -rf ~/private_keys
+        run: bash apple/scripts/cleanup-ci-signing-assets.sh
 
   build-macos:
     if: github.event_name == 'push' || inputs.platform != 'ios'
