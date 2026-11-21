@@ -65,13 +65,6 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
   bar. With two filled rows it read as `H`, so captions showed `HORK` and
   `HAIT`.
 
-- **Deck keys (Stream Deck, D200H).** Four legibility fixes found on rendered
-  keys. A working session's key no longer draws a `RUN` pill over the last
-  letter of `RUNNING`. A long session name steps down a size instead of
-  running off the key. The detail view's `INFO` pill no longer covers a title
-  of eight or more characters. An option label wraps between words when the
-  words fit, instead of breaking inside one that only looked too wide.
-
 - **Session activity.** A command run from a path under a session-id directory
   no longer shows as `Running` followed by a fragment of that id. The line
   reads `Running`, or names the script when the path is complete. Node daemon;
@@ -177,6 +170,15 @@ its original time.
 
 The macOS build also carries the Unreleased Dashboard, timeline and CI-wait
 changes above that apply to the Mac daemon.
+
+## 2026-11-16 — Stream Deck 2.1.1, Ulanzi 2.1.1
+
+- Update the WebSocket library bundled with Stream Deck to include the fix for
+  [CVE-2026-62389](https://github.com/advisories/GHSA-73jw-fp74-p77x).
+  Package Ulanzi with the same WebSocket version used in workspace tests.
+  [#747](https://github.com/puritysb/AgentDeck/pull/747)
+- Keep status and detail pills clear of titles, fit long session names on the
+  key, and wrap option labels at word boundaries when space permits.
 
 ## 2026-11-11 — Android 2.1.1
 

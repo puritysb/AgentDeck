@@ -131,6 +131,22 @@ TestFlight group so the #799 reporter can verify it on hardware before App Store
 submission. Evidence so far is the iPhone Duo simulator (iOS 27.1) and
 `DashboardFoldLayoutTests`.
 
+### Stream Deck and Ulanzi 2.1.1 marketplace submissions
+
+Both packages were submitted on 2026-11-16 from the source tree recorded in
+[fbcbc33f16d94c93efdf709aacf8369b8ab8812f](https://github.com/puritysb/AgentDeck/commit/fbcbc33f16d94c93efdf709aacf8369b8ab8812f).
+The saved submission files matched the following SHA-256 digests on 2026-11-21.
+
+| Channel | Submitted file SHA-256 | Marketplace readback on 2026-11-21 |
+| --- | --- | --- |
+| Stream Deck 2.1.1.0 | `ad29851c0564c0c790dd776158c2e297f0ebac52297cb024e4bf4b3d6b48e250` | 2.1.1 in review, 2.1 public. Automatic publication was off at submission. [Elgato receipt](marketplace/elgato/LISTING.md) |
+| Ulanzi 2.1.1 | `dbbdf6e14fd996e697c5ddf78814d7188450c165139491b8f73511108bb32e6c` | 2.1.1 public for D200, D200H and D200X. [Workshop receipt](marketplace/ulanzi/LISTING.md) |
+
+The latest GitHub Release for each plugin was 2.1.0 at readback. The hashes
+identify the submitted files. Future builds use the dependencies on their own
+source commit. Check the four assigned dials on the DRM-processed Elgato build
+before publishing it.
+
 ### Apple 2.2.0 release decision (2026-11-14)
 
 | Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
