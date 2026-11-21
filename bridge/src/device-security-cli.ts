@@ -60,7 +60,7 @@ export function registerDeviceSecurityCommands(program:Command):void{
     const host=options.host??getLanIp();const addresses=Object.values(networkInterfaces()).flat().filter(Boolean).map(value=>value!.address);
     if(!addresses.includes(host)||host.includes(':')||host.startsWith('127.'))throw new Error('Choose this host’s reachable LAN IPv4 address');
     const identity=await ownerRequest('identity');const trust=await inspectDeviceTLS(identity);
-    const issued=await ownerRequest('issue',{name,scopes:['sessions.read','usage.read']});
+    const issued=await ownerRequest('issue',{name,scopes:['sessions.read','usage.read','display-state.read']});
     try{
       const config={version:1,host,port:identity.port,hostname:identity.hostname,token:issued.token,ca_der:identity.caDER,trust:{version:1,...trust}};
       writeFileSync(options.output,JSON.stringify(config)+'\n',{mode:0o600,flag:'wx'});

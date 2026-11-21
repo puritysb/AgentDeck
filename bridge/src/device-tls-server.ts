@@ -8,7 +8,7 @@ export class DeviceTLSServer {
   private server: Server;
   private sockets = new Set<Socket>();
   constructor(identity: Pick<ServerOptions, 'pfx' | 'passphrase'>, private credentials: DeviceCredentialStore,
-    snapshot: () => Promise<{sessions: unknown; usage: unknown}>) {
+    snapshot: () => Promise<{sessions: unknown; usage: unknown; display?: unknown}>) {
     if (!identity.pfx) throw new Error('device-tls-identity-required');
     this.server = createServer({...identity, minVersion:'TLSv1.2', maxHeaderSize:P.headerBytes, handshakeTimeout:P.timeoutMs}, (req, res) => {
       const send = (status: number, body = '') => {
@@ -33,7 +33,8 @@ export class DeviceTLSServer {
         // Revocation may occur while snapshot collection is pending.
         const current = credentials.authenticate(token);
         if (!current) { send(401); return; }
-        const body = JSON.stringify(buildDeviceSnapshot(current.scopes, value.sessions, value.usage));
+        const body = JSON.stringify(buildDeviceSnapshot(current.scopes, value.sessions, value.usage,
+          req.headers['x-agentdeck-display-state'] === '1' ? value.display : undefined));
         if (Buffer.byteLength(body) > P.maxBytes) { send(503); return; }
         send(200, body);
       }).catch(() => send(503)).finally(() => clearTimeout(deadline));

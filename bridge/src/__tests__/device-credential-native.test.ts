@@ -52,9 +52,12 @@ describe.skipIf(process.platform !== 'darwin')('native device authority', () => 
     for (const scopes of [['sessions.read'], ['usage.read'], ['sessions.read','usage.read']]) rows.push({operation:'snapshot',scopes,
       sessions:[{id:'s',state:'idle',alive:true,token:'secret',cwd:'/private'}, {id:'bad',state:'idle',alive:1}],
       usage:{usageStale:false,fiveHourPercent:20,token:'secret',scopedLimits:[{label:'Fable',percent:10,key:'secret'}],codexRateLimits:{capturedAt:'now',primary:{usedPercent:40,stale:false,token:'secret'},credits:{balance:'10',hasCredits:true,unlimited:false,token:'secret'}}}});
+    for (const display of [{displayOn:false}, {dim:{enabled:false}}, {displayOn:false, dim:{enabled:true, mode:'min', level:25}}, {displayOn:true}]) {
+      rows.push({operation:'snapshot', scopes:['display-state.read'], sessions:[], usage:{}, display});
+    }
     const expected = rows.map(row => {
       try {
-        if (row.operation === 'snapshot') return buildDeviceSnapshot(row.scopes as never,row.sessions,row.usage);
+        if (row.operation === 'snapshot') return buildDeviceSnapshot(row.scopes as never,row.sessions,row.usage,row.display);
         if (row.operation === 'parse') return parseDeviceCredentialState(row.value);
         if (row.operation === 'message') return deviceMessageAllowed(row.value);
         return mergeDeviceCredentialState(row.local as never, row.peer as never);

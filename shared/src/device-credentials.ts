@@ -2,7 +2,7 @@
 export const DEVICE_CREDENTIALS = {
   version: 1, prefix: 'addev1.', file: 'device-credentials.json',
   maxDevices: 256, maxBytes: 131_072, maxNameBytes: 160,
-  scopes: ['sessions.read', 'usage.read'],
+  scopes: ['sessions.read', 'usage.read', 'display-state.read'],
 } as const;
 export type DeviceScope = typeof DEVICE_CREDENTIALS.scopes[number];
 export interface DeviceCredentialRecord {

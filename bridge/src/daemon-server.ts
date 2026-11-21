@@ -4965,6 +4965,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   });
   deviceSecurity = new DeviceSecurityManager(getDataDir(), async () => ({
     sessions: await core.buildSessionsSnapshot(), usage: core.buildUsage(),
+    display: buildDisplayStateEvent(core.displayMonitor.isDisplayOn()),
   }), posture.loopbackOnly ? '127.0.0.1' : '0.0.0.0');
   // Matrix state is a daemon display projection, independent of Pixoo64 hardware.
   broadcastMatrix({ type: 'connection', status: 'disconnected' } as BridgeEvent);

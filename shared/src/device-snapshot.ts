@@ -19,7 +19,7 @@ function pick(input: unknown, fields: readonly string[]): Record<string, unknown
   }
   return result;
 }
-export function buildDeviceSnapshot(scopes: readonly DeviceScope[], sessions: unknown, usage: unknown) {
+export function buildDeviceSnapshot(scopes: readonly DeviceScope[], sessions: unknown, usage: unknown, display?: unknown) {
   const events: Record<string, unknown>[] = [{type:'surface_welcome', protocol:1, profile:'display-only/v1', capabilities:[...scopes]}];
   if (scopes.includes('sessions.read')) {
     const rows = Array.isArray(sessions) ? sessions.slice(0, DEVICE_SNAPSHOT.maxRows).map(row => pick(row, DEVICE_SNAPSHOT.sessionFields))
@@ -38,6 +38,12 @@ export function buildDeviceSnapshot(scopes: readonly DeviceScope[], sessions: un
         event.codexRateLimits = codex;
       } else event.codexRateLimits = null;
     }
+    events.push(event);
+  }
+  if (scopes.includes('display-state.read') && object(display)) {
+    const event: Record<string, unknown> = {type: 'display_state'};
+    if (typeof display.displayOn === 'boolean') event.displayOn = display.displayOn;
+    if (object(display.dim)) event.dim = pick(display.dim, ['enabled', 'mode', 'level']);
     events.push(event);
   }
   return {version:DEVICE_SNAPSHOT.version, events};

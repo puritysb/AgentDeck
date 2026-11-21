@@ -68,6 +68,14 @@ class TLSTransportTests(unittest.IsolatedAsyncioTestCase):
         await connection.send(1,b'{"type":"query_usage"}')
         with self.assertRaises(ValueError): await connection.send(1,b'{"type":"session_command"}')
 
+    async def test_full_snapshot_delivers_partial_display_events_unchanged(self):
+        for display in ({"displayOn": False}, {"dim": {"enabled": False}}, {}, {"displayOn": True}):
+            events = json.loads(self.body)["events"] + [{"type": "usage_update"}, dict(display, type="display_state")]
+            body = json.dumps({"version": 1, "events": events}).encode()
+            connection, stream = await self.poll(b"HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n" % len(body) + body)
+            self.assertIn(b"X-AgentDeck-Display-State: 1\r\n", stream.writes[0])
+            self.assertEqual([await connection.receive() for _ in events], events)
+
     async def test_bad_peer_never_receives_a_credential(self):
         sock, stream = Socket(), Stream(self.response)
         config = dict(self.config,trust=dict(self.config["trust"],sha256="c"*64))

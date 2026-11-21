@@ -2462,8 +2462,9 @@ final class DaemonServer {
 
         DaemonLogger.shared.info("startServices: step10 initialUsageTask scheduled")
         deviceSecurity = DeviceSecurityManager(loopbackOnly: posture.loopbackOnly) { [weak self] in
-            guard let self else { return (sessions: [], usage: [:]) }
-            return (sessions: self.buildSessionsListEvent()["sessions"] ?? [], usage: self.buildUsageEvent() ?? [:])
+            guard let self else { return (sessions: [], usage: [:], display: nil) }
+            return (sessions: self.buildSessionsListEvent()["sessions"] ?? [], usage: self.buildUsageEvent() ?? [:],
+                    display: self.serialEventSnapshot.currentDisplayStateEvent())
         }
         do { try await deviceSecurity?.start() }
         catch { DaemonLogger.shared.error("Scoped device TLS unavailable; existing fleet transport remains active") }

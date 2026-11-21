@@ -15,7 +15,7 @@ export class DeviceSecurityManager {
     this.operations=next.catch(()=>{});return next;
   }
   private state:'disabled'|'replica'|'starting'|'listening'|'unavailable'='disabled';
-  constructor(directory:string,private snapshot:()=>Promise<{sessions:unknown;usage:unknown}>,private host='0.0.0.0') {this.store=new DeviceSecurityStore(directory);}
+  constructor(directory:string,private snapshot:()=>Promise<{sessions:unknown;usage:unknown;display?:unknown}>,private host='0.0.0.0') {this.store=new DeviceSecurityStore(directory);}
   status(){return {version:1,state:this.state};}
   start():Promise<void>{return this.mutate(()=>this.open());}
   private async open():Promise<void>{

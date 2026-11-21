@@ -81,7 +81,7 @@ is available only after opting into the separate device TLS transport below.
 ## Opt-in device TLS transport
 
 The source includes a separate HTTPS polling endpoint for Vobot. It requires a
-random per-device credential and serves only bounded session and usage fields.
+random per-device credential and serves bounded session, usage and display fields according to the device credential.
 Both Node and Swift implement the same authority format. The device credential
 is rejected by the legacy HTTP and WebSocket routes, including local-trust and
 IP-approval shortcuts. A Surface profile never grants authority.
@@ -122,8 +122,10 @@ no automatic rotation or downgrade path.
 
 Revocation records a durable tombstone for one device. Every HTTPS request
 checks it before collection and again before sending data; each connection
-closes after its response. Credentials grant `sessions.read`, `usage.read`, or
-both, and cannot invoke controls, hooks, relay, audio, or pairing endpoints.
+closes after its response. Credentials grant a subset of `sessions.read`, `usage.read` and `display-state.read`, and cannot invoke controls, hooks, relay, audio, or pairing endpoints.
+New Vobot pairing files include the display scope. To enable it on an older dock,
+install the updated app and provision a new pairing file over USB. Older clients
+keep receiving their existing snapshot unless they request display state.
 Only verifiers are retained on the server. The device keeps its bearer secret
 in its app filesystem; this is not hardware-backed encrypted storage.
 
