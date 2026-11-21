@@ -10,9 +10,9 @@ final class DeviceSecurityManager {
     private var closed = false
     private var busy = false
     private let loopbackOnly: Bool
-    private let snapshot: @DaemonActor @Sendable () -> (sessions: Any, usage: Any)
+    private let snapshot: @DaemonActor @Sendable () -> (sessions: Any, usage: Any, display: [String: Any]?)
     init(directory: URL = AgentDeckPaths.baseDirectory, loopbackOnly: Bool,
-         snapshot: @escaping @DaemonActor @Sendable () -> (sessions: Any, usage: Any)) {
+         snapshot: @escaping @DaemonActor @Sendable () -> (sessions: Any, usage: Any, display: [String: Any]?)) {
         store = DeviceSecurityStore(directory: directory); self.loopbackOnly = loopbackOnly; self.snapshot = snapshot
     }
     var status: [String: Any] { ["version": 1, "state": state] }

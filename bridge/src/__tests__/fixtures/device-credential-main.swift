@@ -25,7 +25,7 @@ struct DeviceCredentialFixture {
                     caDER: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[4])), hostname: CommandLine.arguments.contains("lan") ? "agentdeck-test.local" : "localhost")
                 let server = DeviceTLSServer()
                 try server.start(identity: identity, port: UInt16(CommandLine.arguments[5])!, loopbackOnly: !CommandLine.arguments.contains("lan"), credentials: store,
-                    snapshot: { (sessions: [["id":"native-session","state":"idle","alive":true,"token":"must-not-leak"]], usage: ["usageStale":false]) })
+                    snapshot: { (sessions: [["id":"native-session","state":"idle","alive":true,"token":"must-not-leak"]], usage: ["usageStale":false], display: ["displayOn": false]) })
                 for _ in 0..<100 {
                     if server.isReady { break }; try await Task.sleep(for: .milliseconds(50))
                 }
@@ -51,7 +51,7 @@ struct DeviceCredentialFixture {
             do {
                 switch row["operation"] as? String {
                 case "snapshot":
-                    return DeviceSnapshotRules.build(scopes: row["scopes"] as! [String], sessions: row["sessions"]!, usage: row["usage"]!)
+                    return DeviceSnapshotRules.build(scopes: row["scopes"] as! [String], sessions: row["sessions"]!, usage: row["usage"]!, display: row["display"] as? [String: Any])
                 case "parse":
                     let state = try DeviceCredentialRules.decode(JSONSerialization.data(withJSONObject: row["value"]!))
                     return try JSONSerialization.jsonObject(with: JSONEncoder().encode(state))

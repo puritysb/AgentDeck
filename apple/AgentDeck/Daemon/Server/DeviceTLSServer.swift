@@ -63,7 +63,7 @@ final class DeviceTLSServer {
     private(set) var startupFailure: NWError?
     func start(identity: SecIdentity, port: UInt16, loopbackOnly: Bool = false,
                credentials: DeviceCredentialStore,
-               snapshot: @escaping @DaemonActor @Sendable () -> (sessions: Any, usage: Any)) throws {
+               snapshot: @escaping @DaemonActor @Sendable () -> (sessions: Any, usage: Any, display: [String: Any]?)) throws {
         guard port >= 1024, !(9120...9139).contains(Int(port)) else { throw DeviceTLSFailure.message("Choose a dedicated TLS port outside 9120–9139.") }
         stop()
         startupFailure = nil
@@ -83,7 +83,8 @@ final class DeviceTLSServer {
             do {
                 guard let device = try credentials.authenticate(token) else { return .init(status: 401) }
                 let value = snapshot()
-                let body = DeviceSnapshotRules.build(scopes: device.scopes, sessions: value.sessions, usage: value.usage)
+                let body = DeviceSnapshotRules.build(scopes: device.scopes, sessions: value.sessions, usage: value.usage,
+                    display: request.headers["x-agentdeck-display-state"] == "1" ? value.display : nil)
                 guard try credentials.authenticate(token) != nil else { return .init(status: 401) }
                 let response = DeviceHTTPSResponse.json(body)
                 guard response.body.count <= DeviceSnapshotRules.maxBytes else { return .init(status: 503) }

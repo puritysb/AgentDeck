@@ -14,13 +14,13 @@ import { DeviceSecurityManager } from '../device-security-manager.js';
 
 let dir: string, store: DeviceCredentialStore, server: DeviceTLSServer, port: number, ca: Buffer;
 let collect: () => Promise<{sessions:unknown; usage:unknown}>;
-const sample = {sessions:[{id:'session1', agentType:'claude-code', state:'idle', alive:true, projectName:'Project', authToken:'secret', cwd:'/private/project', options:[{text:'secret'}]}],
+const sample = {display:{displayOn:false, dim:{enabled:true,mode:'min',level:25}, hostHm:'private-clock'},sessions:[{id:'session1', agentType:'claude-code', state:'idle', alive:true, projectName:'Project', authToken:'secret', cwd:'/private/project', options:[{text:'secret'}]}],
   usage:{usageStale:false, fiveHourPercent:23, apiKey:'secret', codexRateLimits:{capturedAt:'2026-11-13T15:00:00Z', token:'secret', primary:{usedPercent:10, stale:false, token:'secret'}}}};
-function get(token?: string, path = '/device/snapshot', options: {method?:string; origin?:string; hostname?:string} = {}): Promise<{status:number; body:string}> {
+function get(token?: string, path = '/device/snapshot', options: {method?:string; origin?:string; hostname?:string; display?:boolean} = {}): Promise<{status:number; body:string}> {
   return new Promise((resolve,reject) => {
     const req = request({host:'127.0.0.1', port, servername:options.hostname ?? 'localhost', ca, path,
       method:options.method ?? 'GET', agent:false, timeout:7000,
-      headers:{...(token ? {Authorization:`Bearer ${token}`} : {}), ...(options.origin ? {Origin:options.origin} : {})}}, res => {
+      headers:{...(options.display ? {'X-AgentDeck-Display-State':'1'} : {}), ...(token ? {Authorization:`Bearer ${token}`} : {}), ...(options.origin ? {Origin:options.origin} : {})}}, res => {
       let body = ''; res.on('data', chunk => body += chunk); res.on('end', () => resolve({status:res.statusCode!, body}));
     });
     req.on('error',reject); req.on('timeout',()=>req.destroy(new Error('test request timeout'))); req.end();
@@ -48,6 +48,18 @@ describe('isolated TLS device listener', () => {
     const data = JSON.parse(response.body);
     expect(data.events.map((e:{type:string})=>e.type)).toEqual(['surface_welcome','sessions_list']);
     for(const forbidden of ['secret','cwd','options','usage_update']) expect(response.body).not.toContain(forbidden);
+  });
+  it('sends display state only to an opted-in client with display authority', async () => {
+    const {token} = store.issue('Display dock',['display-state.read']);
+    const read = async (secret: string, display: boolean) =>
+      JSON.parse((await get(secret, '/device/snapshot', {display})).body).events;
+    expect(await read(token,true)).toEqual([
+      expect.objectContaining({type:'surface_welcome'}),
+      {type:'display_state',displayOn:false,dim:{enabled:true,mode:'min',level:25}},
+    ]);
+    expect(await read(token,false)).toHaveLength(1);
+    const limited = store.issue('Usage dock',['usage.read']);
+    expect(await read(limited.token,true)).not.toContainEqual(expect.objectContaining({type:'display_state'}));
   });
   it('derives the pinned firmware policy from a verified live TLS handshake', async () => {
     const trust = await inspectDeviceTLS({hostname:'localhost',port,caDER:new X509Certificate(ca).raw.toString('base64')});
@@ -144,9 +156,12 @@ it.skipIf(process.platform !== 'darwin')('serves the same device authority over 
     });
     port=nativePort;
     expect((await get()).status).toBe(401);
-    const issued=store.issue('Native TLS test',['sessions.read']);
+    const issued=store.issue('Native TLS test',['sessions.read','display-state.read']);
     const response=await get(issued.token); expect(response.status).toBe(200);
     expect(response.body).toContain('native-session'); expect(response.body).not.toContain('must-not-leak');
+    expect(JSON.parse(response.body).events).not.toContainEqual(expect.objectContaining({type:'display_state'}));
+    const optedIn = await get(issued.token, '/device/snapshot', {display:true});
+    expect(JSON.parse(optedIn.body).events).toContainEqual({type:'display_state',displayOn:false});
     expect((await get(issued.token,'/shutdown')).status).toBe(400);
     await expect(get(issued.token,'/device/snapshot',{hostname:'wrong.local'})).rejects.toThrow();
     store.revoke(issued.device.id);expect((await get(issued.token)).status).toBe(401);

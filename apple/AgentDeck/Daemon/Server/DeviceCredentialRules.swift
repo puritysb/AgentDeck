@@ -9,7 +9,7 @@ enum DeviceCredentialRules {
     static let maxDevices = 256
     static let maxBytes = 131_072
     static let maxNameBytes = 160
-    static let scopes = ["sessions.read", "usage.read"]
+    static let scopes = ["sessions.read", "usage.read", "display-state.read"]
     struct Device: Codable, Sendable, Equatable {
         var id: String
         var name: String

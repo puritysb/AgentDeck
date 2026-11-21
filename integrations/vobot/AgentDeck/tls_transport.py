@@ -114,7 +114,7 @@ class TLSConnection:
             wrapped.setblocking(False)
             self.stream = _TLSStream(wrapped)
             request = ("GET /device/snapshot HTTP/1.1\r\nHost: %s\r\n"
-                       "Authorization: Bearer %s\r\nConnection: close\r\n\r\n") % (cfg["hostname"], cfg["token"])
+                       "X-AgentDeck-Display-State: 1\r\nAuthorization: Bearer %s\r\nConnection: close\r\n\r\n") % (cfg["hostname"], cfg["token"])
             self.stream.write(request.encode())
             await self.stream.drain()
             status = await self._line()
@@ -142,9 +142,9 @@ class TLSConnection:
                 body.extend(chunk)
             snapshot = json.loads(body.decode())
             events = snapshot.get("events") if isinstance(snapshot, dict) else None
-            if not isinstance(snapshot, dict) or type(snapshot.get("version")) is not int or snapshot["version"] != 1 or not isinstance(events, list) or not 1 <= len(events) <= 3:
+            if not isinstance(snapshot, dict) or type(snapshot.get("version")) is not int or snapshot["version"] != 1 or not isinstance(events, list) or not 1 <= len(events) <= 4:
                 raise ValueError("Invalid device snapshot")
-            if any(not isinstance(event, dict) or event.get("type") not in ("surface_welcome", "sessions_list", "usage_update") for event in events):
+            if any(not isinstance(event, dict) or event.get("type") not in ("surface_welcome", "sessions_list", "usage_update", "display_state") for event in events):
                 raise ValueError("Invalid device event")
             self.pending = events if self.first else [event for event in events if event["type"] != "surface_welcome"]
             self.first = False

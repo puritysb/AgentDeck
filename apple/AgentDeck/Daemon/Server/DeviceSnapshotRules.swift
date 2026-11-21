@@ -23,7 +23,7 @@ enum DeviceSnapshotRules {
         }
         return result
     }
-    static func build(scopes: [String], sessions: Any, usage: Any) -> [String: Any] {
+    static func build(scopes: [String], sessions: Any, usage: Any, display: [String: Any]? = nil) -> [String: Any] {
         var events: [[String: Any]] = [["type": "surface_welcome", "protocol": 1, "profile": "display-only/v1", "capabilities": scopes]]
         if scopes.contains("sessions.read") {
             let rows = ((sessions as? [Any]) ?? []).prefix(maxRows).map { pick($0, sessionFields) }.filter {
@@ -44,6 +44,14 @@ enum DeviceSnapshotRules {
                     event["codexRateLimits"] = codex
                 } else { event["codexRateLimits"] = NSNull() }
             }
+            events.append(event)
+        }
+        if scopes.contains("display-state.read"), let display {
+            var event: [String: Any] = ["type": "display_state"]
+            if let on = display["displayOn"] as? NSNumber, CFGetTypeID(on) == CFBooleanGetTypeID() {
+                event["displayOn"] = on
+            }
+            if let dim = display["dim"] as? [String: Any] { event["dim"] = pick(dim, ["enabled", "mode", "level"]) }
             events.append(event)
         }
         return ["version": version, "events": events]
