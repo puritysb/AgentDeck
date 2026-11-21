@@ -647,19 +647,22 @@ Rough totals: **P0 ≈ 9 days**, **P1 ≈ 7.5 days**, **P2 ≈ 2.5 days**.
 
 ### ADB reverse collision policy
 
-Node startup and polling inspect `adb reverse --list` before creating Android
-`tcp:9120`. An exact target is reused; a different target or unreadable listing is
-left unchanged with a warning. A missing entry is created using
+Node startup and polling inspect `adb reverse --list` for Android `tcp:9120`.
+The daemon reuses an exact target and leaves an unreadable listing in place
+with a warning. A missing entry is created using
 [`--no-rebind`](https://android.googlesource.com/platform/packages/modules/adb/+/882334464c178849d2322711424d2836d4593fe4/client/commandline.cpp),
 so an intervening writer cannot be overwritten. ADB exposes endpoints rather than
 OS-user ownership, so the warning says another daemon or user *may* own it.
 
-Shutdown leaves mappings intact: ADB has no conditional compare-and-remove, and a
-probe followed by removal could delete another user's replacement. A later daemon
-on the same port can reuse the tunnel. A port change can leave a stale conflicting
-tunnel that needs an explicit operator decision after checking its owner; automatic
-startup/polling never clears it. Tests use a fake ADB process interface and do not
-query or alter connected devices.
+By default the daemon leaves a conflicting target in place with a warning.
+If you reserve Android `tcp:9120` on a USB device for the Node daemon, add
+its exact ADB serial to the `adbReverseManagedUsbSerials` array in the daemon's
+`settings.json` and restart the daemon. It will replace a conflicting target
+on that device with its current listen port at startup or on the next ADB poll.
+This setting applies to USB devices only.
+
+Shutdown leaves mappings in place. ADB has no conditional compare-and-remove,
+and a probe followed by removal could delete another user's replacement.
 
 ### ESP32 mDNS source correction
 

@@ -494,11 +494,12 @@ describe('claude action wiring (parseAsync end-to-end)', () => {
     // The real action reads the per-agent var from actual process.env — a
     // local env object cannot reach it, hence the stub.
     vi.stubEnv('AGENTDECK_CLAUDE_ARGS', '--remote-control');
-    const env = { AGENTDECK_COMMANDER_ARGS: '--local' };
+    const env = { AGENTDECK_COMMANDER_ARGS: '--local --no-postit' };
     await program.parseAsync(applyGlobalEnvArgs([...base, 'claude'], env));
     expect(startSessionMock).toHaveBeenCalledTimes(1);
     const opts = startSessionMock.mock.calls[0][0] as Record<string, unknown>;
     expect(opts.command).toBe('claude --remote-control');
+    expect(opts.postit).toBe(false);
     // Every registered module, not the five that used to be listed by hand:
     // `broadcast` and `idotmatrix` were missing, and initModules() reads an
     // absent key as 'auto' — so --local still spawned the iDotMatrix BLE client.
@@ -509,24 +510,20 @@ describe('claude action wiring (parseAsync end-to-end)', () => {
 
   it('--no-env-args disables BOTH layers for the invocation', async () => {
     vi.stubEnv('AGENTDECK_CLAUDE_ARGS', '--remote-control');
-    const env = { AGENTDECK_COMMANDER_ARGS: '--local' };
+    const env = { AGENTDECK_COMMANDER_ARGS: '--no-postit' };
     await program.parseAsync(applyGlobalEnvArgs([...base, 'claude', '--no-env-args'], env));
     expect(startSessionMock).toHaveBeenCalledTimes(1);
     const opts = startSessionMock.mock.calls[0][0] as Record<string, unknown>;
     // Per-agent layer off: command unwoven despite the stubbed var.
     expect(opts.command).toBe('claude');
-    // Commander layer off: the env --local never reached the parser.
-    expect((opts.modules as Record<string, unknown>).adb).toBe('auto');
+    // Commander layer off: the env --no-postit never reached the parser.
+    expect(opts.postit).toBe(true);
   });
 
-  it('a session bridge drives no device but ADB, even without --local', async () => {
-    // Not a --local concern: initModules() reads an absent key as 'auto', so
-    // every module added after this record was written arrived switched ON in
-    // ordinary sessions. idotmatrix did, and each session bridge spawned its
-    // own Python BLE client alongside the daemon's.
+  it('keeps device modules off for a managed session without --local', async () => {
     await program.parseAsync([...base, 'claude', '--no-env-args']);
     const opts = startSessionMock.mock.calls[0][0] as Record<string, unknown>;
-    expect(opts.modules).toEqual({ ...allModulesOff(), adb: 'auto' });
+    expect(opts.modules).toEqual(allModulesOff());
   });
 });
 

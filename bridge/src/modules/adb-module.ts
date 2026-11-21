@@ -1,5 +1,6 @@
 import type { DeviceModule, BridgeContext } from './types.js';
 import { setupAdbReverse, cleanupAdbReverse, startAdbReversePolling } from '../adb-reverse.js';
+import { loadDaemonSettings } from '../daemon-settings.js';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 
@@ -32,7 +33,11 @@ export class AdbModule implements DeviceModule {
     this.port = ctx.port;
     // Loopback posture: USB-transport devices only. A TCP/mDNS adb device
     // (`adb connect`, wireless debugging) would carry the tunnel over the LAN.
-    const opts = { usbOnly: ctx.loopbackOnly === true };
+    const configuredSerials = loadDaemonSettings().adbReverseManagedUsbSerials;
+    const managedUsbSerials = new Set<string>(
+      Array.isArray(configuredSerials) ? configuredSerials.filter(serial => typeof serial === 'string') : [],
+    );
+    const opts = { usbOnly: ctx.loopbackOnly === true, managedUsbSerials };
     await setupAdbReverse(ctx.port, opts);
     this.stopPolling = startAdbReversePolling(ctx.port, opts);
   }

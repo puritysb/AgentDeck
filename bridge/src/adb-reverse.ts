@@ -69,6 +69,8 @@ export interface AdbReverseOptions {
    * devices (`adb connect`, wireless debugging) are skipped, not torn down.
    */
   usbOnly?: boolean;
+  /** USB devices whose device-side tcp:9120 is reserved for this daemon. */
+  managedUsbSerials?: ReadonlySet<string>;
 }
 
 /** Cache of the last device list, refreshed by the poll / explicit reads.
@@ -125,7 +127,12 @@ function warnReverse(serial: string, state: AdbReverseState): void {
   notices.set(serial, message);
   log(`[agentdeck] ADB reverse on ${serial.replace(/[^a-zA-Z0-9_.:-]/g, '')}: Android tcp:${ANDROID_PORT} ${message}; left unchanged. Another daemon or OS user may own it. Check its owner before changing the USB mapping.`);
 }
-async function ensureAdbReverse(serial: string, port: number, active = () => true): Promise<void> {
+async function ensureAdbReverse(
+  serial: string,
+  port: number,
+  opts: AdbReverseOptions,
+  active = () => true,
+): Promise<void> {
   let state: AdbReverseState;
   try {
     const { stdout } = await execFileAsync('adb', ['-s', serial, 'reverse', '--list'], { timeout: 5000, windowsHide: true });
@@ -133,20 +140,26 @@ async function ensureAdbReverse(serial: string, port: number, active = () => tru
   } catch { state = {kind:'unknown'}; }
   if (!active()) return;
   if (state.kind === 'matching') { notices.delete(serial); return; }
-  if (state.kind !== 'absent') { warnReverse(serial,state); return; }
+  const mayRebind = state.kind === 'conflict'
+    && opts.managedUsbSerials?.has(serial)
+    && !isNetworkAdbTransport(serial)
+    && !serial.startsWith('emulator-');
+  if (state.kind !== 'absent' && !mayRebind) { warnReverse(serial,state); return; }
   try {
-    // The probe is advisory. --no-rebind closes the create-after-probe race:
-    // an intervening owner wins and is never overwritten.
-    await execFileAsync('adb', ['-s', serial, 'reverse', '--no-rebind', `tcp:${ANDROID_PORT}`, `tcp:${port}`], { timeout: 5000, windowsHide: true });
+    // A missing mapping always uses --no-rebind to protect an intervening
+    // writer. An explicit USB reservation authorizes replacing a known
+    // conflict in one ADB operation, without removing the listener first.
+    const flags = mayRebind ? [] : ['--no-rebind'];
+    await execFileAsync('adb', ['-s', serial, 'reverse', ...flags, `tcp:${ANDROID_PORT}`, `tcp:${port}`], { timeout: 5000, windowsHide: true });
     notices.delete(serial);
     debug(TAG, `adb reverse ${serial}: android:${ANDROID_PORT} → daemon:${port}`);
   } catch { if (active()) warnReverse(serial,{kind:'unknown'}); }
 }
 
-/** Set up missing mappings only. Never replace another endpoint. */
+/** Set up missing mappings and reconcile explicitly managed USB devices. */
 export async function setupAdbReverse(port: number, opts: AdbReverseOptions = {}): Promise<void> {
   const devices = await getConnectedAdbDevices(opts);
-  for (const serial of devices) await ensureAdbReverse(serial, port);
+  for (const serial of devices) await ensureAdbReverse(serial, port, opts);
 }
 
 /**
@@ -171,7 +184,7 @@ export function startAdbReversePolling(
         const devices = await getConnectedAdbDevices(opts);
         for (const serial of devices) {
           if (!active) break;
-          await ensureAdbReverse(serial, port, () => active);
+          await ensureAdbReverse(serial, port, opts, () => active);
         }
       } finally {
         inFlight = false;
@@ -193,7 +206,7 @@ export async function getAdbDeviceCount(): Promise<number> {
 /** ADB has no compare-and-remove operation. Leave mappings on shutdown rather
  * than deleting a replacement installed by another process after our probe.
  * A later owner of the same host port can reuse the mapping; a different target
- * is reported as a conflict and requires an explicit operator decision. */
+ * is reported as a conflict unless the operator reserved that device port. */
 export async function cleanupAdbReverse(_port: number): Promise<void> {
   debug(TAG, 'Leaving ADB reverse mappings intact: endpoint listing cannot prove ownership for removal');
 }
