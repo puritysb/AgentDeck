@@ -10,46 +10,43 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-  # Read the latest run of every other gate's workflow for the report
-  # (scripts/fetch-workflow-status.mjs).
-  actions: read
+permissions: {}
 
 jobs:
   report:
-    if: github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.conclusion != 'cancelled'
+    if: >-
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.head_branch == 'master' &&
+      github.event.workflow_run.head_sha == github.sha &&
+      github.event.workflow_run.conclusion != 'cancelled'
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact_id }}
+      artifact_name: ${{ steps.bundle.outputs.name }}
 
     steps:
+      # workflow_run's own SHA is the default branch revision, not an event-supplied ref.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
 
-      - name: Download suite outcomes
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: report-outcomes
-          path: ${{ runner.temp }}/report-outcomes
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ github.token }}
-      - name: Check producer revision and read outcomes
+      - name: Verify and restore CI report data
         id: producer
         env:
-          REVISION: ${{ github.event.workflow_run.head_sha }}
+          GH_TOKEN: ${{ github.token }}
+          PRODUCER_RUN_ID: ${{ github.event.workflow_run.id }}
+          PRODUCER_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
         run: |
-          results="$RUNNER_TEMP/report-outcomes/suites.json"
-          jq -e --arg sha "$REVISION" '.sha == $sha' "$results"
-          for suite in vitest e2e android; do
-            outcome=$(jq -er --arg suite "$suite" '.[$suite]' "$results")
-            case "$outcome" in success|failure|cancelled|skipped|'') ;; *) exit 1 ;; esac
-            echo "$suite=$outcome" >> "$GITHUB_OUTPUT"
-          done
+          python3 scripts/restore-pages-data.py "$RUNNER_TEMP/pages-data"
+          {
+            echo "BUILD_HEALTH_REPORT_DIR=$RUNNER_TEMP/pages-data/test-report"
+            echo "BUILD_HEALTH_COVERAGE_JSON=$RUNNER_TEMP/pages-data/coverage-summary.json"
+            echo "BUILD_HEALTH_ANDROID_DIR=$RUNNER_TEMP/pages-data/android"
+          } >> "$GITHUB_ENV"
 
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
@@ -63,22 +60,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Restore CI outputs for this run
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: pages-inputs
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ github.token }}
-          path: .
-      - name: Restore Android test results for this run
-        if: steps.producer.outputs.android == 'success' || steps.producer.outputs.android == 'failure'
-        continue-on-error: ${{ steps.producer.outputs.android == 'failure' }}
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: android-unit-test-report
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ github.token }}
-          path: android/app/build
+      - name: Build renderer packages from the checked-out revision
+        run: pnpm --filter @agentdeck/shared build && pnpm --filter @agentdeck/hooks build && pnpm --filter @agentdeck/bridge build
 
       - name: Cache PlatformIO (sim)
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -108,27 +91,24 @@ jobs:
       - name: Fetch previous history
         run: |
           PAGES_URL="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}"
-          mkdir -p coverage/test-report
-          curl -sf "${PAGES_URL}/reports/history.json" -o coverage/test-report/history.json || echo '[]' > coverage/test-report/history.json
+          curl -sf "${PAGES_URL}/reports/history.json" -o "$BUILD_HEALTH_REPORT_DIR/history.json" || echo '[]' > "$BUILD_HEALTH_REPORT_DIR/history.json"
         continue-on-error: true
 
       # Apple XCTest, the macOS/Windows runtime jobs, the ESP32 compile and the
       # release workflows run elsewhere; the page links their latest result
       # instead of saying only "not run here". Fail-soft: no data, no claim.
       - name: Fetch latest result of every other workflow
-        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/fetch-workflow-status.mjs --out coverage/test-report/workflow-status.json || true
+        run: node scripts/fetch-workflow-status.mjs --out "$BUILD_HEALTH_REPORT_DIR/workflow-status.json" || true
 
       - name: Generate HTML report
-        if: always()
         run: |
           python3 - <<'PY'
           import json, os
           from pathlib import Path
 
-          report_dir = Path("coverage/test-report")
+          report_dir = Path(os.environ["BUILD_HEALTH_REPORT_DIR"])
           report_dir.mkdir(parents=True, exist_ok=True)
 
           def normalize(status):
@@ -151,18 +131,17 @@ jobs:
                   "vitest": suite(os.environ["VITEST_OUTCOME"], os.environ["VITEST_OUTCOME"] in ("success", "failure"), "Coverage + JSON report"),
                   "e2e": suite(os.environ["E2E_OUTCOME"], os.environ["E2E_OUTCOME"] in ("success", "failure"), "Real daemon process, loopback, temp HOME"),
                   "android": suite(os.environ["ANDROID_OUTCOME"], os.environ["ANDROID_OUTCOME"] in ("success", "failure"), android_note),
-                  "apple": suite("not-run", False, "Runs in the Apple Tests workflow (macos-26) on apple/** changes; not re-run here"),
+                  "apple": suite("not-run", False, "Runs in the Apple Tests workflow (Xcode 27) on apple/** changes; not re-run here"),
                   "robot": suite("not-run", False, "Physical boards in the maintainer's lab; the pre-release receipt records the last attested result"),
               },
           }
           (report_dir / "run-metadata.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
           PY
-          GITHUB_SHA="$SOURCE_SHA" python3 scripts/generate-html-report.py
+          python3 scripts/generate-html-report.py
         env:
           VITEST_OUTCOME: ${{ steps.producer.outputs.vitest }}
           E2E_OUTCOME: ${{ steps.producer.outputs.e2e }}
           ANDROID_OUTCOME: ${{ steps.producer.outputs.android }}
-          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
 
       # Resolved BEFORE the cache step, because the tag IS the cache key.
       #
@@ -235,31 +214,64 @@ jobs:
           # built app on top leaves them alone.
           cp -R dist/flash/. _site/flash/
           # Test report under /reports/
-          cp coverage/test-report/index.html _site/reports/index.html
-          cp coverage/test-report/history.json _site/reports/history.json 2>/dev/null || true
-          cp coverage/test-report/summary.json _site/reports/summary.json 2>/dev/null || true
-          cp coverage/test-report/run-metadata.json _site/reports/run-metadata.json 2>/dev/null || true
-          cp coverage/test-report/workflow-status.json _site/reports/workflow-status.json 2>/dev/null || true
+          cp "$BUILD_HEALTH_REPORT_DIR/index.html" _site/reports/index.html
+          cp "$BUILD_HEALTH_REPORT_DIR/history.json" _site/reports/history.json 2>/dev/null || true
+          cp "$BUILD_HEALTH_REPORT_DIR/summary.json" _site/reports/summary.json 2>/dev/null || true
+          cp "$BUILD_HEALTH_REPORT_DIR/run-metadata.json" _site/reports/run-metadata.json 2>/dev/null || true
+          cp "$BUILD_HEALTH_REPORT_DIR/workflow-status.json" _site/reports/workflow-status.json 2>/dev/null || true
           cp scripts/verification-catalog.json _site/reports/verification-catalog.json
 
-      - name: Configure Pages
-        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - name: Name the Pages bundle for this build attempt
+        id: bundle
+        run: echo "name=github-pages-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
 
       - name: Upload Pages artifact
+        id: upload
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
+          name: ${{ steps.bundle.outputs.name }}
           path: _site
 
+  deploy:
+    needs: report
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
       - name: Confirm this is still the latest master before publishing
         id: current
         env:
           GH_TOKEN: ${{ github.token }}
-          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           latest=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/master" --jq .object.sha)
-          if [[ "$latest" == "$SOURCE_SHA" ]]; then echo publish=true >> "$GITHUB_OUTPUT"; fi
+          if [[ "$latest" == "$GITHUB_SHA" ]]; then echo publish=true >> "$GITHUB_OUTPUT"; fi
+
+      - name: Verify the site bundle handed off by the build
+        if: steps.current.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ needs.report.outputs.artifact_id }}
+          ARTIFACT_NAME: ${{ needs.report.outputs.artifact_name }}
+        run: |
+          [[ "$ARTIFACT_ID" =~ ^[0-9]+$ && "$ARTIFACT_NAME" =~ ^github-pages-[0-9]+$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID" |
+            jq -e --arg name "$ARTIFACT_NAME" --arg sha "$GITHUB_SHA" \
+              --argjson run "$GITHUB_RUN_ID" --argjson repo "$GITHUB_REPOSITORY_ID" '
+              .name == $name and .expired == false and
+              (.digest | strings | test("^sha256:[0-9a-f]{64}$")) and
+              (.workflow_run | .id == $run and .head_sha == $sha and .head_branch == "master" and
+                .repository_id == $repo and .head_repository_id == $repo)
+            '
 
       - name: Deploy to GitHub Pages
         if: steps.current.outputs.publish == 'true'
         id: deploy
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+        with:
+          artifact_name: ${{ needs.report.outputs.artifact_name }}

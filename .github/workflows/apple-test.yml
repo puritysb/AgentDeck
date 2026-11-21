@@ -5,6 +5,7 @@ on:
     branches: [master]
     paths:
       - 'apple/**'
+      - '.github/workflows/apple-release.yml'
       - 'shared/**'
       - 'bridge/assets/fonts/**'
       - 'bridge/src/glance-frame.ts'
@@ -43,7 +44,7 @@ jobs:
   test-macos:
     # The app and test host require macOS 26; an older SDK host can build
     # the target but cannot execute its tests.
-    runs-on: macos-26
+    runs-on: xcode-27
     # Cold universal optimized builds can finish XCTest just as 30m expires.
     # Keep every check; allow the preview job enough time for test/cleanup.
     timeout-minutes: ${{ matrix.configuration == 'DotPreviewRelease' && 45 || 30 }}
@@ -68,11 +69,8 @@ jobs:
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
-      - name: Select Xcode
-        run: |
-          XCODE=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
-          echo "Using: $XCODE"
-          sudo xcode-select -s "$XCODE/Contents/Developer"
+      - name: Verify Xcode and build SDKs
+        run: bash apple/scripts/verify-xcode27.sh macosx
 
       - name: Typecheck generated Swift reference models
         if: matrix.configuration == 'Debug'
@@ -129,7 +127,7 @@ jobs:
           path: ${{ runner.temp }}/AgentDeckTests.xcresult
 
   build-ios:
-    runs-on: macos-15
+    runs-on: xcode-27
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -143,10 +141,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Select Xcode
-        run: |
-          XCODE=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
-          sudo xcode-select -s "$XCODE/Contents/Developer"
+      - name: Verify Xcode and build SDKs
+        run: bash apple/scripts/verify-xcode27.sh iphonesimulator watchsimulator
 
       - name: Install XcodeGen
         run: brew install xcodegen

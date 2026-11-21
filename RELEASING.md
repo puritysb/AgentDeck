@@ -3808,26 +3808,28 @@ looking correct while the server still holds the previous text.
 
 CI owns `CURRENT_PROJECT_VERSION` — `apple-release.yml` injects `github.run_number * 100 + github.run_attempt` into both archive steps, so the build number rises on every run and ASC never sees a duplicate `(version, build)` pair. Do not bump it by hand; the value in `apple/project.yml` is only a local-build default.
 
-#### iOS archives need the iOS 27 SDK (ITMS-90725)
+#### Apple release toolchain (ITMS-90725)
 
 iOS 2.2.1 build 12201 (2026-11-20) was archived on `macos-15` with Xcode 26.3
 and App Store Connect flagged ITMS-90725: from April 2027 iOS and iPadOS
 uploads and submissions must be built with the iOS 27 SDK (Xcode 27+).
-GitHub-hosted macOS images stopped at Xcode 26.6 on that date, so
-`apple-release.yml` takes `ios_runner: self-hosted-xcode27` on a manual
-dispatch. That job runs on an **ephemeral** runner registered on a maintainer
-Mac for exactly one job, with the label `agentdeck-xcode27`, and deregisters
-when the job ends. The repository is public, so never leave a persistent
-self-hosted runner attached.
+The iOS and macOS release jobs and the Apple product CI builds now use
+GitHub's hosted [Xcode 27 image](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md).
+Both tag and manual release archives check the selected Xcode and the SDKs
+before importing signing assets. A manual iOS dispatch can still select
+`ios_runner: self-hosted-xcode27` for the fallback. Register that runner for
+exactly one job, with the label `agentdeck-xcode27`, and let it deregister when
+the job ends.
 
-The job runs as the maintainer's user, so it must not touch that user's state:
+The fallback job runs as the maintainer's user, so it must not touch that user's state:
 Xcode is chosen with `DEVELOPER_DIR` (no `sudo xcode-select`), the signing
 keychain is prepended to the saved search list and the list is restored by
 `apple/scripts/cleanup-ci-signing-assets.sh`, only provisioning profiles the
 job added are removed, and the ASC key lives in `$RUNNER_TEMP/private_keys`
 (`API_PRIVATE_KEYS_DIR`), never `~/private_keys`. The step fails unless the
-selected Xcode is 27 or later. Tags still archive on GitHub-hosted runners;
-moving them is tracked in [#811](https://github.com/puritysb/AgentDeck/issues/811).
+selected Xcode and SDKs meet the minimum. [#811](https://github.com/puritysb/AgentDeck/issues/811)
+tracks the migration. Apple’s April 2027 notice specifies the iOS, iPadOS and
+watchOS 27 SDKs. The macOS archive uses the same Xcode toolchain.
 
 #### Store media keeps its richness
 

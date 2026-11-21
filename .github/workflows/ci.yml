@@ -94,7 +94,7 @@ jobs:
           jq -n '{sha: env.GITHUB_SHA, android: env.ANDROID, vitest: env.VITEST, e2e: env.E2E}' > suites.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: report-outcomes
+          name: report-outcomes-${{ github.run_attempt }}
           path: suites.json
           overwrite: true
           retention-days: 7
@@ -153,19 +153,23 @@ jobs:
         env:
           TZ: Asia/Seoul
 
-      - name: Upload merged commit report inputs
-        if: always() && github.event_name == 'push'
+      - name: Stage merged commit report data
+        if: always() && !cancelled() && github.event_name == 'push'
+        run: |
+          for report in coverage-summary.json test-report/vitest.json test-report/e2e.json; do
+            if [[ -f "coverage/$report" ]]; then
+              install -D -m 0644 "coverage/$report" "$RUNNER_TEMP/pages-report-data/$report"
+            fi
+          done
+
+      - name: Upload merged commit report data
+        if: always() && !cancelled() && github.event_name == 'push'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: pages-inputs
+          name: pages-report-data-${{ github.run_attempt }}
           overwrite: true
           retention-days: 7
-          path: |
-            bridge/dist/
-            shared/dist/
-            hooks/dist/
-            coverage/coverage-summary.json
-            coverage/test-report/*.json
+          path: ${{ runner.temp }}/pages-report-data/
 
       - name: Preview mirror sync check
         run: node scripts/check-preview-mirror-sync.mjs

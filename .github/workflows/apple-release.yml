@@ -26,7 +26,7 @@ on:
         default: false
         type: boolean
       ios_runner:
-        description: 'iOS archive runner: github-hosted, or this repo''s ephemeral self-hosted Mac with Xcode 27 (ITMS-90725)'
+        description: 'iOS archive runner: GitHub-hosted Xcode 27 or the ephemeral self-hosted fallback'
         required: true
         default: github-hosted
         type: choice
@@ -56,12 +56,9 @@ jobs:
   build-ios:
     if: github.event_name == 'push' || inputs.platform != 'macos'
     needs: validate-submission
-    # GitHub-hosted images stop at Xcode 26.6, and from April 2027 iOS uploads
-    # need the iOS 27 SDK (ITMS-90725, #811). The self-hosted option targets an
-    # ephemeral runner registered for one job with a unique label; it is a
-    # maintainer's Mac, so every step below keeps out of $HOME and the user's
-    # keychain search list (see install/cleanup-ci-signing-assets.sh).
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && inputs.ios_runner == 'self-hosted-xcode27') && fromJSON('["self-hosted","macOS","agentdeck-xcode27"]') || 'macos-15' }}
+    # Tags and normal dispatches use the hosted Xcode 27 image. The manual
+    # fallback is a maintainer Mac registered for one job only.
+    runs-on: ${{ (github.event_name == 'workflow_dispatch' && inputs.ios_runner == 'self-hosted-xcode27') && fromJSON('["self-hosted","macOS","agentdeck-xcode27"]') || 'xcode-27' }}
     timeout-minutes: 30
 
     steps:
@@ -77,19 +74,8 @@ jobs:
           node scripts/verify-release-version.mjs apple "$VERSION"
           node scripts/verify-version-sync.mjs
 
-      # DEVELOPER_DIR instead of `sudo xcode-select`: it selects the toolchain
-      # for this job only and needs no password on a self-hosted Mac.
-      - name: Select Xcode
-        run: |
-          XCODE=$(find /Applications -maxdepth 1 -type d -name 'Xcode*.app' | sort -V | tail -1)
-          echo "Using: $XCODE"
-          echo "DEVELOPER_DIR=$XCODE/Contents/Developer" >> "$GITHUB_ENV"
-          VERSION=$(DEVELOPER_DIR="$XCODE/Contents/Developer" xcodebuild -version | head -1)
-          echo "$VERSION"
-          if [[ "${{ inputs.ios_runner }}" == "self-hosted-xcode27" && ! "$VERSION" =~ ^Xcode\ (2[7-9]|[3-9][0-9]) ]]; then
-            echo "::error::The self-hosted iOS runner must provide Xcode 27 or later; found $VERSION."
-            exit 1
-          fi
+      - name: Verify Xcode and archive SDKs
+        run: bash apple/scripts/verify-xcode27.sh iphoneos watchos
 
       # Archive the project derived from project.yml rather than the committed
       # .xcodeproj, so a project.yml edit whose pbxproj was never regenerated
@@ -202,7 +188,7 @@ jobs:
   build-macos:
     if: github.event_name == 'push' || inputs.platform != 'ios'
     needs: validate-submission
-    runs-on: macos-15
+    runs-on: xcode-27
     timeout-minutes: 30
 
     steps:
@@ -222,11 +208,8 @@ jobs:
           node scripts/verify-release-version.mjs apple "$VERSION"
           node scripts/verify-version-sync.mjs
 
-      - name: Select Xcode
-        run: |
-          XCODE=$(find /Applications -maxdepth 1 -type d -name 'Xcode*.app' | sort -V | tail -1)
-          echo "Using: $XCODE"
-          sudo xcode-select -s "$XCODE/Contents/Developer"
+      - name: Verify Xcode and archive SDK
+        run: bash apple/scripts/verify-xcode27.sh macosx
 
       # Archive the project derived from project.yml rather than the committed
       # .xcodeproj, so a project.yml edit whose pbxproj was never regenerated
@@ -276,6 +259,7 @@ jobs:
 
       - name: Export macOS pkg
         run: |
+          export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
           EXPORT_OPTIONS="$RUNNER_TEMP/ExportOptions-macOS.plist"
           cp apple/ExportOptions-macOS.plist "$EXPORT_OPTIONS"
           /usr/libexec/PlistBuddy \

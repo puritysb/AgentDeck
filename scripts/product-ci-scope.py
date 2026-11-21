@@ -7,7 +7,7 @@ diff = subprocess.run(["git", "diff", "--no-renames", "--name-only", "-z",
                        f"{sys.argv[1]}...{sys.argv[2]}"], stdout=subprocess.PIPE)
 paths = [os.fsdecode(p) for p in diff.stdout.split(b"\0") if p]
 common = {".github/workflows/ci.yml", "scripts/product-ci-scope.py"}
-apple = common | {".github/workflows/apple-test.yml", "docs/appstore-metadata-draft.md",
+apple = common | {".github/workflows/apple-test.yml", ".github/workflows/apple-release.yml", "docs/appstore-metadata-draft.md",
                   "bridge/src/glance-frame.ts", "scripts/generate-glance-policy.mjs"}
 android = common | {".github/workflows/android-test.yml"}
 for name, files, dirs in [

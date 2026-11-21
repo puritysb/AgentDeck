@@ -54,7 +54,7 @@
   "Coverage + JSON report": "커버리지 + JSON 결과",
   "Real daemon process, loopback, temp HOME": "실제 데몬 프로세스 · 루프백 · 임시 HOME",
   "JUnit + Robolectric on ubuntu": "ubuntu에서 JUnit + Robolectric",
-  "Runs in the Apple Tests workflow (macos-26) on apple/** changes; not re-run here": "apple/** 변경 시 Apple Tests 워크플로(macOS-26)에서 실행하며, 여기서는 다시 실행하지 않습니다.",
+  "Runs in the Apple Tests workflow (Xcode 27) on apple/** changes; not re-run here": "apple/** 변경 시 Apple Tests 워크플로에서 Xcode 27로 실행합니다. 이 리포트에서는 다시 실행하지 않습니다.",
   "Runs in the Apple Tests workflow on a macOS runner.": "macOS 실행 환경의 Apple Tests 워크플로에서 실행합니다.",
   "Physical boards in the maintainer's lab; the pre-release receipt records the last attested result": "유지관리자의 실험실에서 실제 보드로 검증합니다. 최근 확인 결과는 릴리스 전 검증 기록에 남깁니다.",
   "Physical hardware suite; run in the maintainer's lab, not on GitHub-hosted runners": "실제 하드웨어 검사는 유지관리자의 실험실에서 실행합니다. GitHub 실행 환경에서는 실행하지 않습니다.",
@@ -408,6 +408,7 @@
   "scripts/macos-preflight.sh checks the grants before a lab run and stops with the exact System Settings path instead of hanging on a dialog.": "실험실 실행 전 scripts/macos-preflight.sh로 권한을 검사하고 대화상자에서 멈추는 대신 정확한 시스템 설정 경로를 안내합니다.",
   "Every PR and push to master": "모든 PR과 master 푸시",
   "Every push to master": "모든 master 푸시",
+  "Completed CI for a push to master": "master 푸시의 CI가 완료될 때",
   "PRs and pushes touching android/**": "android/** 변경 PR과 푸시",
   "PRs and pushes touching apple/**, shared/** or generated/protocol/**": "apple/**·shared/**·generated/protocol/** 변경 PR과 푸시",
   "PRs and master pushes touching esp32/**": "esp32/** 변경 PR과 master 푸시",
@@ -635,5 +636,6 @@
   "Every pull request to master": "master에 병합할 모든 PR",
   "Required product suites completed, including applicable Apple and Android suites": "변경 범위에 해당하는 Apple·Android 검사를 포함해 필요한 제품 검사를 모두 통과했는지 확인합니다.",
   "Physical device behaviour or release signing": "실제 기기 동작과 릴리즈 서명은 별도로 확인합니다.",
-  "publishes the merged commit’s Vitest and E2E results, and Android results when the suite applied": "병합 커밋의 Vitest와 E2E 결과를 게시하고, Android 검사를 실행한 경우 그 결과도 함께 표시합니다."
+  "publishes the merged commit’s Vitest and E2E results and Android results when the suite applied": "병합 커밋의 Vitest와 E2E 결과를 게시하고, Android 검사를 실행한 경우 그 결과도 함께 표시합니다.",
+  "builds the demo from checked-out source and verifies the site artifact before deploying": "체크아웃한 소스로 데모를 빌드하고 배포 전에 사이트 아티팩트의 출처를 확인합니다."
 }
