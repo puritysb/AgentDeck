@@ -48,3 +48,18 @@ developers without one. Thread identity forwarding, local-plugin events, and in-
 ChatGPT quits or the Mac sleeps are not confirmed either. The loopback Streamable HTTP + OAuth
 alternative went unanswered. The Dot feature therefore stays held: the route works today but is
 unsupported, and a public listing has no reachable path.
+
+**Earlier native-client evidence (October 25–26).** On a prepared Mac, a signed
+Swift host and a separate consent app exercised approval, a six-call request
+cycle through an explicitly invoked native client, refresh after restart, and
+denial after revocation. A local plugin loader also discovered all four tools,
+but fresh Dot-created tasks did not discover them in those October trials.
+November's fixture call above establishes discovery in a Dot-created task.
+It stopped at the authorization check. The two runs therefore leave the
+authenticated, automatically discovered Dot path unverified end to end.
+
+The [archived native client and test notes](https://github.com/puritysb/AgentDeck/tree/36dfcd7681b2b192a9af5776baffbcea930afb9f/integrations/chatgpt-local/native)
+and [signed host fixture](https://github.com/puritysb/AgentDeck/tree/36dfcd7681b2b192a9af5776baffbcea930afb9f/experiments/dot-native-local-host)
+are available for reproducing the October measurements. The same snapshot
+includes the simulated onboarding journey. Its full verification receipt
+recorded a failed coverage gate on a dirty tree.
