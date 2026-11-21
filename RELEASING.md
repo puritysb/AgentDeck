@@ -124,6 +124,20 @@ contains seven screenshots and one preview per locale. Keep manual release
 selected and hold submission. The separate iOS 2.2.1 TestFlight delivery remains
 on its own build.
 
+**App Store Connect readback (2026-11-21 23:56 KST).** The [macOS-only upload run](https://github.com/puritysb/AgentDeck/actions/runs/44911991871)
+used Xcode 27.1 to archive and verify the exported PKG from `8e67e3ef7925`.
+Apple processed build **12801** as `VALID`, and the build is attached to macOS
+2.2.2. English (US), Korean and Japanese What's New text matches the
+[prepared copy](docs/appstore-metadata-draft.md#prepared-macos-222-update-text).
+Each locale retains the verified seven screenshots and one processed preview.
+The draft stays in `PREPARE_FOR_SUBMISSION` with manual release selected.
+App Store Connect lists no active macOS review submission.
+
+The [pre-release verification receipt](verification/receipts/2026-11-21-8e67e3e.json)
+records the passing automated run, including the macOS Release build,
+XCTest and App Store submission bundle checks. Physical lab checks were
+unattested in that run.
+
 ### Apple 2.2.1 release decision (2026-11-20)
 
 Readback first: App Store Connect (`asc-certificates.yml store-status`, run
