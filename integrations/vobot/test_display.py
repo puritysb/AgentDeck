@@ -96,6 +96,24 @@ class SetDarkTests(unittest.TestCase):
         # The level saved before the first dim wins, not the dimmed one.
         self.assertEqual(self.screen.level, 70)
 
+    def test_missing_display_on_preserves_sleep_until_explicit_wake(self):
+        for target, sleep_event in ((0, state(False)), (25, state(False, mode="min", level=25))):
+            with self.subTest(target=target):
+                self.screen.writes.clear()
+                dock._set_dark(dock._display_target(sleep_event))
+                for event in ({"type": "display_state"},
+                              {"type": "display_state", "dim": {"enabled": False}}):
+                    dock._set_dark(dock._display_target(event))
+                    self.assertEqual(self.screen.writes, [target])
+                    self.assertEqual(self.screen.level, target)
+                    self.assertEqual(dock._dark_target, target)
+                    self.assertEqual(dock._saved_brightness, 70)
+                    self.assertEqual(self.blackout.hidden, target != 0)
+                dock._set_dark(dock._display_target(state(True)))
+                self.assertEqual(self.screen.writes, [target, 70])
+                self.assertIsNone(dock._dark_target)
+                self.assertTrue(self.blackout.hidden)
+
     def test_wake_relights_a_waiting_alert(self):
         dock._waiting_ids.append("s1")
         dock._set_dark(0)

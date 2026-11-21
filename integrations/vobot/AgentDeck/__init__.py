@@ -109,7 +109,9 @@ def _display_target(event):
     `off` must look dark and `min` must stay readable. A missing `displayOn`
     carries no information and leaves the screen as it is.
     """
-    if event.get("displayOn") is not False:
+    if "displayOn" not in event:
+        return _dark_target
+    if event["displayOn"] is not False:
         return None
     dim = event.get("dim")
     dim = dim if isinstance(dim, dict) else {}
