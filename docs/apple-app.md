@@ -42,25 +42,23 @@ One window holds the whole desk: the session roster, the habitat, the timeline, 
   <a href="media/macos-desk.jpg"><img src="media/macos-desk.jpg" width="720" alt="AgentDeck macOS dashboard photographed on a desktop monitor on September 28, 2026"></a>
 </p>
 
-## Collaboration (Beta)
+<a id="collaboration-beta"></a>
 
-The Collaboration panel shows the selected session’s task, recent task history,
-reported running subagents, and jobs being waited on. Use it to follow delegation
-and handoffs without searching a transcript. These task records come from typed
-coordination events; live session counts are shown separately because a running
-session is not the same thing as a task or a completed handoff.
+## Work on Mac
 
-<p align="center">
-  <img src="media/collaboration-panel.png" width="880" alt="AgentDeck Collaboration panel — selected session with its latest task, spawned-running and jobs-waited-on counts, and the live-census caveat, beside the habitat">
-</p>
+Open **Work** from the Dashboard header or select a session. Work puts sessions
+waiting for your input first. Select a task to see its history, reported
+subagents, background jobs, and confirmed message deliveries. On a wide window
+the list and detail sit side by side. In a compact window the task opens from the
+list. Open **Usage & Services** from the Work header.
 
-## Three-Tab Navigation
+<a id="three-tab-navigation"></a>
 
-| Tab | Content |
-|-----|---------|
-| **Monitor** | Terrarium background + HUD overlay — agent status, rate limits, timeline |
-| **Deck** | Stream Deck+ mirror — encoder panels + button grid with touch gestures |
-| **Settings** | Bridge connection, display preferences |
+## Navigation on iPhone and iPad
+
+**Direct** opens the paired dashboard for live sessions, usage, and the
+timeline. Open Settings from the dashboard's gear icon or menu.
+**Remote** opens the read-only iCloud summary, even before local pairing.
 
 ## macOS Menu Bar Popup
 
@@ -72,7 +70,7 @@ On macOS the app always lives in the menu bar — one click reveals the full top
 
 - **Sessions** — live session list with agent, state, and model; per-row Jump To buttons open the Pixoo view, the Stream Deck Code view, the full Dashboard window, or reveal the session data folder in Finder
 - **Topology** — `UPSTREAM` (Claude Code hooks, OpenClaw Gateway, MLX, Ollama) and `DOWNSTREAM` (D200H, Pixoo, ESP32, Android) with LED dots driven by the shared `ProviderRailEvaluator`, so Settings / Dashboard / menu bar can never disagree about "is Claude connected?"
-- **Tabs** — Launch · Dashboard · Evaluation switch the popup body without opening a window; a `Start at Login` toggle + `Quit` sit in the footer
+- **Settings menu** — use the gear to open Settings, toggle **Start at Login**, or choose **Quit AgentDeck**.
 
 ## Connect to Bridge
 
@@ -80,28 +78,51 @@ On macOS the app always lives in the menu bar — one click reveals the full top
 - **QR pairing** — scan with the in-app camera (`agentdeck qr` on your Mac)
 - **Manual** — enter bridge IP and port
 
-## Planned remote observation
+<a id="planned-remote-observation"></a>
 
-The current companion uses a local-network connection. The
-[CloudKit remote-observation design](apple-remote-observation.md) is a planned,
-unimplemented PoC for selected updates from the running Mac app to the same
-Apple Account's iPhone, with eligible notifications forwarded to Apple Watch.
-It will use a separate read-only summary with original observation times, not
-the live control dashboard. No CloudKit setup or Watch app is available in the
-current build. See the [planned feature introduction](marketing/apple-remote-observation.md)
-for scope and limits; widgets follow only after real-device delivery validation.
+## Remote monitoring via iCloud
 
-## iOS Foreground Recovery
+Remote monitoring is available in AgentDeck 2.2.0 on the Mac, iPhone, and iPad.
+The iPhone app includes AgentDeck for Apple Watch (watchOS 10 or later).
+Enable iCloud and use the same Apple Account on the Mac and the devices you
+want to use. Keep the Mac awake, online, and running AgentDeck to share new
+observations. You can close the Dashboard window.
 
-The app handles iOS background/foreground transitions gracefully — WebSocket reconnects immediately on foregrounding, state syncs within milliseconds, and the terrarium animation resumes without flicker.
+1. On the Mac, open **Settings → Remote monitoring** and select **Enable sharing**.
+   The Mac shares encrypted counts of working and waiting sessions and attention
+   updates to your private iCloud database.
+2. On iPhone or iPad, open **Remote** and select **Enable remote monitoring**.
+   Local network pairing is optional for this view. Use **Direct** when you
+   want the paired dashboard and supported local controls.
+3. For a session list and available account usage limits, turn on **Share
+   session and usage details** on the Mac. Prompts, project and session names,
+   paths, transcripts, and provider credentials stay on the Mac.
+4. After the first summary appears, open **Remote settings → Enable
+   notifications** and allow notifications if prompted. Apple may forward
+   eligible alerts to your paired Watch. Open AgentDeck on the Watch for the
+   attention ring, session roster, usage dials, and complications.
 
-The development CloudKit PoC also includes opt-in Mac automatic publication and
-an account-scoped durable reader. iOS stores its files under the app container's
-`Library/Application Support/AgentDeck`, through `AgentDeckPaths`. A storage-only
-check is available in the PoC; a cloud fetch does not by itself prove persistence.
-Cold offline restoration with no local iCloud identity token remains withheld
-until online account verification. These controls remain excluded from Store
-configurations.
+Remote and the Watch are read-only. Only the Direct dashboard can send
+supported replies or approvals. When the Mac stops publishing, Remote keeps
+the original observation time and shows older observations as historical.
+Apple controls notification timing and forwarding.
+
+On the Mac, use **Stop sharing** to stop publishing updates. To also remove
+the summary, attention events, and notification subscriptions from iCloud,
+choose **Delete remote data…**. If the Mac is offline, deletion stays pending
+until it reconnects with the original Apple Account. Already delivered alerts
+may remain on your devices. On iPhone or iPad, **Remote settings → Stop
+receiving** clears that device's local summary and removes its notification
+subscription when it reaches iCloud. The Mac can continue sharing with your
+other devices.
+
+See the [privacy policy](https://puritysb.github.io/AgentDeck/#privacy) and the
+[technical description](apple-remote-observation.md) for data handling.
+
+## iOS foreground recovery
+
+When you return to the app, Direct reconnects to the paired daemon and
+refreshes session state. Remote refreshes its iCloud summary independently.
 
 ## Two-tier product: App Store app alone vs +CLI
 
@@ -114,7 +135,8 @@ The upgrade story lives here and in [appstore-feature-matrix.md](appstore-featur
 
 ## App Store Distribution
 
-Install [AgentDeck Dashboard from the App Store](https://apps.apple.com/app/id6784822497) on Mac, iPhone, or iPad. The Mac app runs the local hub; iPhone and iPad connect as companion dashboards. Updates are delivered through the App Store.
+Install [AgentDeck Dashboard from the App Store](https://apps.apple.com/app/id6784822497) on Mac, iPhone, or iPad. The Mac app runs the local hub, and the iPhone app
+includes the Watch app. Update through the App Store.
 
 The macOS build ships as a **self-contained Swift daemon** gated by the `AGENTDECK_APP_STORE` compile flag — no bundled Node.js, no bundled `adb`, no subprocess spawn, no AppleScript. User data lives in the app sandbox container (`~/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/`, not `~/.agentdeck/`) per Apple Review Guideline 2.5.2. D200H is reached only through the Ulanzi Studio WebSocket plugin, so AgentDeck requests no USB HID entitlement. The first-launch onboarding asks for Claude Code hook access via explicit NSOpenPanel consent. OpenClaw integration uses the Gateway-native WebSocket path (see §OpenClaw Gateway below), not a file-based identity. The app uses bundle ID `bound.serendipity.agent.deck`; see [RELEASING.md](../RELEASING.md) for independent channel delivery and build numbering.
 

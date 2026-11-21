@@ -1,6 +1,10 @@
-# Apple remote observation — planned feature introduction
+# Apple remote observation — archived prototype copy
 
-**2026-11-01 — development-only PoC; one user-assisted iPhone/Watch delivery route verified.**
+**Archived prototype copy from November 1, 2026.** Remote monitoring and the
+Watch app shipped in Apple 2.2.0. For setup, see the
+[Apple user guide](../apple-app.md#remote-monitoring-via-icloud).
+
+**Original November 1 checkpoint.** One user-assisted iPhone/Watch delivery route was verified.
 This is reusable preview copy, not an announcement of an available feature. A real response-wait alert, encrypted-summary read and offline-age check passed. The development PoC also passed physical iPhone cache/relaunch and local choice/one-time approval checks, plus user-operated Stream Deck+ keys. Quota and Production remain incomplete.
 The [technical design](../apple-remote-observation.md) owns the scope and gates;
 the [feature matrix](../appstore-feature-matrix.md) owns availability.

@@ -1,8 +1,9 @@
 # Apple remote observation — read-only monitoring
 
-**Product implementation: 2026-11-09, unreleased.** Standard macOS/iOS targets now
-include the read-only product path. The checkpoints below describe the earlier
-development experiment; they do not attest this new implementation or Production.
+**Shipping since Apple 2.2.0.** The Mac app publishes to private iCloud, and the
+iPhone, iPad and included Apple Watch apps read the shared activity.
+See the [Apple user guide](apple-app.md#remote-monitoring-via-icloud) for setup.
+The dated development checkpoints below describe what was verified on each build.
 
 ## Product contract and operation
 
@@ -489,14 +490,10 @@ without useful local work context is also a product no-go.
 
 ## Publication and operational boundary
 
-The current shipped app remains a LAN companion with macOS local notifications.
-This document selects a PoC architecture, not a shipping date, paid plan or uptime
-promise. Do not add Watch App Store badges or claim widgets/remote approvals.
-Before release, update Apple review notes (currently describing local-only
-notifications), privacy disclosures, settings help and release materials with
-the measured scope. Do not rewrite those current-build claims as if cloud code
-already exists. No App Groups are needed for the first PoC; no version bump,
-container creation, signing mutation, runtime restart or upload occurs here.
+The November 1 prototype was evaluated while the shipped app used local-network
+pairing and macOS local notifications. For the shipped iCloud experience, see
+the [App Store release notes](https://apps.apple.com/us/app/agentdeck-dashboard/id6784822497) and
+[privacy policy](https://puritysb.github.io/AgentDeck/#privacy).
 
 ## Primary references
 
