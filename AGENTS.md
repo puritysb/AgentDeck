@@ -151,7 +151,7 @@ The CLI command is `agentdeck` (`bridge/src/cli.ts`).
 
 Full command list: `agentdeck --help`, or [docs/cli.md](docs/cli.md) for the annotated reference.
 
-**Module flags**: `--local` (all device modules off), `--no-adb` (skip ADB reverse). There are no per-session `--no-mdns`/`--no-serial`/`--no-pixoo` flags — hardware modules are daemon-only and session bridges never activate them
+The daemon owns device modules, including ADB reverse. Managed commands accept `--local` and the existing `--no-adb` flags for compatibility.
 
 **Session sort weight** (`--weight <n>`, -9999..9999), **env-var default args** (`AGENTDECK_COMMANDER_ARGS`, `AGENTDECK_<AGENT>_ARGS`, `--no-env-args`) and the **node-pty macOS helper-mode repair** are specified in [.claude/rules/managed-sessions.md](.claude/rules/managed-sessions.md) and [docs/cli.md](docs/cli.md).
 
