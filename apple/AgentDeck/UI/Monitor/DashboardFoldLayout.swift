@@ -97,6 +97,11 @@ enum DashboardFoldLayout {
     ///   - attentionHeight: measured height of the attention card when one is
     ///     showing, else 0. Panels below it move down instead of being covered.
     ///   - showsSessions / showsSystem: the user's rail preferences.
+    /// Share of the upper pane the sand bed keeps in the stacked posture. The
+    /// habitat's own sand share (35%) left a thick band of floor above the
+    /// crease; the rest of the bed now lies below it, behind the deck (#799).
+    static let stackedUpperSandShare: CGFloat = 0.12
+
     static func frames(
         posture: DashboardFoldPosture,
         bounds: CGSize,
@@ -146,9 +151,14 @@ enum DashboardFoldLayout {
             let centreX = hasRail ? rail.maxX + paneGap : inner.minX
             let centre = CGRect(x: centreX, y: inner.minY, width: inner.maxX - centreX, height: inner.height)
             let timelineTop = centre.minY + attentionBlock
+            // Size the habitat so its waterline sits just above the crease and
+            // the remaining sand runs on under the control deck.
+            let waterHeight = upper.height * (1 - stackedUpperSandShare)
+            let habitatHeight = min(bounds.height - upper.minY,
+                                    max(upper.height, waterHeight / max(0.01, 1 - sandFraction)))
             return DashboardFoldFrames(
                 posture: posture,
-                terrarium: upper,
+                terrarium: CGRect(x: upper.minX, y: upper.minY, width: upper.width, height: habitatHeight),
                 deck: lower,
                 attention: CGRect(x: centre.minX, y: centre.minY, width: centre.width, height: 0),
                 sessions: showsSessions ? rail : nil,

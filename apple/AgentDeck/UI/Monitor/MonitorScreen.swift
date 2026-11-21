@@ -203,9 +203,9 @@ struct MonitorScreen: View {
             let fold = foldFrames(geo: geo, disconnected: disconnected)
             ZStack {
                 if let fold, fold.deck != nil {
-                    // The habitat stops at the crease; from there to the bottom
-                    // edge (crease band and tab bar included) the control deck
-                    // continues the sand bed the Timeline normally sits on.
+                    // The habitat's sand bed runs under the crease; from its end
+                    // to the bottom edge (tab bar included) the control deck
+                    // continues the sand the Timeline normally sits on.
                     VStack(spacing: 0) {
                         Color.clear.frame(height: fold.terrarium.maxY)
                         TerrariumColors.sandBase
