@@ -52,6 +52,9 @@ _attention = None
 _attention_session = None
 _attention_agent = None
 _attention_started = 0
+_blackout = None
+_dark_target = None
+_saved_brightness = None
 
 
 async def on_boot(apm):
@@ -65,6 +68,10 @@ def get_settings_json():
 
 def _light(waiting):
     global _light_owned, _light_waiting, _pulse_start, _pulse_brightness
+    if _dark_target is not None:
+        # The host display is asleep: the rear strip stays dark too.
+        _release_light()
+        return
     light = peripherals.ambient_light
     if not _light_owned:
         _light_owned = light.acquire()
@@ -94,6 +101,58 @@ def _release_light():
         peripherals.ambient_light.release()
     _light_owned = False
     _light_waiting = None
+
+
+def _display_target(event):
+    """Map a display_state event to None (normal), 0 (dark) or a dim percent.
+
+    `off` must look dark and `min` must stay readable. A missing `displayOn`
+    carries no information and leaves the screen as it is.
+    """
+    if "displayOn" not in event:
+        return _dark_target
+    if event["displayOn"] is not False:
+        return None
+    dim = event.get("dim")
+    dim = dim if isinstance(dim, dict) else {}
+    if dim.get("enabled") is False:
+        return None
+    if dim.get("mode") == "min":
+        level = dim.get("level")
+        return min(100, max(1, level)) if type(level) is int else 10
+    return 0
+
+
+def _set_dark(target):
+    """Follow the host display. Idempotent, so the daemon's periodic resend
+    and a changed dim level both land without a separate edge check."""
+    global _dark_target, _saved_brightness
+    if target == _dark_target:
+        return
+    screen = peripherals.screen
+    if target is None:
+        if _saved_brightness is not None:
+            screen.brightness(_saved_brightness)
+        _saved_brightness = None
+        _dark_target = None
+        if _blackout is not None:
+            _blackout.add_flag(lv.obj.FLAG.HIDDEN)
+        if _waiting_ids:
+            _light(True)
+        return
+    if _saved_brightness is None:
+        current = screen.brightness()
+        _saved_brightness = current if type(current) is int and current > 0 else 100
+    screen.brightness(target)
+    _dark_target = target
+    _release_light()
+    if _blackout is not None:
+        # Backlight 0 is not guaranteed to be black, so also paint black.
+        if target == 0:
+            _blackout.remove_flag(lv.obj.FLAG.HIDDEN)
+            _blackout.move_foreground()
+        else:
+            _blackout.add_flag(lv.obj.FLAG.HIDDEN)
 
 
 def _color(rgb):
@@ -230,7 +289,7 @@ def _animate_creature():
 
 async def _animate():
     while True:
-        if _attention_session is not None:
+        if _attention_session is not None and _dark_target != 0:
             _animate_creature()
             _animate_attention()
         await asyncio.sleep_ms(60)
@@ -329,6 +388,8 @@ async def _listen():
                         await asyncio.wait_for(connection.send(1, b'{"type":"query_usage"}'), 5)
                 if negotiated and event and event.get("type") == "usage_update":
                     _receive_usage(event)
+                if negotiated and event and event.get("type") == "display_state":
+                    _set_dark(_display_target(event))
                 if negotiated and event and event.get("type") == "sessions_list":
                     _show_sessions(event["sessions"])
                     last_roster = now
@@ -339,12 +400,15 @@ async def _listen():
             _show("Offline - reconnecting")
             _clear_usage()
             _reset_attention()
+            # Without a host signal the dock must not stay dark.
+            _set_dark(None)
         except Exception as error:
             # Keep the pairing credential out of diagnostics.
             print("AgentDeck runtime error:", type(error).__name__)
             _show("Runtime error: " + type(error).__name__)
             _clear_usage()
             _reset_attention()
+            _set_dark(None)
             return
         finally:
             await connection.close()
@@ -435,7 +499,7 @@ def _new_usage_panel(x, title):
 
 
 async def on_start():
-    global _screen, _status
+    global _screen, _status, _blackout
     if _screen is None:
         _screen = lv.obj()
         _screen.set_style_bg_color(_color(BACKGROUND_RGB), 0)
@@ -447,6 +511,13 @@ async def on_start():
         for index in range(VISIBLE_ROWS):
             _rows.append(_new_tile(8 + (index % 3) * 103, 34 + (index // 3) * 68))
         _usage_rows.extend((_new_usage_panel(8, "Claude"), _new_usage_panel(162, "Codex")))
+        _blackout = lv.obj(_screen)
+        _blackout.set_pos(0, 0)
+        _blackout.set_size(lv.pct(100), lv.pct(100))
+        _blackout.set_style_bg_color(lv.color_hex(0), 0)
+        _blackout.set_style_border_width(0, 0)
+        _blackout.set_style_radius(0, 0)
+        _blackout.add_flag(lv.obj.FLAG.HIDDEN)
     _show("Connecting...")
     _clear_usage()
     lv.scr_load(_screen)
@@ -476,6 +547,7 @@ async def on_pause():
         if task is not None:
             task.cancel()
     _reset_attention()
+    _set_dark(None)
     for task in tasks:
         if task is not None:
             try:
