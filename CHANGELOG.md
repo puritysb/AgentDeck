@@ -101,6 +101,15 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 - **4.2-inch e-ink.** A waiting session's question wraps to as many lines as
   fit instead of being cut to one.
 
+## 2026-11-21 — Apple 2.2.2 (macOS draft)
+
+- Compatible dashboards connected over optional device TLS can receive
+  display power and dimming state when the device has the display-state
+  permission. [#820](https://github.com/puritysb/AgentDeck/pull/820)
+- The Mac App Store draft restores a 28-second aquarium preview and leads
+  with the aquarium and attention flow. The English, Korean and Japanese
+  listings each have seven screenshots. [#806](https://github.com/puritysb/AgentDeck/issues/806)
+
 ## 2026-11-20 — Apple 2.2.1 (iOS TestFlight)
 
 **Distribution as of November 21.** iOS build 12601 was uploaded to
