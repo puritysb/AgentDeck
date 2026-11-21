@@ -12,6 +12,32 @@ Copy-ready text for the App Store Connect submission form. Each field respects A
 **Content Rating**: 4+ (no user-generated content, no ads, no external links to age-restricted sites)
 **Price**: Free
 
+## Prepared macOS 2.2.2 update text
+
+For the Mac App Store draft. The localized notes cover changes since public
+macOS 2.2.0. The draft uses the [verified macOS media](../apple/appstore-submission/macos-next/selection.json).
+
+### English — macOS What's New
+
+```text
+• Compatible devices connected over optional TLS can follow display power and dimming when you grant the device access to display state.
+• The Mac App Store page brings back the aquarium preview and adds screenshots of the Dashboard, attention requests and Work.
+```
+
+### Korean — macOS 새로운 기능
+
+```text
+• TLS로 연결한 호환 기기에 화면 상태 읽기 권한을 부여하면, 기기가 화면 켜짐·꺼짐과 밝기 조절 상태를 반영할 수 있습니다.
+• Mac App Store 페이지에 수조 프리뷰가 돌아왔습니다. 대시보드, 응답 대기 상태, Work를 보여 주는 스크린샷도 보강했습니다.
+```
+
+### Japanese — macOS このバージョンの新機能
+
+```text
+• オプションの TLS 接続を使う対応デバイスに表示状態の読み取りを許可すると、画面のオン・オフや調光状態を反映できるようになりました。
+• Mac App Store ページに水槽のプレビューが戻りました。ダッシュボード、応答待ち、Work のスクリーンショットも追加しました。
+```
+
 ## Prepared macOS 2.2.0 update text
 
 Minor milestone (Remote monitoring): promotional text and description add optional encrypted iCloud sharing. Full listing in

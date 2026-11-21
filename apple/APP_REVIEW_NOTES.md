@@ -685,9 +685,12 @@ Contact: admin@foundby.kr
 <!-- notes-field:begin -->
 
 ```text
-NO ACCOUNT REQUIRED. Review on a clean Mac with only AgentDeck installed; no external process or terminal setup is required for these instructions.
+NO ACCOUNT REQUIRED. Review on a clean Mac with only AgentDeck installed.
 
-NEW IN 2.2.0 — MACOS ONLY
+NEW IN 2.2.2 — MACOS ONLY
+Opt-in TLS devices can read display power and dimming with the display-state permission. The Store media uses synthetic sessions.
+
+REMOTE MONITORING (INTRODUCED IN 2.2.0)
 Settings > Remote monitoring: optional sharing of encrypted work counts and attention updates to the user's private CloudKit database for the iPhone, iPad and Watch apps (same Apple Account; no AgentDeck server). Session/allowance details are a separate switch. No prompts, project names, paths or credentials are uploaded. Stop sharing and Delete remote data are durable offline. Off by default.
 
 WHAT IT DOES
@@ -695,7 +698,7 @@ The sandboxed Swift daemon monitors user-enabled agent integrations, serves Dash
 
 REVIEW WITHOUT AGENTS OR HARDWARE
 1. Choose an aquarium appearance. Skip integrations/devices and choose Open Dashboard.
-2. Select Work in the Dashboard header. On a clean Mac, an empty work list is expected. Open Device Preview from the menu bar for bundled synthetic sessions and renderers.
+2. Select Work in the Dashboard header. Open Device Preview from the menu bar for bundled synthetic sessions and renderers.
 3. Devices > Pair Device opens optional companion approval/QR pairing. Settings > Dashboard > Set Up AgentDeck reopens setup.
 
 SHORTCUTS / NOTIFICATIONS

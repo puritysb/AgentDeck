@@ -111,6 +111,33 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### macOS 2.2.2 draft decision (2026-11-21)
+
+| Target / route | Last verified public build | Draft | Proposed build | User-visible reason |
+| --- | --- | --- | --- | --- |
+| macOS / Mac App Store | 2.2.0 / 11901 | 2.2.2, Prepare for Submission | Next CI-assigned macOS build | Patch for the existing 2.2 device support. Compatible devices with an opted-in TLS connection can receive display power and dimming state when authorized. The Store listing regains the aquarium preview and ordered screenshots. |
+
+The [public macOS build](https://github.com/puritysb/AgentDeck/actions/runs/43679291879)
+came from `f9dd73e21424`. Use a macOS-only Xcode 27 workflow dispatch for
+2.2.2. The [verified draft media](https://github.com/puritysb/AgentDeck/issues/806#issuecomment-7063659448)
+contains seven screenshots and one preview per locale. Keep manual release
+selected and hold submission. The separate iOS 2.2.1 TestFlight delivery remains
+on its own build.
+
+**App Store Connect readback (2026-11-21 23:56 KST).** The [macOS-only upload run](https://github.com/puritysb/AgentDeck/actions/runs/44911991871)
+used Xcode 27.1 to archive and verify the exported PKG from `8e67e3ef7925`.
+Apple processed build **12801** as `VALID`, and the build is attached to macOS
+2.2.2. English (US), Korean and Japanese What's New text matches the
+[prepared copy](docs/appstore-metadata-draft.md#prepared-macos-222-update-text).
+Each locale retains the verified seven screenshots and one processed preview.
+The draft stays in `PREPARE_FOR_SUBMISSION` with manual release selected.
+App Store Connect lists no active macOS review submission.
+
+The [pre-release verification receipt](verification/receipts/2026-11-21-8e67e3e.json)
+records the passing automated run, including the macOS Release build,
+XCTest and App Store submission bundle checks. Physical lab checks were
+unattested in that run.
+
 ### Apple 2.2.1 release decision (2026-11-20)
 
 Readback first: App Store Connect (`asc-certificates.yml store-status`, run
