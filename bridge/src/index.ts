@@ -457,14 +457,12 @@ export async function startSession(opts: SessionOptions): Promise<void> {
 
   // ===== Device modules =====
   const moduleConfigs: ModuleConfigs = {
-    // "All off, then add back ADB" rather than a literal list of the modules
-    // that were known when this was written: initModules() reads an absent key
-    // as 'auto', so every module added since arrived here switched ON. That is
-    // how `idotmatrix` ended up spawning a Python BLE client per session
-    // bridge, duplicating the daemon's own.
-    ...(opts.modules ?? { ...allModulesOff(), adb: 'auto' }),
+    // initModules() reads an absent key as 'auto', including new modules.
+    ...allModulesOff(),
+    ...opts.modules,
     // Session bridges are internal hook/PTY processes. Only the daemon hub is
-    // discoverable on the LAN; never advertise per-session project metadata.
+    // discoverable on the LAN or owns the Android dashboard's USB endpoint.
+    adb: false,
     mdns: false,
     broadcast: false,
   };

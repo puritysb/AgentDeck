@@ -1061,7 +1061,7 @@ program
   .option('--no-update-check', 'Skip version check and auto-update')
   .option('--local', 'Disable all device modules (WS only)')
   // --no-mdns removed: session bridges never advertise mDNS (daemon only)
-  .option('--no-adb', 'Disable ADB reverse setup')
+  .option('--no-adb', 'Accepted for compatibility; ADB reverse is daemon-owned')
   .option('--no-postit', 'Disable terminal tab title updates')
   .option('--wake-word', 'Enable wake word voice assistant ("오픈클로")')
   .option('--remote-daemon', 'Opt in to attaching this session to a daemon on another machine (gates --daemon-host and mDNS discovery)')
@@ -1085,16 +1085,7 @@ program
       daemonHost: opts.daemonHost,
       daemonToken: opts.daemonToken,
       weight: opts.weight,
-      modules: opts.local ? allModulesOff() : {
-        // Off by default, ADB back on: a session bridge is an internal hook/PTY
-        // process. Only the daemon hub advertises itself or drives devices —
-        // and spelling that as "all off, then add back" is what stops the next
-        // module from arriving as an implicit 'auto' here (idotmatrix did, and
-        // every session spawned a second Python BLE client alongside the
-        // daemon's).
-        ...allModulesOff(),
-        adb: opts.adb !== false ? 'auto' : false,
-      },
+      modules: allModulesOff(),
     });
   });
 
@@ -1105,7 +1096,7 @@ program
   .option('-c, --command <cmd>', 'Command to spawn', 'codex')
   .option('-d, --debug', 'Enable debug logging')
   .option('--local', 'Disable all device modules (WS only)')
-  .option('--no-adb', 'Disable ADB reverse setup')
+  .option('--no-adb', 'Accepted for compatibility; ADB reverse is daemon-owned')
   .option('--no-postit', 'Disable terminal tab title updates')
   .option('--no-codex-hooks', 'Skip ~/.codex/config.toml hook install (terminal UI only; lifecycle monitoring is unavailable)')
   .option('--remote-daemon', 'Opt in to attaching this session to a daemon on another machine (gates --daemon-host and mDNS discovery)')
@@ -1148,12 +1139,7 @@ program
       daemonToken: opts.daemonToken,
       weight: opts.weight,
       codexHooksExpected: opts.codexHooks !== false,
-      modules: opts.local ? allModulesOff() : {
-        // See the claude action: all off, ADB back on. Session bridges are
-        // internal hook/PTY processes; only the daemon hub drives devices.
-        ...allModulesOff(),
-        adb: opts.adb !== false ? 'auto' : false,
-      },
+      modules: allModulesOff(),
     });
   });
 
@@ -1164,7 +1150,7 @@ program
   .option('-c, --command <cmd>', 'Command to spawn', 'opencode')
   .option('-d, --debug', 'Enable debug logging')
   .option('--local', 'Disable all device modules (WS only)')
-  .option('--no-adb', 'Disable ADB reverse setup')
+  .option('--no-adb', 'Accepted for compatibility; ADB reverse is daemon-owned')
   .option('--no-postit', 'Disable terminal tab title updates')
   .option('--no-opencode-hooks', 'Skip OpenCode observer plugin install')
   .option('--remote-daemon', 'Opt in to attaching this session to a daemon on another machine (gates --daemon-host and mDNS discovery)')
@@ -1206,11 +1192,7 @@ program
       daemonHost: opts.daemonHost,
       daemonToken: opts.daemonToken,
       weight: opts.weight,
-      modules: opts.local ? allModulesOff() : {
-        // See the claude action: all off, ADB back on.
-        ...allModulesOff(),
-        adb: opts.adb !== false ? 'auto' : false,
-      },
+      modules: allModulesOff(),
     });
   });
 
@@ -1241,7 +1223,7 @@ program
       daemonHost: opts.daemonHost,
       daemonToken: opts.daemonToken,
       weight: opts.weight,
-      modules: opts.local ? allModulesOff() : undefined,
+      modules: allModulesOff(),
     });
   });
 

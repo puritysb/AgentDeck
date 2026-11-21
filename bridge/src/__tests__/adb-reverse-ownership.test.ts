@@ -35,10 +35,39 @@ describe('ADB reverse endpoint ownership', () => {
     expect(creates()).toHaveLength(0); expect(adb.log).toHaveBeenCalledTimes(1);
     expect(adb.log.mock.calls[0][0]).toContain('may own it');
   });
+  it('repairs a returning managed USB device without remapping other devices', async () => {
+    vi.useFakeTimers();
+    let roster = 'OTHER\tdevice\n192.0.2.1:5555\tdevice\n';
+    adb.run.mockImplementation(async (_file: string, args: string[]) => ({
+      stdout: args[0] === 'devices'
+        ? `List of devices attached\n${roster}`
+        : 'UsbFfs tcp:9120 tcp:9121',
+    }));
+    const stop = api.startAdbReversePolling(9120, {
+      intervalMs: 10,
+      managedUsbSerials: new Set(['USB', '192.0.2.1:5555']),
+    });
+    const mutations = () => adb.run.mock.calls
+      .map(call => call[1])
+      .filter(args => args[2] === 'reverse' && args[3] !== '--list');
+    try {
+      await vi.advanceTimersByTimeAsync(10);
+      expect(mutations()).toEqual([]);
+      roster += 'USB\tdevice\n';
+      await vi.advanceTimersByTimeAsync(10);
+      expect(mutations()).toEqual([['-s', 'USB', 'reverse', 'tcp:9120', 'tcp:9120']]);
+    } finally {
+      stop();
+    }
+  });
   it('refuses unknown or failed probes instead of treating them as empty', async () => {
-    listing = 'bad response'; await api.setupAdbReverse(9123); expect(creates()).toHaveLength(0);
+    const opts = { managedUsbSerials: new Set(['USB']) };
+    listing = 'bad response';
+    await api.setupAdbReverse(9123, opts);
+    expect(adb.run).toHaveBeenCalledTimes(2);
     adb.run.mockImplementation(async (_file:string,args:string[]) => { if(args[0] === 'devices')return {stdout:'List of devices attached\nUSB\tdevice'};throw new Error('permission denied'); });
-    await api.setupAdbReverse(9123); expect(creates()).toHaveLength(0);
+    await api.setupAdbReverse(9123, opts);
+    expect(adb.run).toHaveBeenCalledTimes(4);
   });
   it('never retries a refused no-rebind as an unconditional replacement', async () => {
     adb.run.mockImplementation(async (_file:string,args:string[]) => {
