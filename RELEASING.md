@@ -21,6 +21,22 @@ component matches. Minor and patch values are ignored in both directions for
 compatibility: for example, `1.0.9` and `1.3.0` are compatible regardless of which
 side is newer.
 
+## Close out a release branch
+
+When a release ships from a branch, verify that the next build from `master` will include the shipped fixes. Record the channel, version, build or artifact identifier, and the full source commit from the build that produced it. Link the build run or provenance record. If a submission was replaced, use the build that actually shipped. Platforms sharing a version can ship from different commits.
+
+Set `shipped_sha` to the recorded commit. Run the ancestry check only after the fetch succeeds.
+
+```sh
+git fetch origin && git merge-base --is-ancestor "$shipped_sha" origin/master
+```
+
+- If the ancestry check exits **0**, remote `master` contains the shipped commit. Record the verified `master` SHA in the release record or merge PR.
+- If it exits **1**, inspect the changes through the shipped commit. If fixes are missing, open or continue a PR into `master` within the current authorization. Prefer a merge commit that preserves the shipped history. Review any later branch work separately. After the PR merges, fetch again and repeat the check.
+- If the fetch fails or the ancestry check reports another error, keep the integration status unverified until the remote history and both commits are available.
+
+If the project intentionally used a squash, cherry-pick or selective backport, record the integration commit, compare each shipped fix and its tests against current `origin/master`, and explain any intentional differences. Keep a durable reference to the exact shipped source. Before deleting the release branch or its worktree, account for later commits, local changes and any active owner. If integration is pending at handoff, include the shipped SHA, the open PR or missing fixes, and the next action.
+
 ## Choosing a version
 
 **Version scope follows the user-visible contract, not implementation effort,
@@ -114,6 +130,22 @@ which would build and upload both platforms. The build goes to an external
 TestFlight group so the #799 reporter can verify it on hardware before App Store
 submission. Evidence so far is the iPhone Duo simulator (iOS 27.1) and
 `DashboardFoldLayoutTests`.
+
+### Stream Deck and Ulanzi 2.1.1 marketplace submissions
+
+Both packages were submitted on 2026-11-16 from the source tree recorded in
+[fbcbc33f16d94c93efdf709aacf8369b8ab8812f](https://github.com/puritysb/AgentDeck/commit/fbcbc33f16d94c93efdf709aacf8369b8ab8812f).
+The saved submission files matched the following SHA-256 digests on 2026-11-21.
+
+| Channel | Submitted file SHA-256 | Marketplace readback on 2026-11-21 |
+| --- | --- | --- |
+| Stream Deck 2.1.1.0 | `ad29851c0564c0c790dd776158c2e297f0ebac52297cb024e4bf4b3d6b48e250` | 2.1.1 in review, 2.1 public. Automatic publication was off at submission. [Elgato receipt](marketplace/elgato/LISTING.md) |
+| Ulanzi 2.1.1 | `dbbdf6e14fd996e697c5ddf78814d7188450c165139491b8f73511108bb32e6c` | 2.1.1 public for D200, D200H and D200X. [Workshop receipt](marketplace/ulanzi/LISTING.md) |
+
+The latest GitHub Release for each plugin was 2.1.0 at readback. The hashes
+identify the submitted files. Future builds use the dependencies on their own
+source commit. Check the four assigned dials on the DRM-processed Elgato build
+before publishing it.
 
 ### Apple 2.2.0 release decision (2026-11-14)
 

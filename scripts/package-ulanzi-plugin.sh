@@ -28,7 +28,11 @@ ARCHIVE="$ROOT/dist/${NAME}.zip"
 # resvg render identically ONLY at the same version, and that identity is the
 # whole argument for having dropped the native one.
 RESVG_WASM_VERSION="2.6.2"
-WS_VERSION="^8.20.0"
+WS_VERSION=$(node -e '
+  const { createRequire } = require("node:module");
+  const workspaceRequire = createRequire(process.argv[1]);
+  process.stdout.write(workspaceRequire("ws/package.json").version);
+' "$PKG/package.json")
 
 echo "==> clean $OUT"
 rm -rf "$PKG/dist"

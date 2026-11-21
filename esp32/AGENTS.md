@@ -1,6 +1,6 @@
 # ESP32 firmware — provisioning, OTA, and client contract
 
-Nested instruction file for work under `esp32/`. Claude Code loads it on the first file read here; Codex appends it to the root [../AGENTS.md](../AGENTS.md) when its working directory is under `esp32/` (both must fit Codex's 32 KiB cap or this file is skipped). Read [../.claude/rules/esp32-flash.md](../.claude/rules/esp32-flash.md) (board map, merged factory image, flash preflight refusal, post-write reset, serial-suspend lease) before flashing, and the `esp32-heap-discipline` skill (`.agents/skills/esp32-heap-discipline/SKILL.md`) before writing anything that allocates. Board list, flash safety, and WiFi recovery details live in [../docs/esp32.md](../docs/esp32.md). Do not restate rules here; add them to the files above.
+Nested instruction file for work under `esp32/`. Apply it together with the root [AGENTS.md](../AGENTS.md). Read [../.claude/rules/esp32-flash.md](../.claude/rules/esp32-flash.md) (board map, merged factory image, flash preflight refusal, post-write reset, serial-suspend lease) before flashing, and the `esp32-heap-discipline` skill (`.agents/skills/esp32-heap-discipline/SKILL.md`) before writing anything that allocates. Board list, flash safety, and WiFi recovery details live in [../docs/esp32.md](../docs/esp32.md). Do not restate rules here; add them to the files above.
 
 ## WiFi provisioning and OTA
 

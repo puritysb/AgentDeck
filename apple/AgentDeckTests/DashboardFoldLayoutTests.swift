@@ -76,7 +76,15 @@ final class DashboardFoldLayoutTests: XCTestCase {
         let frames = try XCTUnwrap(DashboardFoldLayout.frames(
             posture: posture, bounds: deskBounds, sandFraction: sand,
             attentionHeight: 150, showsSessions: true, showsSystem: true))
-        XCTAssertEqual(frames.terrarium.maxY, deskCrease.minY)
+        // Mostly water above the crease: only a thin sand band stays there and
+        // the rest of the bed continues under the deck.
+        let upperHeight = deskCrease.minY
+        let waterline = frames.terrarium.minY + frames.terrarium.height * (1 - sand)
+        XCTAssertEqual(waterline, upperHeight * (1 - DashboardFoldLayout.stackedUpperSandShare), accuracy: 0.5)
+        XCTAssertLessThan(waterline, deskCrease.minY)
+        XCTAssertGreaterThan(frames.terrarium.maxY, deskCrease.maxY)
+        XCTAssertLessThanOrEqual(frames.terrarium.maxY, deskBounds.height)
+        XCTAssertEqual(frames.notice, CGRect(x: 0, y: 0, width: deskBounds.width, height: upperHeight))
         XCTAssertEqual(frames.deck?.minY, deskCrease.maxY)
         for rect in [frames.attention, try XCTUnwrap(frames.sessions), frames.timeline] {
             XCTAssertGreaterThanOrEqual(rect.minY, deskCrease.maxY, "\(rect) is not on the control deck")
