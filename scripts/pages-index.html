@@ -649,11 +649,12 @@ html body :target { scroll-margin-block-start: 0; }
         <article class="access-card">
           <span class="access-role" data-i18n="companion.role">Optional · Companion apps</span>
           <h3 data-i18n="companion.h">Keep sessions in view</h3>
-          <p data-i18n="companion.p">iPhone, iPad, and Android mirror the hub over your local network. They do not run the hub themselves.</p>
+          <p data-i18n="companion.p">Connect iPhone, iPad, and Android to the hub over your local network. With AgentDeck 2.2.0, a Mac can also share a read-only activity summary over private iCloud to your iPhone, iPad, and Apple Watch.</p>
           <div class="access-actions">
             <a class="btn btn-ghost" href="https://apps.apple.com/app/id6784822497?pt=128040795&amp;ct=website-202610&amp;mt=8" data-i18n="companion.apple">iPhone &amp; iPad</a>
             <a class="btn btn-ghost" href="https://play.google.com/store/apps/details?id=dev.agentdeck" data-i18n="companion.android">Android · Google Play</a>
-            <a class="btn btn-ghost" href="https://github.com/puritysb/AgentDeck/blob/master/docs/android.md#quick-start-google-play-or-github-apk" data-i18n="companion.guide">Setup guide</a>
+            <a class="btn btn-ghost" href="https://github.com/puritysb/AgentDeck/blob/master/docs/apple-app.md#remote-monitoring-via-icloud" data-i18n="companion.remote">iCloud &amp; Watch setup</a>
+            <a class="btn btn-ghost" href="https://github.com/puritysb/AgentDeck/blob/master/docs/android.md#quick-start-google-play-or-github-apk" data-i18n="companion.guide">Android setup</a>
           </div>
         </article>
         <article class="access-card">
@@ -696,10 +697,10 @@ html body :target { scroll-margin-block-start: 0; }
       <h3 data-i18n="view.h">Work, then watch</h3>
       <p data-i18n="view.p">Live 3D creatures on Apple and Android LCD screens. Mobile viewing mode fades the panels and brings the habitat closer. E-ink keeps its own calm, static backdrop.</p>
     </a>
-    <a class="card" href="https://github.com/puritysb/AgentDeck/blob/master/docs/apple-app.md#collaboration-beta">
-      <div class="ci" data-i18n="collab.ci">Collaboration</div>
+    <a class="card" href="https://github.com/puritysb/AgentDeck/blob/master/docs/apple-app.md#work-on-mac">
+      <div class="ci" data-i18n="collab.ci">Work on Mac</div>
       <h3 data-i18n="collab.h">Follow the handoff</h3>
-      <p data-i18n="collab.p">See the selected task, recent task history, and reported subagent activity. Busy scenes keep up to eight foreground residents while the roster retains every session.</p>
+      <p data-i18n="collab.p">Open Work from the Dashboard to see a task's history, reported subagents, background jobs, and confirmed message deliveries.</p>
     </a>
     <a class="card" href="https://github.com/puritysb/AgentDeck/blob/master/docs/android.md#wireless-app-updates">
       <div class="ci" data-i18n="usage.ci">Across your devices</div>
@@ -814,8 +815,8 @@ html body :target { scroll-margin-block-start: 0; }
   <section id="privacy" class="policy" aria-labelledby="privacy-title">
     <h2 id="privacy-title">Privacy Policy</h2>
     <p class="disclaimer" data-i18n="policy.canonical"></p>
-    <p><strong>Effective date:</strong> July 15, 2026</p>
-    <p>AgentDeck Dashboard is a local monitoring and evaluation app for AI coding agent sessions. It does not require an account,
+    <p><strong>Effective date:</strong> July 15, 2026 · <strong>Updated:</strong> November 21, 2026</p>
+    <p>AgentDeck Dashboard is a local monitoring and evaluation app for AI coding agent sessions. It does not require an AgentDeck account,
       does not show ads, does not sell personal data, and does not operate a remote analytics service.</p>
     <h3>Data Stored On Device</h3>
     <p>AgentDeck stores app settings, local pairing state, session timeline data, cached evaluation results, and optional hardware
@@ -825,6 +826,23 @@ html body :target { scroll-margin-block-start: 0; }
       Kiro CLI observation, iPhone/iPad dashboard pairing, voice input, ESP32, Pixoo, or D200H hardware support. User-selected hook
       configuration files are accessed only after explicit file picker consent, and Kiro observation reads the user's own
       <code>~/.kiro</code> folder only after they grant access to it in Settings; without that grant AgentDeck observes nothing.</p>
+    <h3>Optional iCloud Remote Monitoring</h3>
+    <p>When you enable Remote monitoring in the Mac app, AgentDeck stores encrypted counts of working and waiting sessions
+      and attention events in your private iCloud database. If you also turn on <strong>Share session and usage details</strong>,
+      the summary includes agent types, session states and start times, background and child-task counts, and available usage
+      limits with observation and reset times. Prompts, session and project names, file paths, transcripts, and provider
+      credentials stay on the Mac for this feature. AgentDeck does not operate a relay or receive these records.</p>
+    <p>AgentDeck on your iPhone, iPad, and Apple Watch can read the summary using the same Apple Account. Optional notifications
+      use Apple's notification service and may appear on a paired Apple Watch. Alerts contain no prompts, project names, or
+      session text. The apps can cache the last observation on your devices and show its original time.</p>
+    <p>The app stops showing a shared summary seven days after publication. The latest summary remains in iCloud until
+      the Mac replaces it or you delete it. Attention events are eligible for cleanup after 24 hours, when the app can
+      reach iCloud.</p>
+    <p>On the Mac, <strong>Stop sharing</strong> stops new observations. Use <strong>Delete remote data…</strong> to remove
+      the shared summary, attention events, and associated notification subscriptions from iCloud. If the Mac is offline,
+      deletion stays pending until it reconnects with the original Apple Account. Already delivered alerts may remain on
+      your devices. On iPhone or iPad, <strong>Stop receiving</strong> clears that device's local summary and removes its
+      subscription when it can reach iCloud.</p>
     <h3>Optional Remote Model Services</h3>
     <p>Evaluation runs on the on-device Foundation Models backend by default, which contacts no network endpoint. The user may
       instead select an opt-in remote backend and supply the endpoint and their own credential. When they do, AgentDeck sends the
@@ -906,9 +924,9 @@ html body :target { scroll-margin-block-start: 0; }
         "view.ci": "네이티브 수족관",
         "view.h": "작업을 보고, 수족관을 감상하고",
         "view.p": "Apple과 Android LCD 화면의 실시간 3D 크리처. 모바일 감상 모드는 패널을 숨기고 수족관을 가까이 보여줍니다. 전자책은 차분한 정적 배경을 사용합니다.",
-        "collab.ci": "협업",
+        "collab.ci": "Mac의 Work 화면",
         "collab.h": "작업 인계를 따라가세요",
-        "collab.p": "선택한 작업, 최근 작업 기록, 보고된 서브에이전트 활동을 확인하세요. 화면에는 최대 8개 크리처를 읽기 쉽게 배치하고 전체 세션은 목록에 유지합니다.",
+        "collab.p": "대시보드에서 Work를 열면 작업 기록, 보고된 서브에이전트, 백그라운드 작업과 전달이 확인된 메시지를 볼 수 있습니다.",
         "usage.ci": "여러 기기에서",
         "usage.h": "필요한 정보를 가까이",
         "usage.p": "제공 가능한 Claude·Codex·z.ai/GLM 사용량을 화면에 맞게 표시합니다. Android GitHub APK는 설정에서 무선 업데이트하고, 스토어 설치본은 해당 스토어를 사용합니다.",
@@ -929,10 +947,11 @@ html body :target { scroll-margin-block-start: 0; }
         'hub.npm': 'CLI · macOS / Windows / Linux',
         'companion.role': '선택 · 컴패니언 앱',
         'companion.h': '어디서든 세션 확인',
-        'companion.p': 'iPhone·iPad·Android가 로컬 네트워크에서 허브 화면을 이어받습니다. 앱 자체가 허브를 실행하지는 않습니다.',
+        'companion.p': 'iPhone·iPad·Android는 로컬 네트워크에서 허브에 연결합니다. AgentDeck 2.2.0부터는 Mac에서 개인 iCloud로 활동 요약을 공유하고 iPhone·iPad·Apple Watch에서 읽기 전용으로 볼 수 있습니다.',
         'companion.apple': 'iPhone · iPad',
         'companion.android': 'Android · Google Play',
-        'companion.guide': '설정 가이드',
+        'companion.remote': 'iCloud 및 Watch 설정',
+        'companion.guide': 'Android 설정',
         'hardware.role': '선택 · 하드웨어 컨트롤',
         'hardware.h': '책상 위에서 직접 조종',
         'hardware.p': 'Stream Deck 또는 Ulanzi D200H/D200X를 각 제조사의 마켓플레이스에서 추가하세요.',
@@ -1020,9 +1039,9 @@ html body :target { scroll-margin-block-start: 0; }
         "view.ci": "ネイティブ水槽",
         "view.h": "作業を見守り、水槽を楽しむ",
         "view.p": "AppleとAndroid LCD画面で動く3Dクリーチャー。モバイルの鑑賞モードはパネルを隠して水槽に近づきます。電子ペーパーには落ち着いた静的背景を使います。",
-        "collab.ci": "コラボレーション",
+        "collab.ci": "MacのWork画面",
         "collab.h": "作業の引き継ぎを追う",
-        "collab.p": "選択したタスク、最近の履歴、報告されたサブエージェントの活動を確認できます。手前のクリーチャーは最大8体に整理し、全セッションは一覧に残します。",
+        "collab.p": "ダッシュボードでWorkを開くと、タスクの履歴、報告されたサブエージェント、バックグラウンド処理、配信が確認されたメッセージを表示できます。",
         "usage.ci": "さまざまなデバイスで",
         "usage.h": "必要な情報を手元に",
         "usage.p": "利用可能なClaude・Codex・z.ai/GLM使用量を画面に合わせて表示。Android GitHub APKは設定から無線更新し、ストア版は各ストアで更新します。",
@@ -1043,10 +1062,11 @@ html body :target { scroll-margin-block-start: 0; }
         'hub.npm': 'CLI · macOS / Windows / Linux',
         'companion.role': 'オプション · コンパニオンアプリ',
         'companion.h': 'どこでもセッションを確認',
-        'companion.p': 'iPhone・iPad・Androidはローカルネットワーク経由でハブを映します。アプリ自体がハブを実行するわけではありません。',
+        'companion.p': 'iPhone・iPad・Androidはローカルネットワーク経由でハブに接続します。AgentDeck 2.2.0では、MacからプライベートなiCloudにアクティビティの概要を共有し、iPhone・iPad・Apple Watchで読み取り専用の概要を確認できます。',
         'companion.apple': 'iPhone · iPad',
         'companion.android': 'Android · Google Play',
-        'companion.guide': '設定ガイド',
+        'companion.remote': 'iCloudとWatchの設定',
+        'companion.guide': 'Androidの設定',
         'hardware.role': 'オプション · ハードウェア操作',
         'hardware.h': '机の上から直接操作',
         'hardware.p': 'Stream DeckまたはUlanzi D200H/D200Xを各メーカーのマーケットプレイスから追加できます。',

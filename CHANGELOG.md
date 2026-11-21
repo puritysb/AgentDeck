@@ -101,7 +101,11 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 - **4.2-inch e-ink.** A waiting session's question wraps to as many lines as
   fit instead of being cut to one.
 
-## 2026-11-20 — Apple 2.2.1
+## 2026-11-20 — Apple 2.2.1 (iOS TestFlight)
+
+**Distribution as of November 21.** iOS build 12601 was uploaded to
+TestFlight. The public iPhone, iPad and Mac App Store version is 2.2.0.
+[Upload record](https://github.com/puritysb/AgentDeck/actions/runs/44852515661)
 
 **iPhone Duo.** On the unfolded inner display, the Dashboard lays out around
 the fold instead of across it. Held like a book, the attention card and the
@@ -111,11 +115,16 @@ attention card, the Sessions/System list and the Timeline sit on the lower
 half within reach. The cover display and a fully flat inner display keep the
 existing layouts; on the flat display the attention card now fits between the
 side panels instead of covering them. Other iPhone and iPad layouts are
-unchanged. Verified in the iPhone Duo simulator (iOS 27.1); physical-device
-feedback is requested through external TestFlight.
+unchanged. The layout was checked in the iPhone Duo simulator (iOS 27.1).
+Physical-device feedback on build 12501 led to raising the waterline above the
+crease in build 12601.
 [#800](https://github.com/puritysb/AgentDeck/pull/800)
+· [Follow-up](https://github.com/puritysb/AgentDeck/commit/35100ce96)
 
 ## 2026-11-20 — npm 2.1.4
+
+**Published on npm.** The setup, bridge, hooks and shared packages are all
+available at 2.1.4.
 
 - List an `agentdeck claude` session once. With the CLI daemon running, the
   session also appeared as a second, observed session after its first prompt.
@@ -125,6 +134,8 @@ feedback is requested through external TestFlight.
   reports "not prepared" and the panels stay disconnected until you run
   `agentdeck ble setup` once after upgrading. If you set
   `AGENTDECK_BLE_PYTHON`, update bleak in that Python environment instead.
+  If the panels stay disconnected after setup or the Python update, run
+  `agentdeck daemon restart` to reload the BLE environment.
   [#797](https://github.com/puritysb/AgentDeck/pull/797)
 - Update the bundled `ws` WebSocket library to 8.23.0.
   [#795](https://github.com/puritysb/AgentDeck/pull/795)
@@ -149,6 +160,9 @@ feedback is requested through external TestFlight.
 
 ## 2026-11-14 — Apple 2.2.0
 
+**Public on the App Store** for Mac, iPhone and iPad, with Apple Watch included
+in the iPhone app. [Set up Remote monitoring](https://github.com/puritysb/AgentDeck/blob/master/docs/apple-app.md#remote-monitoring-via-icloud).
+
 **Remote monitoring (iCloud).** The Mac app can share encrypted work counts,
 attention episodes and, with a separate opt-in, session rows and account
 allowance windows to your private iCloud. The iPhone and iPad Remote tab
@@ -168,19 +182,41 @@ from the Watch's last saved summary for the same Apple Account. It cannot
 answer or approve anything, and stale evidence is shown as historical with
 its original time.
 
-The macOS build also carries the Unreleased Dashboard, timeline and CI-wait
-changes above that apply to the Mac daemon.
+On Mac, Work detail shows confirmed message deliveries. The separate message
+history and graph were removed. The timeline shows answers you type into
+Codex questions, and the CI wait count leaves out skipped and neutral checks.
 
-## 2026-11-16 — Stream Deck 2.1.1, Ulanzi 2.1.1
+## 2026-11-16 — Stream Deck 2.1.1
 
-- Update the WebSocket library bundled with Stream Deck to include the fix for
+**In Elgato review as of November 21.** The Marketplace still offers 2.1,
+and the latest GitHub download is 2.1.0.
+
+- Update the bundled WebSocket library with the fix for
   [CVE-2026-62389](https://github.com/advisories/GHSA-73jw-fp74-p77x).
-  Package Ulanzi with the same WebSocket version used in workspace tests.
   [#747](https://github.com/puritysb/AgentDeck/pull/747)
 - Keep status and detail pills clear of titles, fit long session names on the
   key, and wrap option labels at word boundaries when space permits.
 
+## 2026-11-16 — Ulanzi 2.1.1
+
+**Public in Ulanzi Workshop as of November 21** for D200, D200H, and D200X.
+The latest GitHub download is 2.1.0.
+
+- Bundle the WebSocket version used in workspace tests.
+  [#747](https://github.com/puritysb/AgentDeck/pull/747)
+- Keep status and detail pills clear of titles, fit long session names on the
+  key, and wrap option labels at word boundaries when space permits.
+
+## 2026-11-13 — Vobot Gallery 0.3.0
+
+**Approved by Vobot.** Public Gallery availability has not been confirmed.
+The submission adds Wi-Fi pairing on a trusted local network. See the
+[Vobot setup guide](integrations/vobot/README.md#gallery-release).
+
 ## 2026-11-11 — Android 2.1.1
+
+**Public on Google Play and GitHub as build 32.** Update through your existing
+channel to retain its signing identity.
 
 - Retry USB after an automatically selected Wi-Fi connection refuses
   authentication. The app can reconnect when the USB tunnel comes back without
@@ -215,7 +251,21 @@ See [PR #748](https://github.com/puritysb/AgentDeck/pull/748).
   outside it. Covers HTTP uploads and device capture frames; requires an updated
   npm/Node daemon ([#740](https://github.com/puritysb/AgentDeck/pull/740)).
 
-## 2026-11-06 — npm 2.1.0, Apple 2.1.0, Android 2.1.0, ESP32 2.1.0, Stream Deck 2.1.0, Ulanzi 2.1.0
+## 2026-11-06 — ESP32 2.1.0
+
+**Public on GitHub and the AgentDeck browser flasher.** The GitHub release has
+firmware for 12 boards. The browser flasher offers five of those boards. Check
+the board list before choosing how to update.
+[Open the browser flasher](https://puritysb.github.io/AgentDeck/flash/).
+
+- Preserve the paired daemon endpoint and credential across reboot. Reject
+  ambiguous discovery and show USB re-pair guidance when the daemon rejects
+  the token.
+- Keep paired-daemon firmware updates available from setup. Bound request
+  parsing and require authorization in the setup portal.
+- Advertise each board under its own mDNS name, `agentdeck-display-<board id>`.
+
+## 2026-11-06 — npm 2.1.0, Apple 2.1.0, Android 2.1.0, Stream Deck 2.1.0, Ulanzi 2.1.0
 
 ### 2.1 highlights
 

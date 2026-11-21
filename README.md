@@ -75,14 +75,18 @@ labels its AI-assisted photo composite separately from actual app and firmware c
 
 **No extra hardware required.** Choose a native dashboard or the terminal path.
 
-### Mac, iPhone, and iPad
+### Mac, iPhone, iPad, and Apple Watch
 
 [Install from the App Store](https://apps.apple.com/app/id6784822497?pt=128040795&ct=github-readme-202610&mt=8).
 The Mac app includes its own daemon and needs no Node.js. Enable your agent
-integrations in Settings, then run your agents normally. iPhone/iPad pair with
-an AgentDeck daemon on your network.
+integrations in Settings, then run your agents normally.
 
-Requires macOS 26+ or iOS/iPadOS 17+. See the [Apple guide](docs/apple-app.md).
+Pair iPhone or iPad with the local daemon for live sessions and supported
+controls. With AgentDeck 2.2.0, you can also enable **Remote monitoring** on a
+Mac and read its activity over private iCloud on iPhone, iPad, and Apple Watch
+using the same Apple Account. [Set up Remote monitoring](docs/apple-app.md#remote-monitoring-via-icloud).
+
+Requires macOS 26+, iOS/iPadOS 17+, or watchOS 10+ for the included Watch app.
 
 ### Terminal, Windows, Linux, and external integrations
 
@@ -163,8 +167,8 @@ or take the [hardware desk tour](https://youtu.be/s-f8ICBcC4o).
 ## What it does
 
 - **Follow parallel work.** Session names, current tools, and a shared timeline
-  explain what each agent is doing. Collaboration shows reported subagents,
-  task relationships, and recent task history.
+  explain what each agent is doing. On Mac, [Work](docs/apple-app.md#work-on-mac)
+  shows reported subagents, background jobs, and confirmed message deliveries.
 - **Notice when you are needed.** Permission and input requests stand out.
   Answer or interrupt from supported surfaces when the session provides a real
   control path; otherwise prompts are display-only.
@@ -209,7 +213,7 @@ and pending review, with the date each was checked.
 
 | Product | Install / update | Release tag |
 |---|---|---|
-| Mac · iPhone · iPad | [App Store](https://apps.apple.com/app/id6784822497?pt=128040795&ct=github-readme-202610&mt=8) | `apple-v*` |
+| Mac · iPhone · iPad · Apple Watch | [App Store](https://apps.apple.com/app/id6784822497?pt=128040795&ct=github-readme-202610&mt=8) | `apple-v*` |
 | Android tablets and e-ink | [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck) · [signed GitHub APK](https://github.com/puritysb/AgentDeck/releases?q=android-v&expanded=true) | `android-v*` |
 | CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | `npm-v*` |
 | Stream Deck / Mini / XL / Plus / + XL | [Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) | `streamdeck-v*` |

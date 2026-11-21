@@ -116,7 +116,7 @@ observed portal/artifact state; do not present a candidate as public.
 Readback first: App Store Connect (`asc-certificates.yml store-status`, run
 44664584186, 2026-11-20) reports **iOS 2.2.0 and macOS 2.2.0 both
 `READY_FOR_SALE`**, from review submissions of 2026-11-15 (iOS 11:20Z, macOS
-11:11Z, both `COMPLETE`). The latest processed build is 12101. No
+11:11Z, both `COMPLETE`). The latest processed build at that readback was 12101. No
 `apple-v2.2.0` tag exists; the 2.2.0 decision below remains the scope record.
 
 | Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
@@ -130,6 +130,11 @@ which would build and upload both platforms. The build goes to an external
 TestFlight group so the #799 reporter can verify it on hardware before App Store
 submission. Evidence so far is the iPhone Duo simulator (iOS 27.1) and
 `DashboardFoldLayoutTests`.
+
+Delivery readback on November 21: iOS 2.2.1 build 12601 was uploaded at
+11:15 KST ([CI log](https://github.com/puritysb/AgentDeck/actions/runs/44852515661)).
+The public version on both Apple storefronts remained 2.2.0. External tester
+assignment for build 12601 was not confirmed in that readback.
 
 ### Stream Deck and Ulanzi 2.1.1 marketplace submissions
 
