@@ -3849,9 +3849,19 @@ feed `scripts/appstore-demo-orchestrator.mjs`), not dropped. Lead with the live
 aquarium and the attention flow; feature captures such as Work follow it. Record
 the before/after counts per platform and locale in the release decision.
 
-Pending for the next macOS version: restore a preview video (re-recorded
-without the Collaboration panel) and lead with the current-feature aquarium,
-attention, devices and CI captures, keeping the Work captures after them.
+The [next macOS media selection](apple/appstore-submission/macos-next/selection.json)
+contains the re-recorded aquarium preview and seven ordered screenshots per
+locale. It starts with the current Aquarium, attention, connected devices,
+CI context and native Work attention captures, then reuses the wide and compact
+Work captures. The public macOS 2.2.0 listing has two screenshots and zero
+previews in each of English, Korean and Japanese. This candidate adds five
+screenshots and one preview to each locale.
+
+When the next macOS version is decided, bind this selection to its exact
+version in the guarded release workflow. After uploading to that editable
+version, run `asc-certificates.yml` with `store-status` and verify the order,
+counts, processing state and five-second preview poster before submitting
+for review.
 
 #### Guarded Apple review delivery
 
