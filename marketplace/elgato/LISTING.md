@@ -2,8 +2,8 @@
 
 > **Live since 2026-07-28.** The product page is at
 > <https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464>,
-> and the public version is **2** (published; product page version list read
-> 2026-11-06). 2.1 is pending review with auto-publish off. Earlier: `1.8.1`
+> and the public version is **2.1**. On 2026-11-21 the version list showed
+> **2.1.1 in review** with no publication date. Earlier: `1.8.1`
 > (2026-10-13), `1.8`
 > (released 2026-10-08 per the public product page, read 2026-10-11), `1.6`
 > (2026-10-03, 758.41 KB), `1.3`, `1.2` and `1.0.6`
@@ -11,7 +11,13 @@
 > and `1.0.2` (2026-07-28).
 > This file stays the source of the listing copy and asset inventory for future revisions.
 
-## 2.1 — pending review (2026-11-06)
+## 2.1.1 — submitted 2026-11-16
+
+Maker Console accepted package 2.1.1.0 with automatic publication off. The
+public version list still reported `review` on 2026-11-21.
+[Submission source and package hash](../../RELEASING.md#stream-deck-and-ulanzi-211-marketplace-submissions)
+
+## 2.1 — published (2026-11-06)
 
 Created as a new version from the official
 [2.1.0 package](https://github.com/puritysb/AgentDeck/releases/tag/streamdeck-v2.1.0),

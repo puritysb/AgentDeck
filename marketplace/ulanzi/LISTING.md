@@ -16,6 +16,13 @@ Workshop for AgentDeck), which shows Version 1.8.1, D200/D200H/D200X, Category A
 Links in the README, install guide, roadmap, Pages index and `@agentdeck/setup`
 point to the new id; dated records below keep the id they observed.
 
+## 2.1.1 — public listing verified 2026-11-21
+
+On 2026-11-16 the 2.1.1 ZIP replaced the previous review submission.
+The [public Workshop listing](https://ugc.ulanzistudio.com/contentView/1239890184745660416)
+shows version **2.1.1** for D200, D200H and D200X on Windows and Mac.
+[Submission source and ZIP hash](../../RELEASING.md#stream-deck-and-ulanzi-211-marketplace-submissions)
+
 ## 2.1.0 — replaced the 2.0.0 review (2026-11-06)
 
 Ulanzi QA reported missing key icons on 2.0.0 (#730). Their logs showed keys that
