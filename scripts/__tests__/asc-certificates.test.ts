@@ -151,8 +151,11 @@ describe('2.1.0 store scope', () => {
 
 describe('bounded macOS ASC release', () => {
   it('extracts only current macOS EN/KO/JA and the marked macOS reviewer field', () => {
-    const version = readFileSync(resolve(ROOT, 'apple/project.yml'), 'utf8').match(/MARKETING_VERSION: "([^"]+)"/)![1];
-    const extracted = extractReleaseCopy(readFileSync(resolve(ROOT, 'docs/appstore-metadata-draft.md'), 'utf8'),
+    // The newest prepared macOS copy, not MARKETING_VERSION: an iOS-only patch (2.2.1) moves the shared
+    // marketing version while the macOS listing, its copy and its reviewer field stay on the previous version.
+    const draft = readFileSync(resolve(ROOT, 'docs/appstore-metadata-draft.md'), 'utf8');
+    const version = draft.match(/^## Prepared macOS (\d+\.\d+\.\d+) update text$/m)![1];
+    const extracted = extractReleaseCopy(draft,
       readFileSync(resolve(ROOT, 'apple/APP_REVIEW_NOTES.md'), 'utf8'), version);
     expect(Object.keys(extracted.whatsNew)).toEqual(['en-US', 'ko', 'ja']);
     expect(extracted.notes).toContain(`NEW IN ${version} — MACOS ONLY`);

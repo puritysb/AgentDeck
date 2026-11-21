@@ -21,6 +21,22 @@ component matches. Minor and patch values are ignored in both directions for
 compatibility: for example, `1.0.9` and `1.3.0` are compatible regardless of which
 side is newer.
 
+## Close out a release branch
+
+When a release ships from a branch, verify that the next build from `master` will include the shipped fixes. Record the channel, version, build or artifact identifier, and the full source commit from the build that produced it. Link the build run or provenance record. If a submission was replaced, use the build that actually shipped. Platforms sharing a version can ship from different commits.
+
+Set `shipped_sha` to the recorded commit. Run the ancestry check only after the fetch succeeds.
+
+```sh
+git fetch origin && git merge-base --is-ancestor "$shipped_sha" origin/master
+```
+
+- If the ancestry check exits **0**, remote `master` contains the shipped commit. Record the verified `master` SHA in the release record or merge PR.
+- If it exits **1**, inspect the changes through the shipped commit. If fixes are missing, open or continue a PR into `master` within the current authorization. Prefer a merge commit that preserves the shipped history. Review any later branch work separately. After the PR merges, fetch again and repeat the check.
+- If the fetch fails or the ancestry check reports another error, keep the integration status unverified until the remote history and both commits are available.
+
+If the project intentionally used a squash, cherry-pick or selective backport, record the integration commit, compare each shipped fix and its tests against current `origin/master`, and explain any intentional differences. Keep a durable reference to the exact shipped source. Before deleting the release branch or its worktree, account for later commits, local changes and any active owner. If integration is pending at handoff, include the shipped SHA, the open PR or missing fixes, and the next action.
+
 ## Choosing a version
 
 **Version scope follows the user-visible contract, not implementation effort,
@@ -95,6 +111,42 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### Apple 2.2.1 release decision (2026-11-20)
+
+Readback first: App Store Connect (`asc-certificates.yml store-status`, run
+44664584186, 2026-11-20) reports **iOS 2.2.0 and macOS 2.2.0 both
+`READY_FOR_SALE`**, from review submissions of 2026-11-15 (iOS 11:20Z, macOS
+11:11Z, both `COMPLETE`). The latest processed build is 12101. No
+`apple-v2.2.0` tag exists; the 2.2.0 decision below remains the scope record.
+
+| Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
+| --- | --- | --- | --- | --- | --- |
+| iOS + iPadOS + embedded watchOS / TestFlight external, then App Store | 2.2.0 (build per ASC; highest processed 12101) | None for 2.2.1 | 2.2.1 / next CI-assigned build above 12101 | Patch: the Dashboard follows the iPhone Duo's fold (book and propped-half-open layouts) instead of placing the attention card on the crease; completes the form-factor-readable Dashboard. | Existing 2.2 scope; no new milestone. |
+
+macOS is not delivered: it compiles the fold layout but never receives a display
+division, so its behavior is unchanged. Delivery is a manual iOS-only
+`apple-release.yml` dispatch (`platform=ios`, `upload=true`), not an Apple tag,
+which would build and upload both platforms. The build goes to an external
+TestFlight group so the #799 reporter can verify it on hardware before App Store
+submission. Evidence so far is the iPhone Duo simulator (iOS 27.1) and
+`DashboardFoldLayoutTests`.
+
+### Stream Deck and Ulanzi 2.1.1 marketplace submissions
+
+Both packages were submitted on 2026-11-16 from the source tree recorded in
+[fbcbc33f16d94c93efdf709aacf8369b8ab8812f](https://github.com/puritysb/AgentDeck/commit/fbcbc33f16d94c93efdf709aacf8369b8ab8812f).
+The saved submission files matched the following SHA-256 digests on 2026-11-21.
+
+| Channel | Submitted file SHA-256 | Marketplace readback on 2026-11-21 |
+| --- | --- | --- |
+| Stream Deck 2.1.1.0 | `ad29851c0564c0c790dd776158c2e297f0ebac52297cb024e4bf4b3d6b48e250` | 2.1.1 in review, 2.1 public. Automatic publication was off at submission. [Elgato receipt](marketplace/elgato/LISTING.md) |
+| Ulanzi 2.1.1 | `dbbdf6e14fd996e697c5ddf78814d7188450c165139491b8f73511108bb32e6c` | 2.1.1 public for D200, D200H and D200X. [Workshop receipt](marketplace/ulanzi/LISTING.md) |
+
+The latest GitHub Release for each plugin was 2.1.0 at readback. The hashes
+identify the submitted files. Future builds use the dependencies on their own
+source commit. Check the four assigned dials on the DRM-processed Elgato build
+before publishing it.
+
 ### Apple 2.2.0 release decision (2026-11-14)
 
 | Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
@@ -112,6 +164,56 @@ signed iOS archive with the two Watch profiles passing
 `verify-appstore-archive.sh`, the Mac publisher on a signed Production build,
 and a complication capture from a real face. The device TLS listener included
 in the macOS build stays opt-in and unadvertised; its review note describes it.
+
+### npm 2.1.4 release decision (2026-11-20)
+
+| Target / routes | Last verified public version | Proposed version | User-visible reason |
+| --- | --- | --- | --- |
+| CLI and Node daemon / npm | 2.1.3 for bridge, hooks, shared and setup | 2.1.4 | Patch: list a managed `agentdeck claude` session once (#802, user report), accept bleak 3.1 in the managed BLE runtime, update `ws`. |
+
+Previous behavior: with the CLI daemon running, the managed session also showed
+as an `observed:claude:` row after its first prompt, because the observer
+deduplicated only inside a scan started by a caller with no managed list. New
+behavior and test: `collect()` applies the caller's managed list to every read
+(`passive-observer.test.ts`, regression case fails on 2.1.3). bleak 3.1 was
+exercised live: both configured panels (iDotMatrix, Timebox) reconnected under
+it. The four npm packages ship together.
+
+Unchanged: Android, ESP32, Stream Deck and Ulanzi. Apple 2.2.0 follows its own
+decision above and goes to external TestFlight before App Store submission.
+
+
+#### npm 2.1.4 pre-tag acceptance (2026-11-20)
+
+Candidate `8f0fb2a7` passed `verify:full --record`
+([receipt](verification/receipts/2026-11-20-71c010c.json); e2e and the Windows
+runtime run in CI) and the isolated packaged-daemon acceptance with a 30-second
+soak. The four tarballs were then installed globally over the maintainer's
+`agentdeck` command (Node 26.5.0, `diag native` ready, daemon build
+`e9e43cb3dce4`). The counterpart was a local macOS 2.2.0 build 5, not the Store
+build.
+
+- **Upgrade finding:** the BLE requirements digest changed with #797, so the
+  installed candidate reported the existing environment "not prepared" and both
+  BLE panels stayed off. `agentdeck ble setup` rewrote the marker (bleak 3.1.0),
+  and a daemon restart was needed before the workers started. The CHANGELOG
+  entry now tells upgrading users to run it, as 2.1.2 did for cryptography.
+  iDotMatrix then connected. Timebox reported "device not found" because it
+  was powered off; once switched on it connected under the same bleak 3.1.0
+  environment (restored daemon, same BLE code as the candidate).
+- **Both, Node first:** Node held the only 9120 listener and the app was its
+  client; a headless Codex turn was ingested.
+- **CLI only:** after quitting the app, a Codex turn was ingested; Pixoo online
+  with a frame, 12 serial ports, iDotMatrix connected.
+- **Swift only:** after `daemon stop`, the app bound 9120 in 160 s; a Codex turn
+  appeared in its timeline (completed, 6 s).
+- **Both, takeover:** `daemon start` over the Swift daemon took 9120 in 46 s;
+  the app reconnected as a client and a further Codex turn was ingested.
+- **#802:** the maintainer's `agentdeck claude` session (bridge pid 67365,
+  claude pid 67374) appeared once in the roster, with no observed duplicate.
+
+The previous mode (CLI linked to the source checkout, Node daemon build
+`884cbfaed924`, app as client) was restored.
 
 ### npm 2.1.3 release decision (2026-11-16)
 
@@ -3700,6 +3802,49 @@ looking correct while the server still holds the previous text.
 3. For a coordinated iOS + macOS delivery, tag and push `apple-v<APPLE_VERSION>`; CI archives and uploads both to TestFlight. For a macOS-only delivery, dispatch `apple-release.yml` on the reviewed commit with `release_version=<APPLE_VERSION>`, `platform=macos`, and `upload=false` to prepare the signed candidate. Use `upload=true` only for the authorized App Store Connect delivery. A manual run does not publish a GitHub Release; do not push an Apple tag for a single-platform delivery because tags still build and upload both platforms.
 
 CI owns `CURRENT_PROJECT_VERSION` — `apple-release.yml` injects `github.run_number * 100 + github.run_attempt` into both archive steps, so the build number rises on every run and ASC never sees a duplicate `(version, build)` pair. Do not bump it by hand; the value in `apple/project.yml` is only a local-build default.
+
+#### iOS archives need the iOS 27 SDK (ITMS-90725)
+
+iOS 2.2.1 build 12201 (2026-11-20) was archived on `macos-15` with Xcode 26.3
+and App Store Connect flagged ITMS-90725: from April 2027 iOS and iPadOS
+uploads and submissions must be built with the iOS 27 SDK (Xcode 27+).
+GitHub-hosted macOS images stopped at Xcode 26.6 on that date, so
+`apple-release.yml` takes `ios_runner: self-hosted-xcode27` on a manual
+dispatch. That job runs on an **ephemeral** runner registered on a maintainer
+Mac for exactly one job, with the label `agentdeck-xcode27`, and deregisters
+when the job ends. The repository is public, so never leave a persistent
+self-hosted runner attached.
+
+The job runs as the maintainer's user, so it must not touch that user's state:
+Xcode is chosen with `DEVELOPER_DIR` (no `sudo xcode-select`), the signing
+keychain is prepended to the saved search list and the list is restored by
+`apple/scripts/cleanup-ci-signing-assets.sh`, only provisioning profiles the
+job added are removed, and the ASC key lives in `$RUNNER_TEMP/private_keys`
+(`API_PRIVATE_KEYS_DIR`), never `~/private_keys`. The step fails unless the
+selected Xcode is 27 or later. Tags still archive on GitHub-hosted runners;
+moving them is tracked in [#811](https://github.com/puritysb/AgentDeck/issues/811).
+
+#### Store media keeps its richness
+
+**Replace only the media that has gone stale; never leave a listing poorer than
+the version before it.** macOS 2.1.1 dropped the 28-second preview because its
+second half showed the removed Collaboration panel, and replaced four
+aquarium screenshots with two synthetic Work captures. Both reasons were
+correct, but the result shipped through 2.2.0: no video and a text-heavy first
+screenshot on the Mac App Store, while the still-accurate aquarium captures and
+the accurate first half of the video sat unused in
+`apple/appstore-submission/`. A media selection therefore starts from the
+previous version's set and the full asset inventory (`screenshots/<locale>/<platform>/`,
+`previews/<platform>/`), removes each item only for a stated reason (it shows a
+removed or changed feature), and replaces it in the same selection — a removed
+preview is re-recorded from the current build (`RECORDING_RUNBOOK.md`, demo
+feed `scripts/appstore-demo-orchestrator.mjs`), not dropped. Lead with the live
+aquarium and the attention flow; feature captures such as Work follow it. Record
+the before/after counts per platform and locale in the release decision.
+
+Pending for the next macOS version: restore a preview video (re-recorded
+without the Collaboration panel) and lead with the current-feature aquarium,
+attention, devices and CI captures, keeping the Work captures after them.
 
 #### Guarded Apple review delivery
 

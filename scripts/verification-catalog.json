@@ -1128,7 +1128,7 @@
         "security/snyk-baseline.json"
       ],
       "proves": [
-        "Snyk Open Source (pnpm workspaces, Android release/sideload runtime) and Snyk Code ran with the repository token; findings absent from the triaged baseline open or update one tracking issue; raw results are kept for 90 days."
+        "Snyk compares workspace and Android runtime dependencies and source findings against the baseline. New findings trigger a count-only tracking issue. The 90-day receipt contains aggregate counts."
       ],
       "does_not_prove": [
         "Anything CodeQL and the dependency audits do not; the 2026-11-08 trial found neither tool reported the three published advisories. Warnings and notes in the baseline were recorded without individual review. It never fails a PR."
@@ -1326,14 +1326,15 @@
         "static",
         "compile"
       ],
-      "where": "macos-26",
+      "where": "macos-26-intel (Ubuntu for prose-only PR decisions)",
       "workflow": ".github/workflows/codeql.yml",
       "job": "swift",
-      "trigger": "Every PR, master push, weekly and manual",
+      "trigger": "PRs check scope first. Master pushes, weekly and manual runs always analyze both Swift targets.",
       "blocking": true,
       "required": true,
       "command": "xcodebuild build -scheme AgentDeck_macOS CODE_SIGNING_ALLOWED=NO",
       "proves": [
+        "An allowlisted prose-only PR records the omission under both required job names. Unknown scope runs both builds.",
         "Clean manual macOS and iOS Simulator builds supply Swift sources to security-extended queries; build, extraction or analysis failure fails the job."
       ],
       "does_not_prove": [
@@ -1701,6 +1702,7 @@
         "scripts/__tests__/native-palette.test.ts",
         "scripts/__tests__/app-icons.test.ts",
         "scripts/__tests__/verification-catalog.test.ts",
+        "scripts/__tests__/codeql-swift-scope.test.ts",
         "scripts/__tests__/apple-dot-build.test.ts",
         "scripts/__tests__/local-main-deploy.test.ts",
         "scripts/__tests__/android-install.test.ts",

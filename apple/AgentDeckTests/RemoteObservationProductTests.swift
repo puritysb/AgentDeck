@@ -365,6 +365,23 @@ final class RemoteObservationProductTests: XCTestCase {
         XCTAssertNotNil(fixture.disk.read("reader.json", as: RemoteObservationCache.self))
     }
 
+    func testRefreshingRemoteObservationDoesNotRewriteNotificationSubscription() async throws {
+        let fixture = Fixture()
+        await fixture.store.replaceSnapshot(summary(UUID(), at: fixture.time))
+        let reader = fixture.model()
+        await reader.enableReceiving()
+        await reader.enableNotifications()
+        await reader.refresh(force: true)
+        let restored = fixture.model()
+        restored.restoreDisk()
+        await restored.foreground()
+
+        XCTAssertTrue(restored.reader.notifications)
+        XCTAssertNotNil(restored.snapshot)
+        let calls = await fixture.store.callLog()
+        XCTAssertEqual(calls.filter { $0 == "subscribe" }.count, 1)
+    }
+
     func testPublisherChangeDoesNotTransferNotificationConsentOrResetReceiverIdentity() async throws {
         let fixture = Fixture()
         let first = UUID(), second = UUID()

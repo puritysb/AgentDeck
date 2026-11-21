@@ -20,6 +20,7 @@ Do not read `DEVELOPMENT_LOG.md` or the devlog entries here. Nothing in the hand
 ## 2. Close out what this session started
 
 - **Uncommitted changes.** Commit them on the task branch, or name them in the handoff as deliberately left uncommitted. Never revert, stash, or restore another session's changes in a shared tree.
+- **Releases shipped from a branch.** Before cleanup, follow [Close out a release branch](../../../RELEASING.md#close-out-a-release-branch) for each shipped source commit. Carry any outstanding integration into the handoff.
 - **Worktrees this session created.** Remove one only when its branch is pushed, its tree is clean, and no other session owns it (`AGENTS.md` § Agent working agreements). Otherwise list it with the reason it stays.
 - **PRs this session opened.** List each with its state: CI, mergeable, review, and what blocks it.
 - **Background agents or long commands.** Say whether each is still running. Never report a result you have not received.

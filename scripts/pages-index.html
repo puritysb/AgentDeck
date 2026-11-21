@@ -717,6 +717,12 @@ html body :target { scroll-margin-block-start: 0; }
     <h2 id="security-title" data-i18n="security.h">Automated security checks</h2>
     <p class="section-lede" data-i18n="security.p">GitHub Actions checks changes to AgentDeck and reruns security scans on a schedule. Required checks gate merges to master.</p>
     <div class="cards security-cards">
+      <div class="card" id="snyk-status">
+        <h3 data-i18n="snyk.title">Snyk on the newest pull request</h3>
+        <p id="snyk-result" role="status">—</p>
+        <a id="snyk-pr" href="https://github.com/puritysb/AgentDeck/pulls" data-i18n="snyk.link">View checks</a> ·
+        <a href="https://github.com/puritysb/AgentDeck/pulls?q=is%3Apr+commenter%3Aapp%2Fsnyk-io" data-i18n="snyk.history">Pull requests with Snyk comments</a>
+      </div>
       <a class="card" href="https://github.com/puritysb/AgentDeck/actions/workflows/security-scan.yml">
         <h3 data-i18n="security.deps.h">Dependencies and tokens</h3>
         <p data-i18n="security.deps.p">Daily scans check npm, Python, Rust, and Android runtime dependencies for known advisories and tracked text for AgentDeck pairing tokens. Dependency review checks new high or critical advisories on pull requests.</p>
@@ -939,6 +945,9 @@ html body :target { scroll-margin-block-start: 0; }
         'vobot.photo': 'Vobot 사진 보기',
         'hub.display': '보조 화면에 띄운 Mac 대시보드',
         'security.h': '자동 보안 검사',
+        'snyk.title': '최신 PR의 Snyk 검사',
+        'snyk.link': '검사 상세 보기',
+        'snyk.history': 'Snyk 댓글이 있는 PR',
         'security.p': 'GitHub Actions는 AgentDeck 변경 사항을 검사하고, 정해진 주기에 따라 검사를 다시 실행합니다. 필수 검사를 충족해야 master에 머지할 수 있습니다.',
         'security.deps.h': '의존성과 토큰',
         'security.deps.p': '매일 npm, Python, Rust, Android 런타임 의존성의 알려진 취약점과 저장소가 추적하는 텍스트의 AgentDeck 페어링 토큰을 검사합니다. PR에서는 새로 도입된 심각도 높음 또는 치명적 취약점도 확인합니다.',
@@ -1050,6 +1059,9 @@ html body :target { scroll-margin-block-start: 0; }
         'vobot.photo': 'Vobot の写真を見る',
         'hub.display': 'サブディスプレイの Mac ダッシュボード',
         'security.h': '自動セキュリティチェック',
+        'snyk.title': '最新のプルリクエストの Snyk 検査',
+        'snyk.link': '検査の詳細',
+        'snyk.history': 'Snyk がコメントした PR',
         'security.p': 'GitHub Actions は AgentDeck の変更を検査し、定期的にスキャンを再実行します。必須チェックを満たすと master にマージできます。',
         'security.deps.h': '依存関係とトークン',
         'security.deps.p': '毎日、npm、Python、Rust、Android の実行時依存関係を既知のアドバイザリと照合し、追跡対象のテキストから AgentDeck のペアリングトークンを検出します。PR では新たに追加された重大度 High または Critical の問題も確認します。',
@@ -1122,6 +1134,57 @@ html body :target { scroll-margin-block-start: 0; }
       }
     });
   });
+</script>
+<script>
+  (() => {
+    const api = 'https://api.github.com/repos/puritysb/AgentDeck';
+    const link = document.getElementById('snyk-pr');
+    const result = document.getElementById('snyk-result');
+    const messages = {
+      en: { unknown: 'Status unavailable', missing: 'No Snyk result reported', empty: 'No pull requests' },
+      ko: { unknown: '조회할 수 없음', missing: '보고된 Snyk 결과 없음', empty: 'PR 없음' },
+      ja: { unknown: '取得できません', missing: 'Snyk の結果は未報告です', empty: 'プルリクエストなし' }
+    };
+    let statusKey = 'unknown';
+    let evidence = '';
+    let number;
+    let loading = false;
+    function render() {
+      const copy = messages[document.documentElement.lang] || messages.en;
+      result.textContent = (number ? '#' + number + ' · ' : '') + (evidence || copy[statusKey]);
+    }
+    async function read(path) {
+      const response = await fetch(api + path, { credentials: 'omit', signal: AbortSignal.timeout(10000) });
+      if (!response.ok) throw Error('GitHub status ' + response.status);
+      return response.json();
+    }
+    async function refresh() {
+      if (document.hidden || loading) return;
+      loading = true;
+      try {
+        const [pr] = await read('/pulls?state=all&sort=created&direction=desc&per_page=1');
+        number = pr?.number;
+        link.href = 'https://github.com/puritysb/AgentDeck/pull' + (pr ? '/' + number + '/checks' : 's');
+        evidence = '';
+        statusKey = pr ? 'missing' : 'empty';
+        if (pr) {
+          const commit = await read('/commits/' + pr.head.sha + '/status');
+          const check = commit.statuses.find(item => item.context === 'security/snyk (puritysb)');
+          if (check) evidence = [check.state, check.description, new Date(check.updated_at).toLocaleString()].filter(Boolean).join(' · ');
+        }
+      } catch {
+        evidence = '';
+        statusKey = 'unknown';
+      } finally {
+        loading = false;
+      }
+      render();
+    }
+    document.getElementById('lang').addEventListener('change', render);
+    refresh();
+    setInterval(refresh, 300000);
+    document.addEventListener('visibilitychange', refresh);
+  })();
 </script>
 </body>
 </html>

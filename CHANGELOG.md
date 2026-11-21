@@ -65,13 +65,6 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
   bar. With two filled rows it read as `H`, so captions showed `HORK` and
   `HAIT`.
 
-- **Deck keys (Stream Deck, D200H).** Four legibility fixes found on rendered
-  keys. A working session's key no longer draws a `RUN` pill over the last
-  letter of `RUNNING`. A long session name steps down a size instead of
-  running off the key. The detail view's `INFO` pill no longer covers a title
-  of eight or more characters. An option label wraps between words when the
-  words fit, instead of breaking inside one that only looked too wide.
-
 - **Session activity.** A command run from a path under a session-id directory
   no longer shows as `Running` followed by a fragment of that id. The line
   reads `Running`, or names the script when the path is complete. Node daemon;
@@ -107,6 +100,34 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
   longer lose their last letter. Rendered in the simulator; not yet flashed.
 - **4.2-inch e-ink.** A waiting session's question wraps to as many lines as
   fit instead of being cut to one.
+
+## 2026-11-20 — Apple 2.2.1
+
+**iPhone Duo.** On the unfolded inner display, the Dashboard lays out around
+the fold instead of across it. Held like a book, the attention card and the
+full session list sit on one side and Usage & Services with the Timeline on
+the other. Propped half open, the aquarium fills the upper half and the
+attention card, the Sessions/System list and the Timeline sit on the lower
+half within reach. The cover display and a fully flat inner display keep the
+existing layouts; on the flat display the attention card now fits between the
+side panels instead of covering them. Other iPhone and iPad layouts are
+unchanged. Verified in the iPhone Duo simulator (iOS 27.1); physical-device
+feedback is requested through external TestFlight.
+[#800](https://github.com/puritysb/AgentDeck/pull/800)
+
+## 2026-11-20 — npm 2.1.4
+
+- List an `agentdeck claude` session once. With the CLI daemon running, the
+  session also appeared as a second, observed session after its first prompt.
+  [#803](https://github.com/puritysb/AgentDeck/pull/803)
+- Allow bleak 3.1 for the iDotMatrix and Timebox BLE clients. The BLE
+  requirements changed, so an environment prepared by an earlier version
+  reports "not prepared" and the panels stay disconnected until you run
+  `agentdeck ble setup` once after upgrading. If you set
+  `AGENTDECK_BLE_PYTHON`, update bleak in that Python environment instead.
+  [#797](https://github.com/puritysb/AgentDeck/pull/797)
+- Update the bundled `ws` WebSocket library to 8.23.0.
+  [#795](https://github.com/puritysb/AgentDeck/pull/795)
 
 ## 2026-11-16 — npm 2.1.3
 
@@ -149,6 +170,15 @@ its original time.
 
 The macOS build also carries the Unreleased Dashboard, timeline and CI-wait
 changes above that apply to the Mac daemon.
+
+## 2026-11-16 — Stream Deck 2.1.1, Ulanzi 2.1.1
+
+- Update the WebSocket library bundled with Stream Deck to include the fix for
+  [CVE-2026-62389](https://github.com/advisories/GHSA-73jw-fp74-p77x).
+  Package Ulanzi with the same WebSocket version used in workspace tests.
+  [#747](https://github.com/puritysb/AgentDeck/pull/747)
+- Keep status and detail pills clear of titles, fit long session names on the
+  key, and wrap option labels at word boundaries when space permits.
 
 ## 2026-11-11 — Android 2.1.1
 

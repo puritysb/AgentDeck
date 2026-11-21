@@ -24,6 +24,8 @@ final class RemoteObservationAppDelegate: NSObject, UIApplicationDelegate, UNUse
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
         let route = Self.route(notification.request.content.userInfo)
         if route.recognized {
+            Logger(subsystem: "bound.serendipity.agent.deck", category: "RemoteObservation")
+                .info("Received CloudKit attention notification in foreground")
             Task { @MainActor in await RemoteObservationController.shared.notificationArrived(id: route.id) }
             return [.banner, .list, .sound]
         }
@@ -39,6 +41,8 @@ final class RemoteObservationAppDelegate: NSObject, UIApplicationDelegate, UNUse
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        Logger(subsystem: "bound.serendipity.agent.deck", category: "RemoteObservation")
+            .info("APNs registration confirmed")
         RemoteObservationController.shared.pushRegistrationChanged(confirmed: true)
     }
 
