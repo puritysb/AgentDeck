@@ -960,12 +960,13 @@
       ],
       "where": "ubuntu-latest",
       "workflow": ".github/workflows/test-report.yml",
-      "job": "report",
-      "trigger": "Every push to master",
+      "job": "report, deploy",
+      "trigger": "Completed CI for a push to master",
       "blocking": false,
-      "command": "Restore CI artifacts from the same workflow run, then generate-html-report.py",
+      "command": "Verify the CI run and data ZIP digests, build the site, and deploy from a separate job",
       "proves": [
-        "publishes the merged commit’s Vitest and E2E results, and Android results when the suite applied"
+        "publishes the merged commit’s Vitest and E2E results and Android results when the suite applied",
+        "builds the demo from checked-out source and verifies the site artifact before deploying"
       ],
       "does_not_prove": [
         "Apple, hardware or release gates — those run in their own workflows and are linked, not re-run here"
@@ -1030,7 +1031,7 @@
       "job": "validate-submission, build-ios, build-macos, release",
       "trigger": "Tag apple-v* or manual dispatch",
       "blocking": true,
-      "command": "archive, export, verify-appstore-archive.sh, upload",
+      "command": "verify Xcode and SDKs, archive, export, verify-appstore-archive.sh, upload",
       "proves": ["the signed archive satisfies the App Store self-containment invariants and excludes Dot code/resources before upload"],
       "does_not_prove": ["runs no XCTest itself — relies on apple-test.yml having passed on master"]
     },
@@ -1709,6 +1710,7 @@
         "scripts/__tests__/verify-tiers.test.ts",
         "scripts/__tests__/swift-live-fixture-opt-in.test.ts",
         "scripts/__tests__/build-health-report.test.ts",
+        "scripts/__tests__/pages-artifacts.test.ts",
         "scripts/__tests__/public-media.test.ts",
         "scripts/__tests__/product-tour-fixture.test.ts",
         "scripts/__tests__/aquarium-showcase-story.test.ts",

@@ -37,3 +37,12 @@ jobs:
             android/app/build/test-results/testDebugUnitTest/
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Upload Android JUnit data for Pages
+        if: always() && github.workflow == 'CI' && github.event_name == 'push'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pages-android-results-${{ github.run_attempt }}
+          path: android/app/build/test-results/testDebugUnitTest/TEST-*.xml
+          overwrite: true
+          retention-days: 7
