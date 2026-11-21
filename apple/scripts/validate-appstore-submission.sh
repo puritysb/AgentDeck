@@ -6,6 +6,7 @@ SCREENSHOTS="$ROOT/apple/appstore-submission/screenshots"
 PREVIEWS="$ROOT/apple/appstore-submission/previews"
 METADATA="$ROOT/docs/appstore-metadata-draft.md"
 MAC_211_MEDIA="$ROOT/apple/appstore-submission/2.1.1"
+MAC_NEXT_MEDIA="$ROOT/apple/appstore-submission/macos-next"
 
 failures=0
 
@@ -64,6 +65,8 @@ for locale in en ko ja; do
   validate_platform "iPhone" "1242x2688 2688x1242 1284x2778 2778x1284"
   validate_platform "iPad" "2064x2752 2752x2064 2048x2732 2732x2048"
   SCREENSHOTS="$MAC_211_MEDIA/screenshots/$locale"
+  validate_platform "macOS" "2560x1600"
+  SCREENSHOTS="$MAC_NEXT_MEDIA/screenshots/$locale"
   validate_platform "macOS" "2560x1600"
 done
 
@@ -145,6 +148,23 @@ validate_previews "iPhone" "886x1920 1920x886"
 validate_previews "iPad" "1200x1600 1600x1200"
 PREVIEWS="$MAC_211_MEDIA/previews"
 validate_previews "macOS" "1920x1080"
+PREVIEWS="$MAC_NEXT_MEDIA/previews"
+validate_previews "macOS" "1920x1080"
+
+next_selection="$MAC_NEXT_MEDIA/selection.json"
+if ! jq -e '
+  .version == null and (.previews | length == 1) and
+    (.screenshots | length == 21 and
+      (group_by(.locale) | map([.[0].locale, length]) == [["en", 7], ["ja", 7], ["ko", 7]]))
+' "$next_selection" >/dev/null; then
+  fail "The next macOS media selection requires seven screenshots per locale and one shared preview"
+fi
+if ! (
+  cd "$ROOT"
+  jq -r '(.screenshots + .previews)[] | "\(.sha256)  \(.file)"' "$next_selection" | shasum -a 256 -c -
+); then
+  fail "The next macOS media selection does not match the repository"
+fi
 if ! node --input-type=module -e '
   import { pathToFileURL } from "node:url";
   const module = await import(pathToFileURL(process.argv[1]));

@@ -1,0 +1,178 @@
+{
+  "version": null,
+  "captureCommit": "4da96a4299102cc8968b72b16a9fdf1262f642e2",
+  "baselineVersion": "2.2.0",
+  "counts": {
+    "en": {
+      "before": {
+        "screenshots": 2,
+        "previews": 0
+      },
+      "after": {
+        "screenshots": 7,
+        "previews": 1
+      }
+    },
+    "ko": {
+      "before": {
+        "screenshots": 2,
+        "previews": 0
+      },
+      "after": {
+        "screenshots": 7,
+        "previews": 1
+      }
+    },
+    "ja": {
+      "before": {
+        "screenshots": 2,
+        "previews": 0
+      },
+      "after": {
+        "screenshots": 7,
+        "previews": 1
+      }
+    }
+  },
+  "screenshots": [
+    {
+      "file": "apple/appstore-submission/macos-next/screenshots/en/macOS/01-aquarium.png",
+      "sha256": "d216e70dfc3cf614cd0797043726be4bfe8ae5dbfba7f9756b502dc831a8557b",
+      "platform": "macOS",
+      "locale": "en"
+    },
+    {
+      "file": "apple/appstore-submission/macos-next/screenshots/en/macOS/02-attention.png",
+      "sha256": "b9cbfcedcf27b649e0be5959227d3debb837a82e0b67639774fe8d73c4d01207",
+      "platform": "macOS",
+      "locale": "en"
+    },
+    {
+      "file": "apple/appstore-submission/macos-next/screenshots/en/macOS/03-devices.png",
+      "sha256": "3957508f0ca7017120ed7757bffb0407eb12d1b7abb76c46e3e08a69c7e0b4bb",
+      "platform": "macOS",
+      "locale": "en"
+    },
+    {
+      "file": "apple/appstore-submission/macos-next/screenshots/en/macOS/04-ci-context.png",
+      "sha256": "ea8dbcb857f555905e1a9774e026dd80312d64681c67a5dc296c18e32aca5e34",
+      "platform": "macOS",
+      "locale": "en"
+    },
+    {
+      "file": "apple/appstore-submission/macos-next/screenshots/en/macOS/05-native-attention.png",
+      "sha256": "39388f9a58ef688fa880206b3f7cc7f475ebae7e820e28ed157bcb5eb6018e89",
+      "platform": "macOS",
+      "locale": "en"
+    },
+    {
+      "file": "apple/appstore-submission/2.1.1/screenshots/en/macOS/01-work-wide.png",
+      "sha256": "517fa813fa951452e7f74ede36b6b72d889e522213356443482850ba4ed4ee11",
+      "platform": "macOS",
+      "locale": "en"
+    },
+    {
+      "file": "apple/appstore-submission/2.1.1/screenshots/en/macOS/02-work-compact.png",
+      "sha256": "aedb89818ca65b802d211a4bd2823f745aef01c1743f3c0928e62bdb5aa29a3f",
+      "platform": "macOS",
+      "locale": "en"
+    },
+    {
+      "file": "apple/appstore-submission/macos-next/screenshots/ko/macOS/01-aquarium.png",
+      "sha256": "82bf4e9117b43cdcc39e10b66be527ab69c865736d306faf88bc0c422e34928f",
+      "platform": "macOS",
+      "locale": "ko"
+    },
+    {
+      "file": "apple/appstore-submission/macos-next/screenshots/ko/macOS/02-attention.png",
+      "sha256": "42597a5bc00b66ed2ad0d7587194adb04cd22fd2bcd4dbbf37b2f294d3507b72",
+      "platform": "macOS",
+      "locale": "ko"
+    },
+    {
+      "file": "apple/appstore-submission/macos-next/screenshots/ko/macOS/03-devices.png",
+      "sha256": "3d670acecdcb52c88bc008ce7e25b4333d5114bbb56ebd3bdd9453d69a83742a",
+      "platform": "macOS",
+      "locale": "ko"
+    },
+    {
+      "file": "apple/appstore-submission/macos-next/screenshots/ko/macOS/04-ci-context.png",
+      "sha256": "4cb74647f69a9955982e97bf5d4c337d019ce2905648b398260006f7882d5b75",
+      "platform": "macOS",
+      "locale": "ko"
+    },
+    {
+      "file": "apple/appstore-submission/macos-next/screenshots/ko/macOS/05-native-attention.png",
+      "sha256": "8384fcdb56bbc0e7bb58148c7b0d89a806297e30d023547bdb15ca1b182adcc0",
+      "platform": "macOS",
+      "locale": "ko"
+    },
+    {
+      "file": "apple/appstore-submission/2.1.1/screenshots/ko/macOS/01-work-wide.png",
+      "sha256": "62fb0fc147c4eaf0038e0d9b5e86546c3f2441cb2d9fae72ec6ba69dc4c3702e",
+      "platform": "macOS",
+      "locale": "ko"
+    },
+    {
+      "file": "apple/appstore-submission/2.1.1/screenshots/ko/macOS/02-work-compact.png",
+      "sha256": "e1bf20a946078f72306ce58cc031081a6a0032ae7d98d4c9978caab04b575eb1",
+      "platform": "macOS",
+      "locale": "ko"
+    },
+    {
+      "file": "apple/appstore-submission/macos-next/screenshots/ja/macOS/01-aquarium.png",
+      "sha256": "681ab016d336f51638ce5f3cc1d92b62eb930111dc9568495efed17d920512e5",
+      "platform": "macOS",
+      "locale": "ja"
+    },
+    {
+      "file": "apple/appstore-submission/macos-next/screenshots/ja/macOS/02-attention.png",
+      "sha256": "1753fd08e2319dda9f844b33ee625b3c160cff92b81e8abf526ab0fae1e17746",
+      "platform": "macOS",
+      "locale": "ja"
+    },
+    {
+      "file": "apple/appstore-submission/macos-next/screenshots/ja/macOS/03-devices.png",
+      "sha256": "5df219bcc6c74ea050fcdda210a014627b498f985ac4566b3f013d69789ad359",
+      "platform": "macOS",
+      "locale": "ja"
+    },
+    {
+      "file": "apple/appstore-submission/macos-next/screenshots/ja/macOS/04-ci-context.png",
+      "sha256": "102c1058abec5fca673b957d85c0fd9b5186844f8817e8b70fefb83a16e4a482",
+      "platform": "macOS",
+      "locale": "ja"
+    },
+    {
+      "file": "apple/appstore-submission/macos-next/screenshots/ja/macOS/05-native-attention.png",
+      "sha256": "6d05520d7b2eaf341401992e0c1476722133f0c2e8119eba9d75f9f615abdbcd",
+      "platform": "macOS",
+      "locale": "ja"
+    },
+    {
+      "file": "apple/appstore-submission/2.1.1/screenshots/ja/macOS/01-work-wide.png",
+      "sha256": "5b098641c57e6a27d4bda4ab6f581d85a0e6d17352fe9c8033b9a89b20f0bdcd",
+      "platform": "macOS",
+      "locale": "ja"
+    },
+    {
+      "file": "apple/appstore-submission/2.1.1/screenshots/ja/macOS/02-work-compact.png",
+      "sha256": "16ef7def600c3567d886f73f3f9f9b83e6229dcb61b38d1b1df2de26fd5528df",
+      "platform": "macOS",
+      "locale": "ja"
+    }
+  ],
+  "previews": [
+    {
+      "file": "apple/appstore-submission/macos-next/previews/macOS/agentdeck-aquarium.mp4",
+      "sha256": "23943e725d3ada877be5fb51afab25435927c0917fedb7591dc3e2d27a57f9ee",
+      "platform": "macOS"
+    }
+  ],
+  "previewPosterTimeCode": "00:00:05:00",
+  "notes": [
+    "Version-independent Mac App Store candidate. Use the exact next macOS version when preparing its editable App Store Connect draft.",
+    "The preview and five localized screenshots use the current macOS Debug UI with the repository’s synthetic, loopback-only App Store demo feeds.",
+    "Replaced the older Dashboard screenshots and preview because they showed the removed Collaboration UI. The released wide and compact Work screenshots remain after the new captures."
+  ]
+}
