@@ -103,6 +103,8 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## 2026-11-21 — Apple 2.2.2 (macOS draft)
 
+- The Dashboard keeps the 2D aquarium and session creatures visible while the
+  3D scene starts or resumes. It switches to 3D after the scene starts updating.
 - Compatible dashboards connected over optional device TLS can receive
   display power and dimming state when the device has the display-state
   permission. [#820](https://github.com/puritysb/AgentDeck/pull/820)

@@ -51,29 +51,32 @@ struct LivingAquariumScene: View {
 
     var body: some View {
         GeometryReader { geometry in
-            if renderingEnabled, visible, let loaded = assets.loaded {
-                realitySurface(loaded: loaded, size: geometry.size)
-                .id(rendererLifetime.identity)
-                .gesture(SpatialTapGesture().targetedToAnyEntity().onEnded { value in
-                    #if AGENTDECK_DOT_PREVIEW
-                    if DotAquariumResident.contains(value.entity) { showDot = true; return }
-                    #endif
-                    if let id = AquariumResidents.sessionID(for: value.entity) { onCreatureTapped?(id) }
-                    else if value.entity.name == "aquarium-background" { onBackgroundTapped?() }
-                })
-                .overlay {
-                    if let failure = assets.failure {
-                        TerrariumView(terrariumState: terrariumState, includeHabitat: false, showsResidentLabels: showsResidentLabels,
-                                      onCreatureTapped: onCreatureTapped, onBackgroundTapped: onBackgroundTapped)
-                        Text(failure).padding().background(.regularMaterial)
-                    }
+            ZStack {
+                if renderingEnabled, visible, assets.failure == nil, let loaded = assets.loaded {
+                    realitySurface(loaded: loaded, size: geometry.size)
+                        .id(rendererLifetime.identity)
+                        .gesture(SpatialTapGesture().targetedToAnyEntity().onEnded { value in
+                            #if AGENTDECK_DOT_PREVIEW
+                            if DotAquariumResident.contains(value.entity) { showDot = true; return }
+                            #endif
+                            if let id = AquariumResidents.sessionID(for: value.entity) { onCreatureTapped?(id) }
+                            else if value.entity.name == "aquarium-background" { onBackgroundTapped?() }
+                        })
+                        .allowsHitTesting(rendererLifetime.hasFirstFrame)
+                        .accessibilityHidden(!rendererLifetime.hasFirstFrame)
                 }
-            } else {
-                TerrariumView(terrariumState: terrariumState, animationPaused: !renderingEnabled || !visible,
-                              showsResidentLabels: showsResidentLabels,
-                              onCreatureTapped: onCreatureTapped, onBackgroundTapped: onBackgroundTapped)
-                    .overlay { if let failure = assets.failure { Text(failure).padding().background(.regularMaterial) } }
+                // Keep the renderer mounted behind the fallback while it starts.
+                // Asset import and mounting can succeed without RealityKit delivering a frame.
+                if !renderingEnabled || !rendererLifetime.hasFirstFrame || assets.failure != nil {
+                    TerrariumView(terrariumState: terrariumState, animationPaused: !renderingEnabled || !visible,
+                                  showsResidentLabels: showsResidentLabels,
+                                  onCreatureTapped: onCreatureTapped, onBackgroundTapped: onBackgroundTapped)
+                }
+                if let failure = assets.failure {
+                    Text(failure).padding().background(.regularMaterial)
+                }
             }
+            .frame(width: geometry.size.width, height: geometry.size.height)
         }
         .task { await assets.load() }
         .overlay(alignment: .bottom) {
@@ -115,10 +118,13 @@ struct LivingAquariumScene: View {
     }
 
     private func realitySurface(loaded: AquariumAssetLoader.Assets, size: CGSize) -> AquariumRealitySurface {
+        let lifetime = $rendererLifetime
+        let identity = rendererLifetime.identity
         var surface = AquariumRealitySurface(
             scene: scene, loaded: loaded, state: terrariumState, size: size,
             viewingMode: viewingMode, showsResidentLabels: showsResidentLabels, reduceMotion: reduceMotion,
             active: visible && renderingEnabled && scenePhase == .active,
+            onFirstFrame: { lifetime.wrappedValue.receivedFirstFrame(for: identity) },
             onFailure: { assets.reportSceneFailure($0, templateCount: residents.templateCount) }
         )
         #if AGENTDECK_DOT_PREVIEW
@@ -140,10 +146,19 @@ struct LivingAquariumScene: View {
 struct AquariumRendererLifetime {
     private(set) var isVisible = false
     private(set) var identity = UUID()
+    private(set) var hasFirstFrame = false
 
     mutating func appear() { isVisible = true }
 
-    mutating func invalidateRenderer() { identity = UUID() }
+    mutating func invalidateRenderer() {
+        identity = UUID()
+        hasFirstFrame = false
+    }
+
+    mutating func receivedFirstFrame(for id: UUID) {
+        guard isVisible, id == identity else { return }
+        hasFirstFrame = true
+    }
 
     mutating func disappear() {
         guard isVisible else { return }
@@ -164,6 +179,7 @@ private struct AquariumRealitySurface: View {
     let showsResidentLabels: Bool
     let reduceMotion: Bool
     let active: Bool
+    let onFirstFrame: () -> Void
     let onFailure: (Error) -> Void
     var updateResidents: () -> Void = {}
     @State private var mountID = UUID()
@@ -191,9 +207,8 @@ private struct AquariumRealitySurface: View {
                 let attached = mountedEntities.filter { $0.scene != nil }.count
                 aquariumAssetLogger.notice("Attached aquarium renderer; roots attached: \(attached)/\(mountedEntities.count)")
                 let token = mountID
-                let subscription = content.subscribe(to: SceneEvents.Update.self) { [weak scene = scene] event in
-                    if scene?.step(event.deltaTime, mountID: token) == true {
-                    }
+                let subscription = content.subscribe(to: SceneEvents.Update.self) { [weak scene = scene, onFirstFrame] event in
+                    scene?.step(event.deltaTime, mountID: token, onFirstFrame: onFirstFrame)
                 }
                 scene.installSubscription(mountID: mountID) { subscription.cancel() }
             } catch {
@@ -362,10 +377,10 @@ final class AquariumSceneState {
     }
 
     @discardableResult
-    func step(_ seconds: TimeInterval, mountID: UUID) -> Bool {
+    func step(_ seconds: TimeInterval, mountID: UUID, onFirstFrame: () -> Void = {}) -> Bool {
         guard isMounted(mountID), updatesEnabled, cameraRig.step(seconds) else { return false }
-        if !reportedMountFrame {
-            reportedMountFrame = true
+        if !reportedMountFrame, let mountedScene = cameraRig.camera?.scene,
+           habitat?.scene === mountedScene, residents.root.scene === mountedScene {
             let camera = cameraRig.camera
             let cameraState = renderState(camera)
             let habitatState = renderState(habitat)
@@ -379,7 +394,11 @@ final class AquariumSceneState {
             } else {
                 finite = false
             }
-            aquariumAssetLogger.notice("Aquarium first frame \(mountID.uuidString, privacy: .public): camera [\(cameraState, privacy: .public)] finite=\(finite); habitat [\(habitatState, privacy: .public)]; residents [\(residentState, privacy: .public)]")
+            if finite {
+                reportedMountFrame = true
+                onFirstFrame()
+                aquariumAssetLogger.notice("Aquarium first frame \(mountID.uuidString, privacy: .public): camera [\(cameraState, privacy: .public)] finite=\(finite); habitat [\(habitatState, privacy: .public)]; residents [\(residentState, privacy: .public)]")
+            }
         }
         // Keep expiry checks alive on a retained active scene under Reduce Motion.
         residents.step(seconds)
