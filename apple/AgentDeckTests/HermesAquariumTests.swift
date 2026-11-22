@@ -4,6 +4,40 @@ import RealityKit
 @testable import AgentDeck
 
 final class HermesAquariumTests: XCTestCase {
+    func testAquariumFallbackPersistsUntilTheCurrentRendererDeliversItsFirstFrame() {
+        var lifetime = AquariumRendererLifetime()
+        let initial = lifetime.identity
+        lifetime.receivedFirstFrame(for: initial)
+        XCTAssertFalse(lifetime.hasFirstFrame, "An offscreen update must not hide the fallback")
+
+        lifetime.appear()
+        XCTAssertFalse(lifetime.hasFirstFrame, "Mounting alone does not make the scene ready")
+        lifetime.receivedFirstFrame(for: initial)
+        XCTAssertTrue(lifetime.hasFirstFrame)
+
+        lifetime.invalidateRenderer()
+        lifetime.receivedFirstFrame(for: initial)
+        XCTAssertFalse(lifetime.hasFirstFrame, "A late update from the suspended renderer must be ignored")
+
+        lifetime.receivedFirstFrame(for: lifetime.identity)
+        XCTAssertTrue(lifetime.hasFirstFrame)
+        lifetime.disappear()
+        lifetime.appear()
+        XCTAssertFalse(lifetime.hasFirstFrame, "Returning from a different view requires a new frame")
+    }
+
+    @MainActor
+    func testAquariumUpdateWithDetachedRootsDoesNotHideFallback() {
+        let scene = AquariumSceneState()
+        scene.cameraRig.camera = PerspectiveCamera()
+        let mount = UUID()
+        scene.beginMount(mount)
+        scene.updatePlayback(active: true, reduceMotion: false)
+        XCTAssertTrue(scene.step(1 / 60, mountID: mount) {
+            XCTFail("The camera and habitat must be attached to the same scene")
+        })
+    }
+
     @MainActor
     func testAquariumRemountCancelsOldSubscriptionAndRejectsLateFramesAndDisappearance() throws {
         let scene = AquariumSceneState()

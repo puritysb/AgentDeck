@@ -20,6 +20,7 @@ macOS 2.2.0. The draft uses the [verified macOS media](../apple/appstore-submiss
 ### English — macOS What's New
 
 ```text
+• The Dashboard keeps showing your session creatures in the 2D aquarium while the 3D scene starts or resumes.
 • Compatible devices connected over optional TLS can follow display power and dimming when you grant the device access to display state.
 • The Mac App Store page brings back the aquarium preview and adds screenshots of the Dashboard, attention requests and Work.
 ```
@@ -27,6 +28,7 @@ macOS 2.2.0. The draft uses the [verified macOS media](../apple/appstore-submiss
 ### Korean — macOS 새로운 기능
 
 ```text
+• 3D 수조가 열리거나 다시 표시될 때, 3D 화면이 준비될 때까지 2D 수조에서 세션 크리처를 계속 볼 수 있습니다.
 • TLS로 연결한 호환 기기에 화면 상태 읽기 권한을 부여하면, 기기가 화면 켜짐·꺼짐과 밝기 조절 상태를 반영할 수 있습니다.
 • Mac App Store 페이지에 수조 프리뷰가 돌아왔습니다. 대시보드, 응답 대기 상태, Work를 보여 주는 스크린샷도 보강했습니다.
 ```
@@ -34,6 +36,7 @@ macOS 2.2.0. The draft uses the [verified macOS media](../apple/appstore-submiss
 ### Japanese — macOS このバージョンの新機能
 
 ```text
+• 3D 水槽の起動時や再表示時は、3D 画面の準備ができるまで、2D 水槽でセッションの生き物を確認できます。
 • オプションの TLS 接続を使う対応デバイスに表示状態の読み取りを許可すると、画面のオン・オフや調光状態を反映できるようになりました。
 • Mac App Store ページに水槽のプレビューが戻りました。ダッシュボード、応答待ち、Work のスクリーンショットも追加しました。
 ```
