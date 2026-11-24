@@ -192,15 +192,43 @@ export function scanAntigravityRoot(root: string, nowMs = Date.now()): Antigravi
   } catch { return { status: 'unknown', reason: 'unreadable_source', observations: [] }; }
 }
 // Display-only metadata, never follows workspace paths or reads OAuth credentials.
+// A conversation's own `WorkspaceURIs` (cache/conversation_metadata.json) names
+// its project. `last_conversations.json` keeps only the newest conversation per
+// folder, so an older conversation still running in that folder had no name and
+// showed as "Antigravity" (2026-11-25, epoch-of-tech); it stays the fallback.
 export function antigravityProjectNames(root: string): Record<string, string> {
+  return { ...lastConversationNames(root), ...conversationWorkspaceNames(root) };
+}
+function leafName(path: string): string | undefined {
+  const leaf = path.replace(/[\\/]+$/, '').split(/[\\/]/).at(-1);
+  return !leaf || leaf === '.' || leaf === '..' ? undefined : leaf;
+}
+function conversationWorkspaceNames(root: string): Record<string, string> {
+  try {
+    const value: unknown = JSON.parse(bounded(inside(root, ['cache', 'conversation_metadata.json'], false), P.conversationMetadataBytes));
+    const conversations = object(value) ? value.conversations : undefined;
+    if (!object(conversations)) return {};
+    const names: Record<string, string> = {};
+    for (const [id, entry] of Object.entries(conversations)) {
+      const uris = object(entry) && object(entry.summary) ? entry.summary.WorkspaceURIs : undefined;
+      if (!safeID.test(id) || !Array.isArray(uris) || uris.length !== 1 || typeof uris[0] !== 'string') continue;
+      let path: string;
+      try { const url = new URL(uris[0]); if (url.protocol !== 'file:') continue; path = decodeURIComponent(url.pathname); } catch { continue; }
+      const leaf = leafName(path);
+      if (leaf) names[id] = leaf;
+    }
+    return names;
+  } catch { return {}; }
+}
+function lastConversationNames(root: string): Record<string, string> {
   try {
     const value: unknown = JSON.parse(bounded(inside(root, ['cache', 'last_conversations.json'], false), P.metadataBytes));
     if (!object(value)) return {};
     const candidates = new Map<string, Set<string>>();
     for (const [path, id] of Object.entries(value)) {
       if (typeof id !== 'string' || !safeID.test(id)) continue;
-      const leaf = path.replace(/[\\/]+$/, '').split(/[\\/]/).at(-1);
-      if (!leaf || leaf === '.' || leaf === '..') continue;
+      const leaf = leafName(path);
+      if (!leaf) continue;
       const names = candidates.get(id) ?? new Set<string>(); names.add(leaf); candidates.set(id, names);
     }
     return Object.fromEntries([...candidates].flatMap(([id, names]) => names.size === 1 ? [[id, [...names][0]]] : []));

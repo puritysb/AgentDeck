@@ -38,22 +38,45 @@ enum AntigravitySourceReader {
         guard let raw = String(data: data, encoding: .utf8) else { throw Failure.invalidData }
         return raw
     }
-    private static func metadata(_ root: URL, _ components: [String]) throws -> [String: Any] {
+    private static func metadata(_ root: URL, _ components: [String], limit: Int = AntigravityPolicy.metadataBytes) throws -> [String: Any] {
         let url = try inside(root, components: components, directory: false)
         return try opened(url) { handle, _ in
-            let data = try handle.read(upToCount: AntigravityPolicy.metadataBytes + 1) ?? Data()
-            guard data.count <= AntigravityPolicy.metadataBytes else { throw Failure.oversize }
+            let data = try handle.read(upToCount: limit + 1) ?? Data()
+            guard data.count <= limit else { throw Failure.oversize }
             guard let result = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw Failure.invalidData }
             return result
         }
     }
+    /// Mirrors `antigravityProjectNames` (Node): a conversation's own
+    /// `WorkspaceURIs` wins; `last_conversations.json` keeps only the newest
+    /// conversation per folder and is the fallback.
     static func projectNames(_ root: URL) -> [String: String] {
+        lastConversationNames(root).merging(conversationWorkspaceNames(root)) { _, own in own }
+    }
+    private static func leafName(_ path: String) -> String? {
+        let pieces = path.split(whereSeparator: { $0 == "/" || $0 == "\\" })
+        guard let leaf = pieces.last.map(String.init), leaf != ".", leaf != "..", !leaf.isEmpty else { return nil }
+        return leaf
+    }
+    private static func conversationWorkspaceNames(_ root: URL) -> [String: String] {
+        guard let values = try? metadata(root, ["cache", "conversation_metadata.json"], limit: AntigravityPolicy.conversationMetadataBytes),
+              let conversations = values["conversations"] as? [String: Any] else { return [:] }
+        var names: [String: String] = [:]
+        for (id, entry) in conversations {
+            guard AntigravityTranscript.validID(id),
+                  let summary = (entry as? [String: Any])?["summary"] as? [String: Any],
+                  let uris = summary["WorkspaceURIs"] as? [Any], uris.count == 1, let uri = uris[0] as? String,
+                  let url = URL(string: uri), url.scheme == "file",
+                  let leaf = leafName(url.path) else { continue }
+            names[id] = leaf
+        }
+        return names
+    }
+    private static func lastConversationNames(_ root: URL) -> [String: String] {
         guard let values = try? metadata(root, ["cache", "last_conversations.json"]) else { return [:] }
         var candidates: [String: Set<String>] = [:]
         for (path, value) in values {
-            guard let id = value as? String, AntigravityTranscript.validID(id) else { continue }
-            let pieces = path.split(whereSeparator: { $0 == "/" || $0 == "\\" })
-            guard let leaf = pieces.last.map(String.init), leaf != ".", leaf != "..", !leaf.isEmpty else { continue }
+            guard let id = value as? String, AntigravityTranscript.validID(id), let leaf = leafName(path) else { continue }
             candidates[id, default: []].insert(leaf)
         }
         return candidates.compactMapValues { names in names.count == 1 ? names.first : nil }

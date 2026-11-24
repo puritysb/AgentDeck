@@ -1155,6 +1155,16 @@ public enum D200HLayoutModel {
 
     /// Rows sharing projectName AND agentType get a short unique id tag
     /// (`sessionTag`); every other row is left untagged.
+    /// Mirrors `siblingName` (shared/src/session-labels.ts): Claude Code's
+    /// automatic `<project>-<n>` name adds nothing beside the id tag.
+    static func siblingName(_ displayName: String?, _ projectName: String) -> String {
+        let hint = normalizedDisplayName(displayName)
+        guard !hint.isEmpty else { return projectName }
+        let prefix = projectName + "-"
+        guard !projectName.isEmpty, hint.hasPrefix(prefix) else { return hint }
+        let rest = hint.dropFirst(prefix.count)
+        return !rest.isEmpty && rest.allSatisfy({ $0.isASCII && $0.isNumber }) ? projectName : hint
+    }
     static func sessionDeckLabels(_ sessions: [D200HSession]) -> [String: SessionDeckLabel] {
         var order: [String] = []
         var groups: [String: [D200HSession]] = [:]
@@ -1176,7 +1186,7 @@ public enum D200HLayoutModel {
                 return b.isEmpty ? m.id.lowercased() : b
             }
             for (i, s) in members.enumerated() {
-                labels[s.id] = SessionDeckLabel(name: normalizedDisplayName(s.displayName).isEmpty ? s.projectName : normalizedDisplayName(s.displayName), tag: sessionTag(bodies, i))
+                labels[s.id] = SessionDeckLabel(name: siblingName(s.displayName, s.projectName), tag: sessionTag(bodies, i))
             }
         }
         return labels

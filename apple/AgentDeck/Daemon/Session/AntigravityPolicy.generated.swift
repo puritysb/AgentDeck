@@ -4,6 +4,7 @@ enum AntigravityPolicy {
     static let headBytes = 65536
     static let tailBytes = 524288
     static let metadataBytes = 131072
+    static let conversationMetadataBytes = 4194304
     static let maxDirectories = 256
     static let maxSessions = 32
     static let maxTurns = 64
