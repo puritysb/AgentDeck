@@ -68,7 +68,7 @@
   "optionalDependencies": {
     "@picovoice/porcupine-node": "^4.0.2",
     "@picovoice/pvrecorder-node": "^1.2.8",
-    "better-sqlite3": "12.11.1",
+    "better-sqlite3": "13.2.0",
     "node-pty": "^1.1.0",
     "serialport": "^13.0.0"
   },
