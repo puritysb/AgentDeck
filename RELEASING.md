@@ -134,6 +134,20 @@ macOS 2.2.2 was recorded above as a withdrawn draft; ASC shows it public on
 build 12901 (source `2696f6915c`). Mac changes since that source are only
 #832–#834 and #836.
 
+Delivery receipt (read back 2026-11-25):
+
+- npm 2.1.5: tag `npm-v2.1.5` at `45bac7eca`; `npm-release.yml` run
+  45486137926 published `@agentdeck/shared`, `hooks`, `bridge` and `setup`
+  2.1.5 (registry readback, setup readme present) and the GitHub release.
+  Packed from the same commit, installed globally on the maintainer Mac and
+  soaked in all three daemon modes (CLI only, Swift only, both with takeover and
+  Swift reclaim) with real Codex and OpenCode turns before tagging.
+- macOS 2.2.3: `apple-release.yml` run 45487700964 (macOS only, no tag)
+  uploaded build 13001 from `45bac7eca`; ASC processed it `VALID`, prepared it
+  on version 2.2.3 and submitted it at 2026-11-24T22:25Z. State:
+  `WAITING_FOR_REVIEW`. The 2.2.2 media carries over. Not public until ASC
+  shows `READY_FOR_SALE`.
+
 ### macOS 2.2.2 draft decision (2026-11-21)
 
 | Target / route | Last verified public build | Draft | Proposed build | User-visible reason |
