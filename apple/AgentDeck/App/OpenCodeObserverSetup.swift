@@ -10,6 +10,7 @@ final class OpenCodeObserverSetup: ObservableObject {
     static let shared = OpenCodeObserverSetup()
     private let defaults: UserDefaults
     private let access: HermesReceiverSettings.FolderAccess
+    private let bundled: () throws -> OpenCodeObserverFiles
     private static let bookmarkKey = "prefs.openCodeObserverBookmark"
     private static let pathKey = "prefs.openCodeObserverPath"
     @Published private(set) var selectedPath: String?
@@ -18,19 +19,25 @@ final class OpenCodeObserverSetup: ObservableObject {
     @Published private(set) var port: UInt16?
     var hasSelection: Bool { defaults.data(forKey: Self.bookmarkKey) != nil }
 
-    init(defaults: UserDefaults = .standard, access: HermesReceiverSettings.FolderAccess = .init()) {
+    init(defaults: UserDefaults = .standard, access: HermesReceiverSettings.FolderAccess = .init(),
+         bundled: @escaping () throws -> OpenCodeObserverFiles = { try OpenCodeObserverFiles.bundled() }) {
         self.defaults = defaults
         self.access = access
+        self.bundled = bundled
         selectedPath = defaults.string(forKey: Self.pathKey)
     }
 
     func localReceiverChanged(port: UInt16?) {
         self.port = port.flatMap { $0 > 0 ? $0 : nil }
         guard let port = self.port, hasSelection else { return }
-        perform { folder in
-            let files = try OpenCodeObserverFiles.bundled()
+        perform { [bundled] folder in
+            let files = try bundled()
             if try files.isInstalled(in: folder) {
-                try files.updateReceiver(port: port, in: folder)
+                // An installed observer is ours and unedited (`checked`), so it
+                // follows the app's bundled version: OpenCode 2.x rejects the
+                // pre-v8 plugin at load, and a port-only refresh left App
+                // Store users on it after an app update (2026-11-25).
+                try files.install(port: port, in: folder)
                 return "Receiver saved on port \(port). OpenCode activity confirms event delivery."
             }
             return "Folder selected. Install the observer when ready."
@@ -70,14 +77,14 @@ final class OpenCodeObserverSetup: ObservableObject {
     func install() {
         guard let port else { message = "Waiting for this Mac’s local receiver."; return }
         perform { folder in
-            try OpenCodeObserverFiles.bundled().install(port: port, in: folder)
+            try bundled().install(port: port, in: folder)
             return "Observer saved on port \(port). New OpenCode processes load the updated plugin; received activity confirms it is active."
         }
     }
 
     func remove() {
         perform { folder in
-            try OpenCodeObserverFiles.bundled().remove(in: folder)
+            try bundled().remove(in: folder)
             return "Observer files removed. Already-running OpenCode processes keep their loaded plugin until they exit."
         }
         if !hasError {
