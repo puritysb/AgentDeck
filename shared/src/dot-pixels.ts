@@ -19,15 +19,20 @@ export function paintDotPixels(rgb: Uint8Array, width: number, dot: DotDeckSnaps
   const rows=out ? TERRARIUM_RULES.hermesShellPixels.open : TERRARIUM_RULES.hermesShellPixels.closed;
   const unit=Math.max(1,Math.floor(size/7));
   const tint=[1,3,5].map(i=>parseInt(phase.color.slice(i,i+2),16));
-  if(home?.shell!==false && (!beacon || !out)) for(let y=0;y<rows.length;y++) for(let x=0;x<rows[y].length;x++) if(rows[y][x]==='#')
+  // A beacon slot is one small cell (Pixoo, iDotMatrix, Timebox): a lone closed
+  // shell there reads as a gray saucer, not as Dot (2026-11-24, Pixoo 64 live
+  // frame). Off-duty, the beacon keeps the pearl and dims it; the habitat shell
+  // stays for surfaces large enough to read as one.
+  const resting=beacon && !out;
+  if(home?.shell!==false && !beacon) for(let y=0;y<rows.length;y++) for(let x=0;x<rows[y].length;x++) if(rows[y][x]==='#')
     for(let dy=0;dy<unit;dy++) for(let dx=0;dx<unit;dx++) pixel(hx+(x-3)*unit+dx,hy+(y-rows.length+1)*unit+dy,tint);
-  if(!out) return rgb;
+  if(!out && !resting) return rgb;
   let rgba=defaultDotRGBA(size), sourceSize=size;
   if(validDotAppearance(dot.appearance)) { try { rgba=Uint8Array.from(atob(dot.appearance.rgba),c=>c.charCodeAt(0)); sourceSize=16; } catch { /* canonical pearl */ } }
   const x0=hx-Math.floor(size/2),y0=beacon ? hy-Math.floor(size/2) : hy-rows.length*unit-Math.floor(size*.7);
   for(let y=0;y<size;y++) for(let x=0;x<size;x++) {
     const i=(Math.floor(y*sourceSize/size)*sourceSize+Math.floor(x*sourceSize/size))*4;
-    pixel(x0+x,y0+y,[rgba[i],rgba[i+1],rgba[i+2]],rgba[i+3]);
+    pixel(x0+x,y0+y,[rgba[i],rgba[i+1],rgba[i+2]],resting ? Math.round(rgba[i+3]*H.restingBeaconAlpha) : rgba[i+3]);
   }
   return rgb;
 }
