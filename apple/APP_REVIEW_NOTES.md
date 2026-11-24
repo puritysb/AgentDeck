@@ -687,8 +687,8 @@ Contact: admin@foundby.kr
 ```text
 NO ACCOUNT REQUIRED. Review on a clean Mac with only AgentDeck installed.
 
-NEW IN 2.2.2 — MACOS ONLY
-The Dashboard shows the 2D aquarium and residents until the 3D scene starts updating. Opt-in TLS devices with display-state permission can read display power and dimming. Store media uses synthetic sessions.
+NEW IN 2.2.3 — MACOS ONLY
+Observation fixes; no new permissions. AgentDeck updates its own unedited OpenCode observer file in the user-chosen folder; edited or foreign files are never written.
 
 REMOTE MONITORING (INTRODUCED IN 2.2.0)
 Settings > Remote monitoring: optional sharing of encrypted work counts and attention updates to the user's private CloudKit database for the iPhone, iPad and Watch apps (same Apple Account; no AgentDeck server). Session/allowance details are a separate switch. No prompts, project names, paths or credentials are uploaded. Stop sharing and Delete remote data are durable offline. Off by default.
