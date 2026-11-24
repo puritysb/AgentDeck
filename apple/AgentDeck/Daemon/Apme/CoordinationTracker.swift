@@ -644,7 +644,7 @@ struct CodexBackgroundTerminals {
 }
 // END CODEX BACKGROUND TERMINALS
 // BEGIN GENERATED BACKGROUND WORK — scripts/generate-background-work.mjs
-// Source SHA256: 9459f724661fef611e7a8a5a074e794f4486c2109edad592900a4e50c5d2226f
+// Source SHA256: 8885381fce0b4fed967e31c73ec3e62aafbb3efd05830a0b4166fa6f3d8ab977
 // Agent-agnostic background work per session; adapters translate each agent's
 // signal into snapshot/start/finish/reset. Absent = unknown, explicit 0 = done.
 // A "process" item stops holding its parent working after standbyAfterMs.
@@ -781,10 +781,10 @@ struct BackgroundWorkTracker {
 
 /// The generic `<agent>_background_start|finish|snapshot` hook vocabulary.
 enum BackgroundWorkHooks {
-    struct Rule { let agent: String; let noun: String; let kind: String; let staleMs: Double?; let resets: [String]; let childStop: String?; let events: [String] }
+    struct Rule { let agent: String; let noun: String; let kind: String; let kinds: [String]; let staleMs: Double?; let resets: [String]; let childStop: String?; let events: [String] }
     static let rules: [Rule] = [
-        Rule(agent: "opencode", noun: "task", kind: "job", staleMs: 21600000, resets: ["opencode_session_start", "opencode_session_end"], childStop: "opencode_subagent_stop", events: ["start", "finish"]),
-        Rule(agent: "hermes", noun: "process", kind: "process", staleMs: nil, resets: ["hermes_session_start", "hermes_session_end"], childStop: nil, events: ["snapshot"]),
+        Rule(agent: "opencode", noun: "task", kind: "job", kinds: ["job", "process"], staleMs: 21600000, resets: ["opencode_session_start", "opencode_session_end"], childStop: "opencode_subagent_stop", events: ["start", "finish"]),
+        Rule(agent: "hermes", noun: "process", kind: "process", kinds: ["process"], staleMs: nil, resets: ["hermes_session_start", "hermes_session_end"], childStop: nil, events: ["snapshot"]),
     ]
     static let maxItemId = 256
 
@@ -820,9 +820,11 @@ enum BackgroundWorkHooks {
             if (event == rule.agent + "_background_start" && rule.events.contains("start"))
                 || (event == rule.agent + "_background_finish" && rule.events.contains("finish")) {
                 guard let item = itemId(payload["item_id"]) else { return nil }
-                return event.hasSuffix("_start")
-                    ? .start(sessionId: sid, item: item, noun: rule.noun, kind: rule.kind, staleMs: rule.staleMs)
-                    : .finish(sessionId: sid, item: item)
+                if event.hasSuffix("_finish") { return .finish(sessionId: sid, item: item) }
+                // item_kind may name only a kind the rule allows; anything else is the rule's kind.
+                let named = payload["item_kind"] as? String
+                let kind = named.map { rule.kinds.contains($0) } == true ? named! : rule.kind
+                return .start(sessionId: sid, item: item, noun: rule.noun, kind: kind, staleMs: rule.staleMs)
             }
             if event == rule.agent + "_background_snapshot" && rule.events.contains("snapshot") {
                 guard let raw = payload["items"] as? [Any], raw.count <= BackgroundWorkTracker.maxItems else { return nil }

@@ -55,18 +55,23 @@ export type BackgroundWorkNoun = keyof typeof BACKGROUND_WORK_POLICY.nouns;
 
 /**
  * The generic hook vocabulary any observer plugin can speak:
- *   `<agent>_background_start`    { session_id, item_id }
+ *   `<agent>_background_start`    { session_id, item_id, item_kind? }
  *   `<agent>_background_finish`   { session_id, item_id }
  *   `<agent>_background_snapshot` { session_id, items: string[] }
  * plus the agent's own session-boundary events (reset) and child-stop event
  * (a finish for an item that is a child session). Agents whose signal is not a
  * hook (Claude's Stop snapshot, Codex's rollout) have their own adapters.
  * `staleMs` bounds start/finish-fed items whose finish could be lost.
+ * `kinds` lists the item kinds a start may name in `item_kind`; anything else
+ * (absent, unknown, not allowed) falls back to the rule's `kind`. OpenCode 2.x
+ * runs background shells (open-ended: a dev server is one) beside background
+ * subagents (they end), and one job id space carries both.
  */
 export const BACKGROUND_WORK_HOOKS = {
   opencode: {
     noun: 'task',
     kind: 'job',
+    kinds: ['job', 'process'],
     staleMs: 6 * 60 * 60 * 1000,
     resets: ['opencode_session_start', 'opencode_session_end'],
     childStop: 'opencode_subagent_stop',
@@ -75,6 +80,7 @@ export const BACKGROUND_WORK_HOOKS = {
   hermes: {
     noun: 'process',
     kind: 'process',
+    kinds: ['process'],
     staleMs: null,
     resets: ['hermes_session_start', 'hermes_session_end'],
     childStop: null,
@@ -82,7 +88,7 @@ export const BACKGROUND_WORK_HOOKS = {
     events: ['snapshot'],
   },
 } as const satisfies Record<string, {
-  noun: BackgroundWorkNoun; kind: BackgroundWorkKind; staleMs: number | null; resets: readonly string[]; childStop: string | null;
+  noun: BackgroundWorkNoun; kind: BackgroundWorkKind; kinds: readonly BackgroundWorkKind[]; staleMs: number | null; resets: readonly string[]; childStop: string | null;
   events: readonly ('start' | 'finish' | 'snapshot')[];
 }>;
 
@@ -119,7 +125,11 @@ export function backgroundWorkHookOp(event: string, payload: Record<string, unkn
       || (event === `${agent}_background_finish` && allowed.includes('finish'))) {
       const item = itemId(payload.item_id);
       if (!item) return null;
-      return { kind: event.endsWith('_start') ? 'start' : 'finish', item, ...base };
+      if (event.endsWith('_finish')) return { kind: 'finish', item, ...base };
+      const named = payload.item_kind;
+      const itemKind = typeof named === 'string' && (rule.kinds as readonly string[]).includes(named)
+        ? named as BackgroundWorkKind : base.itemKind;
+      return { kind: 'start', item, ...base, itemKind };
     }
     if (event === `${agent}_background_snapshot` && allowed.includes('snapshot')) {
       const raw = payload.items;

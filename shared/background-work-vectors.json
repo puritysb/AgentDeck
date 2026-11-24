@@ -1,8 +1,9 @@
 {
-  "$comment": "Background-work hook vocabulary and tracker, replayed by bridge/src/__tests__/background-work.test.ts through Node and the generated Swift block. Each step is a hook {event, payload, now} or a reap {reap: now}; `expect` lists the projection of an idle row per session after the step (null = no information, the row is unchanged). OpenCode payloads are the observer plugin v4 posts for the 2026-10-11 probe (OpenCode 1.18.35 background subagent); Hermes payloads are observer v2 snapshots of process_registry.list_sessions entries. Hermes items are `process` kind: the closing steps hold one process past BACKGROUND_WORK_POLICY.standbyAfterMs (600000 ms), after which it projects as standby and the idle row stays idle; a newer process is still active beside it. Projections are taken at the step's own time.",
+  "$comment": "Background-work hook vocabulary and tracker, replayed by bridge/src/__tests__/background-work.test.ts through Node and the generated Swift block. Each step is a hook {event, payload, now} or a reap {reap: now}; `expect` lists the projection of an idle row per session after the step (null = no information, the row is unchanged). OpenCode payloads are the observer plugin v4 posts for the 2026-10-11 probe (OpenCode 1.18.35 background subagent); Hermes payloads are observer v2 snapshots of process_registry.list_sessions entries. Hermes items are `process` kind: the closing steps hold one process past BACKGROUND_WORK_POLICY.standbyAfterMs (600000 ms), after which it projects as standby and the idle row stays idle; a newer process is still active beside it. Projections are taken at the step's own time. The third session is OpenCode 2.4.1 (observer plugin v8, 2026-11-24 probe): one job id space carries a background shell (`item_kind: process`) and a subagent (`item_kind: job`); a kind the rule does not list falls back to the rule's `job`, and the shell goes on standby at standbyAfterMs like any process. The third session is OpenCode 2.4.1 (observer plugin v8, 2026-11-24 probe): one job id space carries a background shell (`item_kind: process`) and a subagent (`item_kind: job`); a kind the rule does not list falls back to the rule's `job`, and the shell goes on standby at standbyAfterMs like any process.",
   "sessions": [
     "ses_ed5013ad6ffeE3Jl9V22nq9OGW",
-    "hermes-0f3a9c2b7d1e4f5a6b7c8d9e0f1a2b3c"
+    "hermes-0f3a9c2b7d1e4f5a6b7c8d9e0f1a2b3c",
+    "ses_df24ff74effepnfwrV1cPHYML1"
   ],
   "steps": [
     {
@@ -491,6 +492,199 @@
           "currentTool": "Background tasks",
           "currentTask": "Waiting for 1 background process",
           "activity": "Waiting for 1 background process"
+        }
+      ]
+    },
+    {
+      "event": "opencode_background_start",
+      "payload": {
+        "session_id": "ses_df24ff74effepnfwrV1cPHYML1",
+        "item_id": "sh_20db0d07a001R6HwBVeY5AzIIa",
+        "item_kind": "process",
+        "cwd": "/tmp/ocprobe2/work"
+      },
+      "now": 1791724000000,
+      "consumed": true,
+      "changed": true,
+      "expect": [
+        null,
+        {
+          "state": "processing",
+          "backgroundTaskCount": 1,
+          "backgroundStandbyCount": 0,
+          "currentTool": "Background tasks",
+          "currentTask": "Waiting for 1 background process",
+          "activity": "Waiting for 1 background process"
+        },
+        {
+          "state": "processing",
+          "backgroundTaskCount": 1,
+          "backgroundStandbyCount": 0,
+          "currentTool": "Background tasks",
+          "currentTask": "Waiting for 1 background task",
+          "activity": "Waiting for 1 background task"
+        }
+      ]
+    },
+    {
+      "event": "opencode_background_start",
+      "payload": {
+        "session_id": "ses_df24ff74effepnfwrV1cPHYML1",
+        "item_id": "ses_df24f2f86ffeXIAb3tfcVpmWoG",
+        "item_kind": "job",
+        "cwd": "/tmp/ocprobe2/work"
+      },
+      "now": 1791724000001,
+      "consumed": true,
+      "changed": true,
+      "expect": [
+        null,
+        {
+          "state": "processing",
+          "backgroundTaskCount": 1,
+          "backgroundStandbyCount": 0,
+          "currentTool": "Background tasks",
+          "currentTask": "Waiting for 1 background process",
+          "activity": "Waiting for 1 background process"
+        },
+        {
+          "state": "processing",
+          "backgroundTaskCount": 2,
+          "backgroundStandbyCount": 0,
+          "currentTool": "Background tasks",
+          "currentTask": "Waiting for 2 background tasks",
+          "activity": "Waiting for 2 background tasks"
+        }
+      ]
+    },
+    {
+      "event": "opencode_background_start",
+      "payload": {
+        "session_id": "ses_df24ff74effepnfwrV1cPHYML1",
+        "item_id": "sh_unlisted_kind",
+        "item_kind": "daemon",
+        "cwd": "/tmp/ocprobe2/work"
+      },
+      "now": 1791724000002,
+      "consumed": true,
+      "changed": true,
+      "expect": [
+        null,
+        {
+          "state": "processing",
+          "backgroundTaskCount": 1,
+          "backgroundStandbyCount": 0,
+          "currentTool": "Background tasks",
+          "currentTask": "Waiting for 1 background process",
+          "activity": "Waiting for 1 background process"
+        },
+        {
+          "state": "processing",
+          "backgroundTaskCount": 3,
+          "backgroundStandbyCount": 0,
+          "currentTool": "Background tasks",
+          "currentTask": "Waiting for 3 background tasks",
+          "activity": "Waiting for 3 background tasks"
+        }
+      ]
+    },
+    {
+      "event": "opencode_background_finish",
+      "payload": {
+        "session_id": "ses_df24ff74effepnfwrV1cPHYML1",
+        "item_id": "ses_df24f2f86ffeXIAb3tfcVpmWoG",
+        "status": "completed",
+        "cwd": "/tmp/ocprobe2/work"
+      },
+      "now": 1791724018000,
+      "consumed": true,
+      "changed": true,
+      "expect": [
+        null,
+        {
+          "state": "processing",
+          "backgroundTaskCount": 1,
+          "backgroundStandbyCount": 0,
+          "currentTool": "Background tasks",
+          "currentTask": "Waiting for 1 background process",
+          "activity": "Waiting for 1 background process"
+        },
+        {
+          "state": "processing",
+          "backgroundTaskCount": 2,
+          "backgroundStandbyCount": 0,
+          "currentTool": "Background tasks",
+          "currentTask": "Waiting for 2 background tasks",
+          "activity": "Waiting for 2 background tasks"
+        }
+      ]
+    },
+    {
+      "reap": 1791724600000,
+      "expect": [
+        null,
+        {
+          "state": "idle",
+          "backgroundTaskCount": 0,
+          "backgroundStandbyCount": 1
+        },
+        {
+          "state": "processing",
+          "backgroundTaskCount": 1,
+          "backgroundStandbyCount": 1,
+          "currentTool": "Background tasks",
+          "currentTask": "Waiting for 1 background task",
+          "activity": "Waiting for 1 background task"
+        }
+      ]
+    },
+    {
+      "event": "opencode_background_finish",
+      "payload": {
+        "session_id": "ses_df24ff74effepnfwrV1cPHYML1",
+        "item_id": "sh_unlisted_kind",
+        "status": "completed",
+        "cwd": "/tmp/ocprobe2/work"
+      },
+      "now": 1791724650000,
+      "consumed": true,
+      "changed": true,
+      "expect": [
+        null,
+        {
+          "state": "idle",
+          "backgroundTaskCount": 0,
+          "backgroundStandbyCount": 1
+        },
+        {
+          "state": "idle",
+          "backgroundTaskCount": 0,
+          "backgroundStandbyCount": 1
+        }
+      ]
+    },
+    {
+      "event": "opencode_background_finish",
+      "payload": {
+        "session_id": "ses_df24ff74effepnfwrV1cPHYML1",
+        "item_id": "sh_20db0d07a001R6HwBVeY5AzIIa",
+        "status": "completed",
+        "cwd": "/tmp/ocprobe2/work"
+      },
+      "now": 1791724700000,
+      "consumed": true,
+      "changed": true,
+      "expect": [
+        null,
+        {
+          "state": "idle",
+          "backgroundTaskCount": 0,
+          "backgroundStandbyCount": 1
+        },
+        {
+          "state": "idle",
+          "backgroundTaskCount": 0,
+          "backgroundStandbyCount": 0
         }
       ]
     }

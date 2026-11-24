@@ -26,7 +26,7 @@ export function emitBackgroundWorkSwift(policy, sourceText, hooks) {
   const nouns = Object.entries(policy.nouns)
     .map(([kind, [one, many]]) => `        case ${JSON.stringify(kind)}: return count == 1 ? ${JSON.stringify(one)} : ${JSON.stringify(many)}`).join('\n');
   const rules = Object.entries(hooks).map(([agent, r]) =>
-    `        Rule(agent: ${JSON.stringify(agent)}, noun: ${JSON.stringify(r.noun)}, kind: ${JSON.stringify(r.kind)}, staleMs: ${r.staleMs === null ? 'nil' : r.staleMs}, `
+    `        Rule(agent: ${JSON.stringify(agent)}, noun: ${JSON.stringify(r.noun)}, kind: ${JSON.stringify(r.kind)}, kinds: [${r.kinds.map(x => JSON.stringify(x)).join(', ')}], staleMs: ${r.staleMs === null ? 'nil' : r.staleMs}, `
     + `resets: [${r.resets.map(x => JSON.stringify(x)).join(', ')}], childStop: ${r.childStop === null ? 'nil' : JSON.stringify(r.childStop)}, `
     + `events: [${r.events.map(x => JSON.stringify(x)).join(', ')}]),`).join('\n');
   return `// BEGIN GENERATED BACKGROUND WORK — scripts/generate-background-work.mjs
@@ -165,7 +165,7 @@ ${nouns}
 
 /// The generic \`<agent>_background_start|finish|snapshot\` hook vocabulary.
 enum BackgroundWorkHooks {
-    struct Rule { let agent: String; let noun: String; let kind: String; let staleMs: Double?; let resets: [String]; let childStop: String?; let events: [String] }
+    struct Rule { let agent: String; let noun: String; let kind: String; let kinds: [String]; let staleMs: Double?; let resets: [String]; let childStop: String?; let events: [String] }
     static let rules: [Rule] = [
 ${rules}
     ]
@@ -203,9 +203,11 @@ ${rules}
             if (event == rule.agent + "_background_start" && rule.events.contains("start"))
                 || (event == rule.agent + "_background_finish" && rule.events.contains("finish")) {
                 guard let item = itemId(payload["item_id"]) else { return nil }
-                return event.hasSuffix("_start")
-                    ? .start(sessionId: sid, item: item, noun: rule.noun, kind: rule.kind, staleMs: rule.staleMs)
-                    : .finish(sessionId: sid, item: item)
+                if event.hasSuffix("_finish") { return .finish(sessionId: sid, item: item) }
+                // item_kind may name only a kind the rule allows; anything else is the rule's kind.
+                let named = payload["item_kind"] as? String
+                let kind = named.map { rule.kinds.contains($0) } == true ? named! : rule.kind
+                return .start(sessionId: sid, item: item, noun: rule.noun, kind: kind, staleMs: rule.staleMs)
             }
             if event == rule.agent + "_background_snapshot" && rule.events.contains("snapshot") {
                 guard let raw = payload["items"] as? [Any], raw.count <= BackgroundWorkTracker.maxItems else { return nil }

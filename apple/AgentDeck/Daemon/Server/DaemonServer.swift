@@ -1264,6 +1264,9 @@ final class DaemonServer {
     private var antigravitySnapshot = AntigravityScan(reason: "not_configured")
     private var antigravityNativeIDs: Set<String> = []
     private var antigravitySessionPollTask: Task<Void, Never>?
+    /// Antigravity background task ids last seen running, per conversation,
+    /// with the CI-wait token each opened (Node: `AntigravityBackgroundFeed`).
+    private var antigravityBackgroundKnown: [String: [String: Int?]] = [:]
     private var cachedSessionStorage: [DaemonSessionEntry] = []
     private var cachedSessions: [DaemonSessionEntry] {
         get {
@@ -10511,6 +10514,7 @@ final class DaemonServer {
                 if snapshot != self.antigravitySnapshot {
                     self.antigravitySnapshot = snapshot
                     self.rebuildAntigravityRows()
+                    await self.syncAntigravityBackground()
                     self.broadcastSessionsList()
                 }
                 try? await Task.sleep(for: .milliseconds(AntigravityPolicy.activityPollMs))
@@ -10783,6 +10787,53 @@ final class DaemonServer {
         antigravityNativeIDs = Set(rows.map(\.id))
         sessionOrderStore.noteSeen(ids: rows.map(\.id))
         cachedSessions = DashboardDataRules.sortSessions(base + rows.map { sessionOrderStore.apply(to: $0) })
+    }
+
+    /// Antigravity pushes no hooks: its background commands come from the
+    /// transcript, into the same background-work and CI-wait trackers the hook
+    /// agents feed. Mirrors Node's `AntigravityBackgroundFeed`.
+    private func syncAntigravityBackground() async {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let authorized = AntigravitySessionSettings.accessGate.accepts(antigravitySnapshot.grantRevision)
+        var tasksBySession: [String: [AntigravityBackgroundTask]] = [:]
+        if authorized {
+            for observed in antigravitySnapshot.known where observed.isAdmissible(nowMs: nowMs) {
+                if let tasks = observed.backgroundTasks, !tasks.isEmpty { tasksBySession[observed.conversationId] = tasks }
+            }
+        }
+        let now = Self.wireEpochMs(Double(nowMs))
+        for sid in Set(antigravityBackgroundKnown.keys).union(tasksBySession.keys) {
+            let tasks = tasksBySession[sid] ?? []
+            let before = antigravityBackgroundKnown[sid]
+            if before == nil && tasks.isEmpty { continue }
+            var after: [String: Int?] = [:]
+            backgroundWork.snapshot(sid, items: tasks.map(\.id), now: Double(nowMs), noun: "task", staleMs: .some(nil), kind: "process")
+            for task in tasks {
+                if let known = before?[task.id] { after[task.id] = known; continue }
+                let tokens = Set(ciWaits.waitsFor(sid, now: now).map(\.token))
+                if let command = task.command {
+                    _ = ciWaits.note(sid, event: "tool_start", json: ["tool_name": "bash", "tool_use_id": task.id,
+                        "tool_input": ["command": command, "run_in_background": true]], now: now)
+                }
+                after[task.id] = .some(ciWaits.waitsFor(sid, now: now).first { !tokens.contains($0.token) }?.token)
+            }
+            for (id, token) in before ?? [:] where after[id] == nil {
+                guard let token = token, ciWaits.waitsFor(sid, now: now).contains(where: { $0.token == token }) else { continue }
+                if ciWaits.tokenFor(sid) == token, let head = ciWaits.snapshot(sid, now: now),
+                   ["passed", "failed"].contains(githubCI.projection(head, sid: sid, token: token, now: Double(nowMs) / 1000)["phase"] as? String ?? "") {
+                    continue
+                }
+                _ = ciWaits.note(sid, event: "tool_failure", json: ["tool_use_id": id], now: now)
+                var entry = DaemonTimelineEntry(ts: Double(now), type: "scheduled", raw: "CI watcher ended · result unconfirmed",
+                    detail: nil, approvalId: nil, status: nil, agentType: "antigravity", repeatCount: nil, automated: nil)
+                entry.sessionId = sid
+                entry.summaryKind = "none"
+                if await timelineStore.add(entry, bypassSuppression: true) {
+                    broadcastRaw(["type": "timeline_event", "entry": claudeCodeEntryDict(entry)])
+                }
+            }
+            if after.isEmpty { antigravityBackgroundKnown.removeValue(forKey: sid) } else { antigravityBackgroundKnown[sid] = after }
+        }
     }
 
     nonisolated static func antigravityRows(_ snapshot: AntigravityScan, excluding: Set<String>, nowMs: Int64) -> [DaemonSessionEntry] {

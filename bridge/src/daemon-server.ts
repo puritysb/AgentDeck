@@ -48,7 +48,8 @@ import { deliverOrientation, OrientationRequestError, parseEsp32Layout } from '.
 import { OpenClawAdapter } from './adapters/openclaw.js';
 import { BridgeLogStream } from './log-stream.js';
 import { distBuildId } from './daemon-build-identity.js';
-import { PassiveSessionObserver, codexRolloutSummaryForSession, collectProcessInfo, type ProcInfo } from './passive-observer.js';
+import { PassiveSessionObserver, antigravityBackgroundTasks, codexRolloutSummaryForSession, collectProcessInfo, type ProcInfo } from './passive-observer.js';
+import { AntigravityBackgroundFeed } from './antigravity-background.js';
 import { claudeBackgroundRoleForHook, isClaudeSpareHook, isParkedClaudeSession, parkedClaudeSessionId } from './claude-spare-hooks.js';
 import { CodexExecChildren, type CodexExecChild, type ExecChildPeer } from './codex-exec-children.js';
 import { ClaudeBackgroundTasks } from './claude-background-tasks.js';
@@ -5768,9 +5769,18 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       }).finally(() => ciProbes.delete(id));
     }
   };
+  const antigravityBackground = new AntigravityBackgroundFeed();
   const coordinationTick = () => {
     // A lost background finish must not hold a creature working forever.
     if (backgroundWork.reap(Date.now()).length > 0) core.maybeBroadcastSessionsList();
+    // Antigravity has no hooks: its background commands come from the
+    // transcript the passive scan already read, into the same trackers.
+    const agNow = Date.now();
+    const ag = antigravityBackground.sync(antigravityBackgroundTasks, backgroundWork, ciWaits, agNow);
+    for (const id of ag.unconfirmed) {
+      core.bridgeTimeline.addEntry({ ts: agNow, type: 'scheduled', raw: 'CI watcher ended · result unconfirmed', sessionId: id, summaryKind: 'none' });
+    }
+    if (ag.changed) core.broadcastSessionsList().catch(() => {});
     pollCiWaits();
     const peers = coordination.mergePeers(passiveSessionObserver.collect([])
       .filter((s) => typeof s.pid === 'number' && s.pid > 0)

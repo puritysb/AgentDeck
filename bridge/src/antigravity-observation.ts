@@ -5,6 +5,8 @@ import { parseAntigravityTranscript } from './apme/antigravity-transcript.js';
 import { antigravityActivityFreshness, observeAntigravityActivity } from './antigravity-activity.js';
 
 export interface AntigravityTurnIdentity { id: string; stepIndex: number; startedAtMs: number }
+/** A command Antigravity moved to the background. `command` never leaves the daemon. */
+export interface AntigravityBackgroundTask { id: string; command?: string }
 export interface AntigravityObservation {
   conversationId: string;
   status: 'known' | 'unknown' | 'stale';
@@ -19,6 +21,7 @@ export interface AntigravityObservation {
   modifiedAtMs?: number;
   latestStepIndex?: number;
   turns: AntigravityTurnIdentity[];
+  backgroundTasks?: AntigravityBackgroundTask[];
 }
 export interface AntigravityScan {
   status: 'known' | 'unknown';
@@ -80,8 +83,39 @@ export function observeAntigravityTranscript(conversationId: string, raw: string
   const tail = gapAt < 0 ? summary : parseAntigravityTranscript(tailRaw);
   if (tail.model) tail.model = Array.from(tail.model).slice(0, P.labelCodePoints).join('');
   if (tail.currentTask) tail.currentTask = Array.from(tail.currentTask).slice(0, P.labelCodePoints).join('');
+  const backgroundTasks = antigravityBackgroundTasks(gapAt < 0 ? records : records.slice(gapAt));
   return { ...base, ...details, status: 'known', reason: 'step_evidence', state: latest.status === 'RUNNING' ? 'processing' : 'idle',
-    ...(summary.goal ? { goal: summary.goal } : {}), ...(tail.model ? { model: tail.model } : {}), ...(tail.currentTask ? { currentTask: tail.currentTask } : {}) };
+    ...(summary.goal ? { goal: summary.goal } : {}), ...(tail.model ? { model: tail.model } : {}), ...(tail.currentTask ? { currentTask: tail.currentTask } : {}),
+    ...(backgroundTasks.length ? { backgroundTasks } : {}) };
+}
+
+const backgroundStart = new RegExp(P.backgroundStartPattern);
+const backgroundCommand = new RegExp(P.backgroundCommandPattern);
+const backgroundEnds = P.backgroundEndPatterns.map((pattern) => new RegExp(pattern));
+/**
+ * Commands still running in the background, in start order. A command that
+ * outlives its WaitMsBeforeAsync becomes a task (`<conversation>/task-<step>`)
+ * and its RUN_COMMAND record says so. Three records end it: the task's own
+ * message (`sender=<task id>`, "finished|was canceled with result"), a kill
+ * (`Task "<id>" cancelled.`) and a status check that no longer says RUNNING. Timers the agent sets
+ * for itself are GENERIC records and are not work. Only the contiguous tail is
+ * read: a start before a truncation gap could have lost its finish to the gap.
+ */
+function antigravityBackgroundTasks(records: Record<string, unknown>[]): AntigravityBackgroundTask[] {
+  const running = new Map<string, AntigravityBackgroundTask>();
+  for (const record of records) {
+    const content = typeof record.content === 'string' ? record.content : '';
+    if (!content) continue;
+    const started = (P.backgroundToolTypes as readonly string[]).includes(String(record.type)) ? backgroundStart.exec(content)?.[1] : undefined;
+    if (started) {
+      const command = backgroundCommand.exec(content)?.[1];
+      running.delete(started);
+      running.set(started, command ? { id: started, command } : { id: started });
+      continue;
+    }
+    for (const end of backgroundEnds) { const ended = end.exec(content)?.[1]; if (ended) running.delete(ended); }
+  }
+  return [...running.values()].slice(-P.maxBackgroundItems);
 }
 
 function inside(root: string, components: string[], directory: boolean): string {

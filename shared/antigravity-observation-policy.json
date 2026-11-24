@@ -45,5 +45,16 @@
   "activityProgressOps": 1000,
   "activitySchemaColumns": 64,
   "activityWalHeaderBytes": 32,
-  "activityColdMaxBytes": 67108864
+  "activityColdMaxBytes": 67108864,
+  "backgroundToolTypes": [
+    "RUN_COMMAND"
+  ],
+  "backgroundStartPattern": "running as a background task with task id: ([^\\s]{1,256})",
+  "backgroundCommandPattern": "\\nTask Description: ([^\\n]{1,4096})",
+  "backgroundEndPatterns": [
+    "\\bsender=([^\\s]{1,256}) priority=",
+    "Task \"([^\"\\s]{1,256})\" cancelled\\.",
+    "\\nTask: ([^\\s]{1,256})\\nStatus: (?!RUNNING\\b)[A-Z]"
+  ],
+  "maxBackgroundItems": 32
 }

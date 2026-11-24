@@ -6,6 +6,11 @@ struct AntigravityTurnIdentity: Codable, Sendable, Equatable {
     let stepIndex: Int
     let startedAtMs: Int64
 }
+/// A command Antigravity moved to the background. `command` never leaves the daemon.
+struct AntigravityBackgroundTask: Codable, Sendable, Equatable {
+    let id: String
+    var command: String?
+}
 struct AntigravityObservation: Codable, Sendable, Equatable {
     let conversationId: String
     var status = "unknown"
@@ -20,6 +25,7 @@ struct AntigravityObservation: Codable, Sendable, Equatable {
     var modifiedAtMs: Int64?
     var latestStepIndex: Int?
     var turns: [AntigravityTurnIdentity] = []
+    var backgroundTasks: [AntigravityBackgroundTask]?
     var startedAtISO: String? {
         guard let startedAtMs else { return nil }
         let formatter = ISO8601DateFormatter()
@@ -146,8 +152,30 @@ enum AntigravityTranscript {
                 out.currentTask = name?.isEmpty == false ? String(String.UnicodeScalarView(name!.unicodeScalars.prefix(AntigravityPolicy.labelCodePoints))) : type.lowercased()
             }
         }
+        let tasks = backgroundTasks(gapAt.map { Array(records.dropFirst($0)) } ?? records)
+        if !tasks.isEmpty { out.backgroundTasks = tasks }
         out.status = "known"; out.reason = "step_evidence"; out.state = status == "RUNNING" ? "processing" : "idle"
         return out
+    }
+
+    /// Mirrors Node's `antigravityBackgroundTasks`: a background RUN_COMMAND
+    /// opens `<conversation>/task-<step>`; its own `sender=` message, a kill
+    /// or a non-RUNNING status check closes it; timers (GENERIC) are not work.
+    static func backgroundTasks(_ records: [[String: Any]]) -> [AntigravityBackgroundTask] {
+        var running: [AntigravityBackgroundTask] = []
+        for record in records {
+            guard let content = record["content"] as? String, !content.isEmpty else { continue }
+            if let type = record["type"] as? String, AntigravityPolicy.backgroundToolTypes.contains(type),
+               let started = match(AntigravityPolicy.backgroundStartPattern, content) {
+                running.removeAll { $0.id == started }
+                running.append(AntigravityBackgroundTask(id: started, command: match(AntigravityPolicy.backgroundCommandPattern, content)))
+                continue
+            }
+            for pattern in AntigravityPolicy.backgroundEndPatterns {
+                if let ended = match(pattern, content) { running.removeAll { $0.id == ended } }
+            }
+        }
+        return Array(running.suffix(AntigravityPolicy.maxBackgroundItems))
     }
 }
 #endif

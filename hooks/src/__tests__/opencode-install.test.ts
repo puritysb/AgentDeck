@@ -475,3 +475,116 @@ describe('installOpenCodeHooksIfNeeded', () => {
     expect(opencodePluginPath()).toMatch(/opencode[\\/]+plugins[\\/]+agentdeck\.js$/);
   });
 });
+
+/**
+ * OpenCode 2.x loads `default.setup(ctx)` once per project directory in one
+ * long-lived server, and every instance's `ctx.event.subscribe()` sees every
+ * directory's events. Event shapes below are the ones measured on 2.4.1.
+ */
+describe('AgentDeckObserver on the OpenCode 2.x plugin API', () => {
+  let dir: string | null = null;
+  let posts: Array<{ event: string; body: Record<string, unknown> }> = [];
+
+  beforeEach(() => {
+    posts = [];
+    delete process.env.AGENTDECK_PORT;
+    delete (globalThis as Record<string, unknown>).__agentdeckObserverV2;
+    vi.stubGlobal('fetch', async (url: unknown, init?: { body?: string }) => {
+      const u = String(url);
+      if (u.endsWith('/health')) return { ok: true };
+      const hook = u.match(/\/hooks\/([a-z_]+)$/);
+      if (hook && init?.body) { posts.push({ event: hook[1], body: JSON.parse(init.body) }); return { ok: true }; }
+      if (u.includes('/opencode/commands')) return new Promise(() => {});
+      return { ok: false };
+    });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete (globalThis as Record<string, unknown>).__agentdeckObserverV2;
+    if (dir) rmSync(dir, { recursive: true, force: true });
+    dir = null;
+  });
+
+  async function plugin() {
+    dir = mkdtempSync(join(tmpdir(), 'agentdeck-oc-v2-'));
+    const file = join(dir, 'agentdeck.mjs');
+    writeFileSync(file, opencodePluginSource().replace(
+      'import { readFile } from "node:fs/promises";',
+      'const readFile = async () => { throw new Error("fixture: no registry"); };',
+    ), 'utf-8');
+    return import(pathToFileURL(file).href);
+  }
+
+  /** One process-wide event stream fanned out to every subscriber. */
+  function bus() {
+    const subscribers: Array<(ev: unknown) => void> = [];
+    const subscribe = () => {
+      const queue: unknown[] = []; let wake: (() => void) | null = null;
+      subscribers.push((ev) => { queue.push(ev); wake?.(); });
+      return { async *[Symbol.asyncIterator]() {
+        for (;;) { while (queue.length) yield queue.shift(); await new Promise<void>((r) => { wake = r; }); wake = null; }
+      } };
+    };
+    return { subscribe, emit: (ev: unknown) => subscribers.forEach((s) => s(ev)) };
+  }
+  const flush = () => new Promise((r) => setTimeout(r, 30));
+
+  it('exports both plugin shapes from one file', async () => {
+    const mod = await plugin();
+    expect(mod.default.id).toBe('agentdeck-observer');
+    expect(mod.default.server).toBe(mod.AgentDeckObserver);
+    expect(typeof mod.default.setup).toBe('function');
+  });
+
+  it('posts each event once across locations, with the session directory, background kinds and CI-readable shell input', async () => {
+    const mod = await plugin();
+    const events = bus();
+    const ctx = (directory: string) => ({
+      location: { directory }, event: events,
+      session: { get: async () => null, interrupt: async () => ({}), prompt: async () => ({}) },
+      permission: { reply: async () => ({}) },
+    });
+    await mod.default.setup(ctx('/home/me'));
+    await mod.default.setup(ctx('/work/toolkit'));
+    const loc = { directory: '/work/toolkit' };
+    const emit = (type: string, data: Record<string, unknown>) => events.emit({ type, data, location: loc });
+    emit('session.created', { sessionID: 'ses_root', location: loc });
+    emit('session.inbox.enqueued', { sessionID: 'ses_root', inboxID: 'in1', item: { type: 'user', payload: { text: 'watch ci' } } });
+    emit('session.inbox.delivered', { sessionID: 'ses_root', inboxID: 'in1' });
+    emit('session.execution.started', { sessionID: 'ses_root' });
+    emit('session.step.started', { sessionID: 'ses_root', model: { id: 'gemma', providerID: 'mlx' } });
+    emit('session.tool.input.started', { sessionID: 'ses_root', id: 't1', name: 'shell' });
+    emit('session.tool.called', { sessionID: 'ses_root', id: 't1', input: { command: 'gh run watch 9 --exit-status', background: true } });
+    emit('experimental.job.updated', { info: { kind: 'shell', id: 'sh_1', sessionID: 'ses_root', status: 'running' } });
+    emit('session.tool.success', { sessionID: 'ses_root', id: 't1' });
+    emit('session.created', { sessionID: 'ses_child', parentID: 'ses_root', location: loc });
+    emit('experimental.job.updated', { info: { kind: 'subagent', id: 'ses_child', sessionID: 'ses_root', status: 'running' } });
+    emit('experimental.job.updated', { info: { kind: 'subagent', id: 'ses_child', sessionID: 'ses_root', status: 'completed' } });
+    emit('session.text.ended', { sessionID: 'ses_root', text: 'launched' });
+    emit('session.execution.succeeded', { sessionID: 'ses_root' });
+    await flush();
+
+    const names = posts.map((p) => p.event);
+    expect(names).toEqual([
+      'opencode_session_start', 'opencode_user_prompt_submit', 'opencode_tool_start',
+      'opencode_background_start', 'opencode_tool_end', 'opencode_background_start', 'opencode_background_finish', 'opencode_stop',
+    ]);
+    expect(posts.every((p) => p.body.session_id === 'ses_root' && p.body.cwd === '/work/toolkit')).toBe(true);
+    expect(posts[2].body).toMatchObject({ tool_name: 'shell', tool_input: { command: 'gh run watch 9 --exit-status', run_in_background: true } });
+    expect(posts[3].body).toMatchObject({ item_id: 'sh_1', item_kind: 'process' });
+    expect(posts[5].body).toMatchObject({ item_id: 'ses_child', item_kind: 'job' });
+    expect(posts[7].body).toMatchObject({ last_assistant_message: 'launched', model: 'gemma', model_provider: 'mlx' });
+  });
+
+  it('stays out of a managed PTY', async () => {
+    const mod = await plugin();
+    const events = bus();
+    process.env.AGENTDECK_PORT = '9121';
+    try {
+      await mod.default.setup({ location: { directory: '/w' }, event: events });
+      events.emit({ type: 'session.execution.started', data: { sessionID: 's' } });
+      await flush();
+      expect(posts).toEqual([]);
+    } finally { delete process.env.AGENTDECK_PORT; }
+  });
+});

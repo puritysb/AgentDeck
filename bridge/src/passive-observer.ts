@@ -34,7 +34,7 @@ import { stripUnsafeText, rawSessionId, codexSessionMetaIsSubagent } from '@agen
 // The interrupt marker rule is shared with the turn watchdog / APME collector —
 // see claude-interrupt-marker.ts for why it must not be spelled twice.
 import { isClaudeInterruptMessage } from './claude-interrupt-marker.js';
-import { scanAntigravityRoot, antigravityProjectNames, antigravityWorkspaceConversations } from './antigravity-observation.js';
+import { scanAntigravityRoot, antigravityProjectNames, antigravityWorkspaceConversations, type AntigravityBackgroundTask } from './antigravity-observation.js';
 import { ANTIGRAVITY_POLICY } from './antigravity-policy.generated.js';
 import {
   KiroSessionCache,
@@ -1177,12 +1177,7 @@ function codexRolloutId(rolloutPath: string): string {
  * with the project derived from the process cwd — enough to surface the creature.
  */
 async function collectOpenCodeSessions(processes: ProcInfo[]): Promise<ObservedSession[]> {
-  const procs = processes.filter((p) =>
-    cmdHasBinary(p.command, 'opencode') &&
-    !p.command.includes('grep') &&
-    !p.command.includes(' mcp') &&
-    !p.command.includes('agentdeck')
-  );
+  const procs = processes.filter((p) => isOpenCodeSessionProcessCommand(p.command));
   if (procs.length === 0) return [];
   const cwdByPid = await cwdForPids(procs.map((p) => p.pid));
   return procs.map((proc) => {
@@ -1203,6 +1198,27 @@ async function collectOpenCodeSessions(processes: ProcInfo[]): Promise<ObservedS
 }
 
 /**
+ * OpenCode subcommands that host no session of their own. OpenCode 2.x keeps
+ * one background server for every session (`opencode serve --service`, started
+ * from the user's home directory); counted as a session it showed an idle
+ * creature named after the home folder beside the real one (2026-11-24,
+ * OpenCode 2.4.1). The TUI that talks to it is the session; `opencode run` is
+ * one too.
+ */
+const OPENCODE_NON_SESSION_SUBCOMMANDS = new Set([
+  'serve', 'web', 'api', 'mcp', 'service', 'auth', 'plugin', 'models', 'stats', 'session',
+  'debug', 'upgrade', 'update', 'uninstall', 'export', 'import', 'github', 'completion',
+]);
+
+export function isOpenCodeSessionProcessCommand(command: string): boolean {
+  if (!cmdHasBinary(command, 'opencode') || command.includes('grep') || command.includes('agentdeck')) return false;
+  const tokens = command.trim().split(/\s+/);
+  const at = tokens.findIndex((token) => (token.replace(/^"+|"+$/g, '').split(/[\\/]/).pop() ?? '').replace(/\.exe$/i, '') === 'opencode');
+  const subcommand = tokens.slice(at + 1).find((token) => !token.startsWith('-'));
+  return !(subcommand && OPENCODE_NON_SESSION_SUBCOMMANDS.has(subcommand));
+}
+
+/**
  * Bind file-observed Antigravity identities to a process only when exact
  * workspace metadata identifies one owner. File evidence still owns freshness.
  */
@@ -1213,12 +1229,20 @@ export function bindAntigravityOwners(rows: ObservedSession[], owners: Array<{ c
   }
 }
 
+/**
+ * Background tasks of the Antigravity conversations the last scan admitted,
+ * keyed by conversation id. Kept off the row so the command text never reaches
+ * a session broadcast; the daemon's coordination tick reads it.
+ */
+export const antigravityBackgroundTasks = new Map<string, AntigravityBackgroundTask[]>();
+
 export async function collectAntigravitySessions(
   roots = ['antigravity-cli', 'antigravity'].map(name => join(homedir(), '.gemini', name)), nowMs = Date.now(),
 ): Promise<ObservedSession[]> {
   // Recent explicit transcript evidence, not process presence, owns identity
   // and state. Missing/unsupported records do not invent idle PID sessions.
   const byId = new Map<string, ObservedSession>();
+  const background = new Map<string, AntigravityBackgroundTask[]>();
   for (const root of roots) {
     const snapshot = scanAntigravityRoot(root, nowMs);
     if (snapshot.status !== 'known') continue;
@@ -1234,8 +1258,11 @@ export async function collectAntigravitySessions(
         lastActivityAt: Math.min(observation.updatedAtMs!, observation.modifiedAtMs!),
         startedAt: new Date(observation.startedAtMs).toISOString(), controlMode: 'observed',
       });
+      if (observation.backgroundTasks?.length) background.set(observation.conversationId, observation.backgroundTasks);
     }
   }
+  antigravityBackgroundTasks.clear();
+  for (const [id, tasks] of background) antigravityBackgroundTasks.set(id, tasks);
   return [...byId.values()];
 }
 
