@@ -167,3 +167,23 @@ describe('sessionLabelText — cmux workspace / surface titles', () => {
     expect(sessionLabelText({ name: 'hacking papa', tag: '0e5c' }, 10)).toBe('hac… #0e5c');
   });
 });
+
+describe('Claude Code automatic session names', () => {
+  it('labels <project>-<n> siblings by project and tag, so the key wraps at the tag', () => {
+    const rows = [
+      { id: 'observed:claude:410cf3ec-1017-4a19-b8e6-ed85582c2520', projectName: 'epoch-of-tech', agentType: 'claude-code', displayName: 'epoch-of-tech-62' },
+      { id: 'observed:claude:c4fe11f8-d7fd-493a-8514-a2a80aa6ec65', projectName: 'epoch-of-tech', agentType: 'claude-code', displayName: 'epoch-of-tech-89' },
+    ];
+    const labels = sessionDeckLabels(rows);
+    expect(sessionLabelText(labels.get(rows[1].id), 28)).toBe('epoch-of-tech #c4fe');
+  });
+  it('keeps a real friendly name', () => {
+    const rows = [
+      { id: 'a1111111', projectName: 'app', agentType: 'claude-code', displayName: 'app-login-fix' },
+      { id: 'b2222222', projectName: 'app', agentType: 'claude-code', displayName: 'app-2026' },
+    ];
+    const labels = sessionDeckLabels(rows);
+    expect(labels.get('a1111111')?.name).toBe('app-login-fix');
+    expect(labels.get('b2222222')?.name).toBe('app');
+  });
+});

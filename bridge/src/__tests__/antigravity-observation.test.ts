@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { ANTIGRAVITY_POLICY as P } from '../antigravity-policy.generated.js';
 import { outputs } from '../../../scripts/generate-antigravity-observation.mjs';
-import { observeAntigravityTranscript, scanAntigravityRoot } from '../antigravity-observation.js';
+import { antigravityProjectNames, observeAntigravityTranscript, scanAntigravityRoot } from '../antigravity-observation.js';
 import { bindAntigravityOwners, collectAntigravitySessions, dedupeObservedSessions, PassiveSessionObserver } from '../passive-observer.js';
 
 interface Vector { name: string; conversationId: string; raw: string; modifiedAtMs: number; nowMs: number }
@@ -108,6 +108,18 @@ describe('Antigravity evidence contract', () => {
       mkdirSync(join(dir, 'cache')); writeFileSync(join(dir, 'cache', 'last_conversations.json'), JSON.stringify({ '/work/project': vectors[0].conversationId }));
       const first = await collectAntigravitySessions([dir], vectors[0].nowMs);
       expect(first).toHaveLength(1); expect(first[0].pid).toBe(0); expect(first[0].projectName).toBe('project');
+      // last_conversations keeps only the newest conversation per folder; the
+      // conversation's own WorkspaceURIs still names an older one (epoch-of-tech).
+      writeFileSync(join(dir, 'cache', 'last_conversations.json'), JSON.stringify({ '/work/epoch-of-tech': 'newer-conversation' }));
+      writeFileSync(join(dir, 'cache', 'conversation_metadata.json'), JSON.stringify({ conversations: {
+        [vectors[0].conversationId]: { summary: { WorkspaceURIs: ['file:///work/epoch-of-tech'] } },
+        'two-roots': { summary: { WorkspaceURIs: ['file:///a', 'file:///b'] } },
+        'remote': { summary: { WorkspaceURIs: ['https://example.com/x'] } },
+      } }));
+      expect(antigravityProjectNames(dir)).toEqual({ [vectors[0].conversationId]: 'epoch-of-tech', 'newer-conversation': 'epoch-of-tech' });
+      expect((await collectAntigravitySessions([dir], vectors[0].nowMs))[0].projectName).toBe('epoch-of-tech');
+      writeFileSync(join(dir, 'cache', 'last_conversations.json'), JSON.stringify({ '/work/project': vectors[0].conversationId }));
+      rmSync(join(dir, 'cache', 'conversation_metadata.json'));
       expect((await collectAntigravitySessions([dir], vectors[0].nowMs + 1000))[0].startedAt).toBe(first[0].startedAt);
       expect(dedupeObservedSessions(first, [{ ...first[0], id: vectors[0].conversationId }], [])).toHaveLength(0);
       const outside = join(dir, 'outside.jsonl'); writeFileSync(outside, vectors[0].raw);
@@ -127,7 +139,16 @@ describe('Antigravity evidence contract', () => {
       const native = JSON.parse(execFileSync(binary, { input: JSON.stringify(vectors), encoding: 'utf8', timeout: 15000 }));
       expect(native).toEqual(vectors.map(observe));
       source(dir, vectors[0]);
+      mkdirSync(join(dir, 'cache'), { recursive: true });
+      writeFileSync(join(dir, 'cache', 'last_conversations.json'), JSON.stringify({ '/work/epoch-of-tech': 'newer-conversation', '/work/other': 'only-last' }));
+      writeFileSync(join(dir, 'cache', 'conversation_metadata.json'), JSON.stringify({ conversations: {
+        [vectors[0].conversationId]: { summary: { WorkspaceURIs: ['file:///work/epoch-of-tech'] } },
+        'only-last': { summary: { WorkspaceURIs: ['file:///a', 'file:///b'] } },
+        'spaced': { summary: { WorkspaceURIs: ['file:///work/my%20game'] } },
+      } }));
       const scan = JSON.parse(execFileSync(binary, [dir, String(vectors[0].nowMs)], { encoding: 'utf8', timeout: 15000 }));
+      expect(scan.projects).toEqual(antigravityProjectNames(dir));
+      expect(scan.projects.spaced).toBe('my game');
       delete scan.projects;
       expect(scan).toEqual(scanAntigravityRoot(dir, vectors[0].nowMs));
       for (const hasNewUser of [true, false]) {

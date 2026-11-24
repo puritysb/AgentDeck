@@ -46,7 +46,7 @@
 // SYNC-HASH shared/src/d200h-layout.ts dd608fc707665b3943addb72ba404776176d4376
 // SYNC-HASH shared/src/session-utils.ts b0274ff249f2705cc7fce39752d74a46b25f6b87
 // SYNC-HASH shared/src/dot-deck.ts 2aa36a3fc11092ade2f29f2086eb796c823583c6
-// SYNC-HASH shared/src/session-labels.ts b1c3c0c8e03ce5c5856c2d59a32f27bfeefb7af0
+// SYNC-HASH shared/src/session-labels.ts 1ded82007f125237d79393428adb101f9a62e93f
 //
 // INTENTIONALLY OMITTED (not needed by a read-only preview):
 //   • Actual SVG rasterization. The TS engine emits per-key SVG strings via the
@@ -1155,6 +1155,16 @@ public enum D200HLayoutModel {
 
     /// Rows sharing projectName AND agentType get a short unique id tag
     /// (`sessionTag`); every other row is left untagged.
+    /// Mirrors `siblingName` (shared/src/session-labels.ts): Claude Code's
+    /// automatic `<project>-<n>` name adds nothing beside the id tag.
+    static func siblingName(_ displayName: String?, _ projectName: String) -> String {
+        let hint = normalizedDisplayName(displayName)
+        guard !hint.isEmpty else { return projectName }
+        let prefix = projectName + "-"
+        guard !projectName.isEmpty, hint.hasPrefix(prefix) else { return hint }
+        let rest = hint.dropFirst(prefix.count)
+        return !rest.isEmpty && rest.allSatisfy({ $0.isASCII && $0.isNumber }) ? projectName : hint
+    }
     static func sessionDeckLabels(_ sessions: [D200HSession]) -> [String: SessionDeckLabel] {
         var order: [String] = []
         var groups: [String: [D200HSession]] = [:]
@@ -1176,7 +1186,7 @@ public enum D200HLayoutModel {
                 return b.isEmpty ? m.id.lowercased() : b
             }
             for (i, s) in members.enumerated() {
-                labels[s.id] = SessionDeckLabel(name: normalizedDisplayName(s.displayName).isEmpty ? s.projectName : normalizedDisplayName(s.displayName), tag: sessionTag(bodies, i))
+                labels[s.id] = SessionDeckLabel(name: siblingName(s.displayName, s.projectName), tag: sessionTag(bodies, i))
             }
         }
         return labels

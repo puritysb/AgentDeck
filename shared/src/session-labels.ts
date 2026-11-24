@@ -93,6 +93,20 @@ function tagFor(bodies: string[], i: number): string {
   return body.slice(0, prefix ?? Math.min(MAX_TAG_CHARS, body.length));
 }
 
+/**
+ * A sibling's friendly hint, unless it is only Claude Code's automatic name
+ * `<project>-<n>`. That counter says nothing the id tag does not, and the
+ * label `epoch-of-tech-89 #c4fe` has no break inside a 13-column key line, so
+ * keys showed `-89 #c4fe` on the second line (2026-11-25, Stream Deck and
+ * D200H). The project name wraps at the tag's space instead.
+ */
+export function siblingName(displayName: unknown, projectName: string | undefined): string {
+  const hint = normalizeSessionDisplayName(displayName);
+  const project = projectName ?? '';
+  if (!hint) return project;
+  return project && hint.startsWith(`${project}-`) && /^\d+$/.test(hint.slice(project.length + 1)) ? project : hint;
+}
+
 function collisionKey(s: { projectName?: string; agentType?: string }): string {
   return `${s.projectName ?? ''}\u0000${s.agentType ?? ''}`;
 }
@@ -123,7 +137,7 @@ export function sessionDeckLabels<T extends { id: string; projectName?: string; 
     }
     const bodies = members.map((s) => idBody(s.id) || s.id.toLowerCase());
     members.forEach((s, i) => {
-      labels.set(s.id, { name: normalizeSessionDisplayName(s.displayName) || s.projectName || '', tag: tagFor(bodies, i) });
+      labels.set(s.id, { name: siblingName(s.displayName, s.projectName), tag: tagFor(bodies, i) });
     });
   }
   return labels;

@@ -3,6 +3,7 @@ export const ANTIGRAVITY_POLICY = {
   "headBytes": 65536,
   "tailBytes": 524288,
   "metadataBytes": 131072,
+  "conversationMetadataBytes": 4194304,
   "maxDirectories": 256,
   "maxSessions": 32,
   "maxTurns": 64,
