@@ -46,7 +46,7 @@
 // SYNC-HASH shared/src/d200h-layout.ts dd608fc707665b3943addb72ba404776176d4376
 // SYNC-HASH shared/src/session-utils.ts b0274ff249f2705cc7fce39752d74a46b25f6b87
 // SYNC-HASH shared/src/dot-deck.ts 2aa36a3fc11092ade2f29f2086eb796c823583c6
-// SYNC-HASH shared/src/session-labels.ts b1c3c0c8e03ce5c5856c2d59a32f27bfeefb7af0
+// SYNC-HASH shared/src/session-labels.ts 1ded82007f125237d79393428adb101f9a62e93f
 //
 // INTENTIONALLY OMITTED (not needed by a read-only preview):
 //   • Actual SVG rasterization. The TS engine emits per-key SVG strings via the
