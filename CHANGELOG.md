@@ -45,6 +45,30 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- **OpenCode 2.x.** Standalone OpenCode 2.x sessions are observed again. 2.x
+  rejected the previous observer plugin at load, so no session reached
+  AgentDeck and the process scan showed an extra idle session named after the
+  home folder. Observer plugin v8 loads under 2.x and 1.x. Reinstall it with
+  `agentdeck daemon install`, then restart OpenCode once. Approvals from a
+  device work on 2.x; questions stay display-only there.
+  [#832](https://github.com/puritysb/AgentDeck/pull/832)
+- **Background work for OpenCode and Antigravity.** OpenCode 2.x background
+  shells and subagents, and Antigravity background commands, count as
+  background work. A background `gh run watch` shows as a CI wait, as it does
+  for Claude Code and Codex. Node and Mac daemons.
+  [#832](https://github.com/puritysb/AgentDeck/pull/832)
+- **Antigravity project names.** A conversation is named after its own
+  workspace folder. An older conversation still running in a folder showed
+  as "Antigravity". Node and Mac daemons.
+  [#834](https://github.com/puritysb/AgentDeck/pull/834)
+- **Deck keys (Stream Deck, D200H).** Two Claude Code sessions in one project
+  read `epoch-of-tech #c4fe` instead of a second line of `-89 #c4fe`.
+  [#834](https://github.com/puritysb/AgentDeck/pull/834)
+- **Creature colors.** Antigravity draws its colored mark instead of a gray one
+  on the iDotMatrix, the Timebox and the IPS10 workspace. An off-duty Dot shows
+  a dimmed pearl on the Pixoo and matrix displays instead of a gray saucer
+  shape. [#833](https://github.com/puritysb/AgentDeck/pull/833)
+
 - **Terminal dashboard.** The session list now leads with sessions that need
   you, then working, then idle, with a caption per group, as the Work screen
   does. It opens on the first request, and `n` jumps to the next one with its
