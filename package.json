@@ -104,7 +104,7 @@
     "pnpm": ">=11.5.0 <12"
   },
   "devDependencies": {
-    "@elgato/cli": "^1.10.4",
+    "@elgato/cli": "^1.10.5",
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.9.2",
     "@types/w3c-web-serial": "^1.0.9",
@@ -118,9 +118,9 @@
     "quicktype": "^26.0.0",
     "serialport": "^13.0.0",
     "sharp": "^0.35.5",
-    "ts-json-schema-generator": "^2.9.0",
+    "ts-json-schema-generator": "^2.10.0",
     "tsx": "^4.23.15",
-    "typescript-eslint": "^8.72.2",
+    "typescript-eslint": "^8.73.0",
     "vite": "^8.3.8",
     "vitest": "^4.1.12"
   }
