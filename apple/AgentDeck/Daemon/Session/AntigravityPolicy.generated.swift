@@ -36,5 +36,10 @@ enum AntigravityPolicy {
     static let activitySchemaColumns = 64
     static let activityWalHeaderBytes = 32
     static let activityColdMaxBytes = 67108864
+    static let backgroundToolTypes = ["RUN_COMMAND"]
+    static let backgroundStartPattern = #"running as a background task with task id: ([^\s]{1,256})"#
+    static let backgroundCommandPattern = #"\nTask Description: ([^\n]{1,4096})"#
+    static let backgroundEndPatterns = ["\\bsender=([^\\s]{1,256}) priority=","Task \"([^\"\\s]{1,256})\" cancelled\\.","\\nTask: ([^\\s]{1,256})\\nStatus: (?!RUNNING\\b)[A-Z]"]
+    static let maxBackgroundItems = 32
 }
 #endif

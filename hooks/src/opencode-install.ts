@@ -59,7 +59,7 @@ function envOptOut(): boolean {
 
 export const OPENCODE_NATIVE_SETUP = { pluginFilename: OPENCODE_PLUGIN_FILENAME, receiverFilename: 'agentdeck-connection.json', owner: 'agentdeck-swift-opencode' } as const;
 
-const PLUGIN_VERSION = 7;
+const PLUGIN_VERSION = 8;
 
 /** Assemble the plugin source. Exported so tests can assert schema
  *  regressions (event names, payload fields, managed-session guard)
@@ -74,6 +74,10 @@ export function opencodePluginSource(options: { nativeObserver?: boolean } = {})
 // Codex use — so standalone \`opencode\` sessions appear on the AgentDeck
 // timeline with the same prompt → response turn shape. Every POST is
 // nonblocking during a turn, with bounded delivery drained on disposal.
+//
+// Two plugin APIs, one file: OpenCode 1.x calls the default export's
+// \`server\` (1.4+) or the named export (older); OpenCode 2.x calls
+// \`setup\` with a context whose event stream replaces the 1.x hooks.
 
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -704,6 +708,348 @@ export const AgentDeckObserver = async ({ directory, client }) => {
     },
   };
 };
+
+// ── OpenCode 2.x ──
+// 2.x runs every session in one long-lived server (\`opencode serve
+// --service\`, cwd = the user's home) and calls \`setup\` once per location
+// (directory) it opens. The event stream is process-wide: each location's
+// instance receives EVERY location's events, so exactly one instance per
+// process forwards them (the first to see an event claims the stream; a
+// disposed leader's stream ends and the next event elects another). The
+// working directory comes from each session's \`location\`, never from the
+// process cwd — the server's cwd named every session after the home folder.
+// Measured on OpenCode 2.4.1 (2026-11-24): session.execution.* bound a turn,
+// session.tool.* the tools, permission.asked/replied the approvals,
+// form.created/replied/cancelled the question tool, and
+// experimental.job.updated the background shells and subagents.
+const V2 = globalThis.__agentdeckObserverV2 || (globalThis.__agentdeckObserverV2 = { leader: null, state: null });
+const V2_ACTIVE_JOB = new Set(["running", "pending", "queued"]);
+
+function v2State(ctx) {
+  if (V2.state) return V2.state;
+  V2.state = {
+    ctx,
+    cwdOf: new Map(),       // sessionID -> directory
+    parentOf: new Map(),    // sessionID -> parent sessionID | null
+    lookups: new Map(),     // sessionID -> in-flight session.get
+    announced: new Set(),
+    toolNames: new Map(),   // tool call id -> tool name
+    toolStarted: new Set(),
+    inbox: new Map(),       // inboxID -> { text, user }
+    promptPosted: new Set(),// sessionIDs whose current execution has a prompt
+    promptTimers: new Map(),
+    responses: new Map(),
+    models: new Map(),
+    childStarted: new Set(),
+    jobs: new Map(),        // active job id -> root sessionID
+    permissions: new Map(), // permission id -> the session that asked
+    steering: new Set(),
+  };
+  return V2.state;
+}
+
+function cap(store, n) { if (store.size > n) store.delete(store.keys().next().value); }
+
+// Parent and directory of a session the stream did not introduce (it began
+// before this server loaded the plugin). Bounded; unanswered is unknown and
+// means top level with the directory taken from a later event.
+function v2Lookup(s, sessionID) {
+  if (!sessionID || (s.parentOf.has(sessionID) && s.cwdOf.has(sessionID))) return Promise.resolve();
+  if (s.lookups.has(sessionID)) return s.lookups.get(sessionID);
+  let timer;
+  const lookup = (async () => {
+    try {
+      const info = await Promise.race([
+        s.ctx.session.get({ sessionID }),
+        new Promise((r) => { timer = setTimeout(() => r(null), 1000); }),
+      ]);
+      const dir = info && info.location && info.location.directory;
+      if (typeof dir === "string" && dir && !s.cwdOf.has(sessionID)) s.cwdOf.set(sessionID, dir);
+      if (!s.parentOf.has(sessionID)) s.parentOf.set(sessionID, info && typeof info.parentID === "string" && info.parentID ? info.parentID : null);
+    } catch { /* unknown → top level */ }
+    finally { clearTimeout(timer); }
+    cap(s.parentOf, 1024); cap(s.cwdOf, 1024);
+    s.lookups.delete(sessionID);
+  })();
+  s.lookups.set(sessionID, lookup);
+  return lookup;
+}
+
+/** The top-level session a (possibly nested) subagent belongs to. */
+async function v2Root(s, sessionID) {
+  let cur = sessionID;
+  for (let hop = 0; hop < 8; hop++) {
+    await v2Lookup(s, cur);
+    const parent = s.parentOf.get(cur);
+    if (!parent) return cur;
+    cur = parent;
+  }
+  return cur;
+}
+
+function v2Post(s, event, sessionID, body) {
+  const cwd = s.cwdOf.get(sessionID);
+  return deliver(event, { session_id: sessionID, ...(cwd ? { cwd } : {}), ...body });
+}
+
+function v2Announce(s, sessionID) {
+  if (s.announced.has(sessionID)) return;
+  s.announced.add(sessionID);
+  cap(s.announced, 1024);
+  v2Post(s, "opencode_session_start", sessionID, {});
+  v2SteerLoop(s, sessionID);
+}
+
+function v2PromptSubmit(s, sessionID, prompt) {
+  const timer = s.promptTimers.get(sessionID);
+  if (timer) { clearTimeout(timer); s.promptTimers.delete(sessionID); }
+  s.promptPosted.add(sessionID);
+  v2Post(s, "opencode_user_prompt_submit", sessionID, { prompt: prompt || "" });
+}
+
+function v2PermissionTitle(d) {
+  const title = typeof d.action === "string" && d.action ? d.action : "Permission requested";
+  const resources = Array.isArray(d.resources) ? d.resources.filter((r) => typeof r === "string").join("; ") : "";
+  return resources ? title + ": " + resources : title;
+}
+
+// The 2.x plugin context has no form reply, so a question is shown on the
+// devices and answered in OpenCode itself (question_answerable: false).
+function v2Question(form, sessionID) {
+  const fields = Array.isArray(form.fields) ? form.fields : [];
+  const questions = fields.map((f) => ({
+    question: f.description || f.title || "", header: f.title, multiple: f.type === "array", custom: f.custom,
+    options: Array.isArray(f.options) ? f.options.map((o) => ({ label: o.label ?? o.value, description: o.description })) : [],
+  }));
+  return {
+    question_id: form.id,
+    title: questions.map((q) => q.question || q.header || "").filter(Boolean).join(" / "),
+    questions, question_answerable: false,
+  };
+}
+
+function v2SteerLoop(s, sessionID) {
+  if (NATIVE_OBSERVER || s.steering.has(sessionID)) return;
+  s.steering.add(sessionID);
+  (async () => {
+    let failures = 0;
+    while (s.steering.has(sessionID)) {
+      const port = await resolvePort();
+      if (!port) { await new Promise((r) => setTimeout(r, 30000)); continue; }
+      try {
+        const r = await fetch("http://127.0.0.1:" + port + "/opencode/commands?sid=" + encodeURIComponent(sessionID) + "&wait=25",
+          { signal: AbortSignal.timeout(32000) });
+        if (!r.ok) throw new Error("poll " + r.status);
+        failures = 0;
+        const { commands } = await r.json();
+        for (const cmd of commands || []) {
+          try {
+            if (cmd.type === "interrupt") await s.ctx.session.interrupt({ sessionID });
+            else if (cmd.type === "send_prompt" && cmd.text) await s.ctx.session.prompt({ sessionID, text: cmd.text });
+            else if (cmd.type === "permission_respond" && cmd.permissionId) {
+              // "once" (not "always") keeps device approval one-shot.
+              await s.ctx.permission.reply({ sessionID: s.permissions.get(cmd.permissionId) || sessionID,
+                requestID: cmd.permissionId, decision: cmd.response === "allow" ? "once" : "reject" });
+            }
+          } catch { /* one bad command must not kill the loop */ }
+        }
+      } catch {
+        failures += 1;
+        await new Promise((r) => setTimeout(r, Math.min(30000, 1000 * failures)));
+      }
+    }
+  })();
+}
+
+/** A subagent's events: its run into the parent's census, a genuine wait onto
+ *  the parent's row (OpenCode resolves it against the child that asked). */
+function v2Child(s, type, d, sid, root) {
+  if (type === "session.execution.started") {
+    if (s.childStarted.has(sid)) return;
+    s.childStarted.add(sid); cap(s.childStarted, 512);
+    v2Announce(s, root);
+    v2Post(s, "opencode_subagent_start", root, { agent_id: sid, agent_type: "Subagent" });
+  } else if (type === "session.text.ended") {
+    if (typeof d.text === "string" && d.text.trim()) s.responses.set(sid, d.text);
+  } else if (type === "permission.asked") {
+    if (!d.id) return;
+    s.permissions.set(d.id, sid); cap(s.permissions, 256);
+    v2Post(s, "opencode_permission_asked", root, { permission_id: d.id, title: v2PermissionTitle(d) });
+  } else if (type === "permission.replied") {
+    s.permissions.delete(d.requestID);
+    v2Post(s, "opencode_permission_replied", root, { permission_id: d.requestID || "" });
+  } else if (type === "form.created") {
+    if (d.form && d.form.id) v2Post(s, "opencode_question_asked", root, v2Question(d.form, root));
+  } else if (type === "form.replied" || type === "form.cancelled") {
+    if (d.id) v2Post(s, type === "form.replied" ? "opencode_question_replied" : "opencode_question_rejected", root, { question_id: d.id });
+  } else if (type.startsWith("session.execution.")) {
+    if (!s.childStarted.has(sid)) return;
+    s.childStarted.delete(sid);
+    v2Post(s, "opencode_subagent_stop", root, { agent_id: sid, last_assistant_message: s.responses.get(sid) || "" });
+    s.responses.delete(sid);
+  }
+}
+
+async function v2Handle(s, ev) {
+  const type = ev.type;
+  const d = ev.data && typeof ev.data === "object" ? ev.data : {};
+  const dir = ev.location && typeof ev.location.directory === "string" ? ev.location.directory : "";
+  if (type === "session.created") {
+    if (!d.sessionID) return;
+    s.parentOf.set(d.sessionID, typeof d.parentID === "string" && d.parentID ? d.parentID : null);
+    const at = (d.location && d.location.directory) || dir;
+    if (at) s.cwdOf.set(d.sessionID, at);
+    cap(s.parentOf, 1024); cap(s.cwdOf, 1024);
+    return;
+  }
+  if (type === "experimental.job.updated") {
+    // One job id space: background shells (open-ended — a dev server is one)
+    // and subagents (they end). A foreground shell reports only its finish,
+    // which claims nothing.
+    const job = d.info && typeof d.info === "object" ? d.info : {};
+    if (typeof job.id !== "string" || !job.id || job.id.length > 256 || typeof job.sessionID !== "string") return;
+    const active = V2_ACTIVE_JOB.has(job.status);
+    if (active === s.jobs.has(job.id)) return;
+    const root = active ? await v2Root(s, job.sessionID) : s.jobs.get(job.id);
+    if (active) {
+      s.jobs.set(job.id, root); cap(s.jobs, 512);
+      v2Announce(s, root);
+      v2Post(s, "opencode_background_start", root, { item_id: job.id, item_kind: job.kind === "subagent" ? "job" : "process" });
+    } else {
+      s.jobs.delete(job.id);
+      v2Post(s, "opencode_background_finish", root, { item_id: job.id, status: String(job.status || "") });
+    }
+    return;
+  }
+  const sid = typeof d.sessionID === "string" ? d.sessionID : (d.form && typeof d.form.sessionID === "string" ? d.form.sessionID : "");
+  if (!sid) return;
+  if (dir && !s.cwdOf.has(sid)) s.cwdOf.set(sid, dir);
+  const root = await v2Root(s, sid);
+  if (root !== sid) return v2Child(s, type, d, sid, root);
+  switch (type) {
+    case "session.inbox.enqueued": {
+      const item = d.item && typeof d.item === "object" ? d.item : {};
+      const text = item.payload && typeof item.payload.text === "string" ? item.payload.text : "";
+      if (d.inboxID) { s.inbox.set(d.inboxID, { text, user: item.type === "user" }); cap(s.inbox, 256); }
+      return;
+    }
+    case "session.inbox.delivered": {
+      const item = s.inbox.get(d.inboxID);
+      s.inbox.delete(d.inboxID);
+      if (!item) return;
+      // A user message opens the turn. A synthetic one (a background result)
+      // opens it only when it is what woke the agent.
+      if (item.user || (!s.promptPosted.has(sid) && s.promptTimers.has(sid))) {
+        v2Announce(s, sid);
+        v2PromptSubmit(s, sid, item.text.trim());
+      }
+      return;
+    }
+    case "session.execution.started": {
+      v2Announce(s, sid);
+      // The prompt flag is cleared by the turn's stop, not here: a user
+      // message can be delivered just before its execution starts.
+      if (!s.promptTimers.has(sid)) {
+        const timer = setTimeout(() => { s.promptTimers.delete(sid); if (!s.promptPosted.has(sid)) v2PromptSubmit(s, sid, ""); }, 800);
+        if (typeof timer.unref === "function") timer.unref();
+        s.promptTimers.set(sid, timer);
+      }
+      return;
+    }
+    case "session.step.started":
+      if (d.model && typeof d.model.id === "string" && d.model.id.trim()) {
+        s.models.set(sid, { model: d.model.id.trim().slice(0, 200), provider: typeof d.model.providerID === "string" ? d.model.providerID.trim().slice(0, 80) : "" });
+      }
+      return;
+    case "session.text.ended":
+      if (typeof d.text === "string" && d.text.trim()) s.responses.set(sid, d.text);
+      return;
+    case "session.tool.input.started":
+      if (d.id && d.name) { s.toolNames.set(d.id, d.name); cap(s.toolNames, 512); }
+      return;
+    case "session.tool.called": {
+      if (!d.id || s.toolStarted.has(d.id)) return;
+      s.toolStarted.add(d.id); cap(s.toolStarted, 512);
+      const name = s.toolNames.get(d.id) || "tool";
+      const input = d.input && typeof d.input === "object" ? d.input : {};
+      // Same shape the CI-wait classifier reads from Claude's Bash tool.
+      const tool_input = name === "shell" && typeof input.command === "string" && input.command.length <= 4096
+        ? { command: input.command, run_in_background: input.background === true } : undefined;
+      v2Announce(s, sid);
+      v2Post(s, "opencode_tool_start", sid, { tool_name: name, tool_use_id: d.id, tool_input });
+      return;
+    }
+    case "session.tool.success":
+    case "session.tool.failed":
+      if (!d.id || !s.toolStarted.has(d.id)) return;
+      s.toolStarted.delete(d.id);
+      v2Post(s, "opencode_tool_end", sid, { tool_name: s.toolNames.get(d.id) || "tool", tool_use_id: d.id, is_error: type === "session.tool.failed" });
+      s.toolNames.delete(d.id);
+      return;
+    case "permission.asked":
+      if (!d.id) return;
+      v2Announce(s, sid);
+      s.permissions.set(d.id, sid); cap(s.permissions, 256);
+      v2Post(s, "opencode_permission_asked", sid, { permission_id: d.id, title: v2PermissionTitle(d) });
+      return;
+    case "permission.replied":
+      s.permissions.delete(d.requestID);
+      v2Post(s, "opencode_permission_replied", sid, { permission_id: d.requestID || "" });
+      return;
+    case "form.created":
+      if (!d.form || !d.form.id) return;
+      v2Announce(s, sid);
+      v2Post(s, "opencode_question_asked", sid, v2Question(d.form, sid));
+      return;
+    case "form.replied":
+    case "form.cancelled":
+      if (d.id) v2Post(s, type === "form.replied" ? "opencode_question_replied" : "opencode_question_rejected", sid, { question_id: d.id });
+      return;
+    case "session.execution.succeeded":
+    case "session.execution.failed":
+    case "session.execution.interrupted": {
+      if (!s.announced.has(sid)) return;
+      if (!s.promptPosted.has(sid)) v2PromptSubmit(s, sid, "");
+      const answered = s.models.get(sid);
+      v2Post(s, "opencode_stop", sid, {
+        last_assistant_message: s.responses.get(sid) || "",
+        ...(answered ? { model: answered.model } : {}),
+        ...(answered && answered.provider ? { model_provider: answered.provider } : {}),
+      });
+      s.responses.delete(sid); s.models.delete(sid); s.promptPosted.delete(sid);
+      return;
+    }
+    case "session.deleted":
+      if (!s.announced.has(sid)) return;
+      v2Post(s, "opencode_session_end", sid, {});
+      s.announced.delete(sid); s.steering.delete(sid);
+      return;
+    default:
+      return;
+  }
+}
+
+async function setupV2(ctx) {
+  // Same exclusions as 1.x: a managed PTY's bridge already streams its
+  // session, and the macOS app's copy honours the environment opt-out.
+  if (process.env.AGENTDECK_PORT) return;
+  if (NATIVE_OBSERVER && process.env.AGENTDECK_NO_OPENCODE_HOOKS === "1") return;
+  if (!ctx || !ctx.event || typeof ctx.event.subscribe !== "function") return;
+  const token = {};
+  const s = v2State(ctx);
+  (async () => {
+    try {
+      for await (const ev of ctx.event.subscribe()) {
+        if (!V2.leader) { V2.leader = token; s.ctx = ctx; }
+        if (V2.leader !== token || !ev || typeof ev.type !== "string") continue;
+        try { await v2Handle(s, ev); } catch { /* never throw into OpenCode */ }
+      }
+    } catch { /* the stream closes with its location */ }
+    if (V2.leader === token) V2.leader = null;
+  })();
+}
+
+export default { id: "agentdeck-observer", server: AgentDeckObserver, setup: setupV2 };
 `;
 }
 

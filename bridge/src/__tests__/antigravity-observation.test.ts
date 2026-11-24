@@ -91,6 +91,9 @@ describe('Antigravity evidence contract', () => {
     expect(byName['new-turn'].currentTurnId).not.toBe(byName['fresh-running'].currentTurnId);
     expect(byName['rotation-reused-index'].currentTurnId).not.toBe(byName['fresh-running'].currentTurnId);
     expect(byName['historical-running-then-done'].state).toBe('idle');
+    // A background command stays listed until its own task message; timers are not work.
+    expect(byName['background-tasks'].backgroundTasks).toEqual([{ id: 'conversation-A/task-1', command: 'gh run watch 123 --exit-status' }]);
+    expect(byName['fresh-running'].backgroundTasks).toBeUndefined();
     for (const name of ['unknown-step', 'missing-time', 'partial-tail', 'unsupported-id', 'no-user-identity', 'boolean-index-last']) {
       expect(byName[name].status, name).toBe('unknown'); expect(byName[name].state, name).toBeUndefined();
     }

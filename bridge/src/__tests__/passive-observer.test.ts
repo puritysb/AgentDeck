@@ -15,6 +15,7 @@ import {
   isClaudeSessionProcessCommand,
   isCodexSessionProcessCommand,
   isKiroCliProcessCommand,
+  isOpenCodeSessionProcessCommand,
   isKiroIdeProcessCommand,
   nextScanIntervalMs,
   observedStateAfterSilence,
@@ -1405,5 +1406,19 @@ describe('Codex explicit terminal evidence', () => {
     ]));
     expect(summary.state).toBe('idle');
     expect(summary.terminalEvent).toEqual({ type: 'task_complete', at: 4_000 });
+  });
+});
+
+describe('OpenCode process scan', () => {
+  it('counts the TUI and `run`, not the 2.x background server or other subcommands', () => {
+    expect(isOpenCodeSessionProcessCommand('/Users/me/.opencode/bin/opencode')).toBe(true);
+    expect(isOpenCodeSessionProcessCommand('opencode --continue')).toBe(true);
+    expect(isOpenCodeSessionProcessCommand('/Users/me/.opencode/bin/opencode /work/toolkit')).toBe(true);
+    expect(isOpenCodeSessionProcessCommand('opencode run "fix it"')).toBe(true);
+    expect(isOpenCodeSessionProcessCommand('/Users/me/.opencode/bin/opencode serve --service')).toBe(false);
+    expect(isOpenCodeSessionProcessCommand('opencode --print-logs serve --port 4096')).toBe(false);
+    expect(isOpenCodeSessionProcessCommand('opencode mcp list')).toBe(false);
+    expect(isOpenCodeSessionProcessCommand('C:\\Users\\me\\opencode.exe web')).toBe(false);
+    expect(isOpenCodeSessionProcessCommand('node /x/agentdeck/dist/cli.js opencode')).toBe(false);
   });
 });
