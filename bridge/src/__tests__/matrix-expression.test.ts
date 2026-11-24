@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { MatrixExpression, MATRIX_RULES, MATRIX_FACES, type MatrixSession, type MatrixBroadcast, type BridgeEvent } from '@agentdeck/shared';
-import { renderMatrixScene, renderMatrixFace } from '../pixoo/matrix-art.js';
+import { renderMatrixScene, renderMatrixFace, renderMatrixBase, renderCompanionBase } from '../pixoo/matrix-art.js';
 import { swiftMatrixSource } from '../../../scripts/generate-matrix-expressions.mts';
 import { broadcastMatrix, getLastFrame, renderPreviewFrame } from '../pixoo/pixoo-bridge.js';
 
@@ -424,4 +424,26 @@ describe('expressive BLE matrices', () => {
       expect(actual).toEqual(expected);
     } finally { fs.rmSync(temp, { recursive: true, force: true }); }
   }, 150000);
+});
+
+describe('matrix creature colors', () => {
+const hues = (frame: Uint8Array) => {
+  const seen = new Set<string>();
+  for (let i = 0; i < frame.length; i += 3) {
+    const [r, g, b] = [frame[i], frame[i + 1], frame[i + 2]];
+    if (r + g + b < 120) continue;
+    seen.add(r >= g && r >= b ? 'r' : g >= b ? 'g' : 'b');
+  }
+  return seen;
+};
+
+it('draws Antigravity as its gradient mark, not a gray tint, on the 32 px matrix', () => {
+  for (const frame of [renderMatrixBase(32, 'idle', 'antigravity', 0), renderCompanionBase('idle', 'antigravity', 0)]) {
+    expect(hues(frame).size).toBe(3);
+  }
+});
+
+it('draws Dot as its pearl rather than the neutral stand-in face', () => {
+  expect(renderMatrixBase(32, 'idle', 'dot', 0)).not.toEqual(renderMatrixBase(32, 'idle', 'neutral', 0));
+});
 });
