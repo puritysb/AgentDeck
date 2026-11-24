@@ -105,5 +105,29 @@ final class OpenCodeObserverSetupTests: XCTestCase {
         second.localReceiverChanged(port: 49152)
         XCTAssertFalse(FileManager.default.fileExists(atPath: receiver.path))
     }
+    @MainActor
+    func testLaunchUpgradesAnUneditedInstalledObserverToTheBundledVersion() throws {
+        let folder = try folder(), suite = "OpenCodeSetup.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let access = HermesReceiverSettings.FolderAccess(makeBookmark: { Data($0.path.utf8) }, resolve: {
+            (URL(fileURLWithPath: String(decoding: $0, as: UTF8.self)), false)
+        }, start: { _ in true }, stop: { _ in })
+        let plugin = folder.appendingPathComponent("agentdeck.js")
+        let old = OpenCodeObserverSetup(defaults: defaults, access: access, bundled: { self.files("// native v7") })
+        XCTAssertTrue(old.selectFolder(folder))
+        old.localReceiverChanged(port: 49150)
+        old.install()
+        XCTAssertEqual(try Data(contentsOf: plugin), Data("// native v7".utf8))
+        let updated = OpenCodeObserverSetup(defaults: defaults, access: access, bundled: { self.files("// native v8") })
+        updated.localReceiverChanged(port: 49151)
+        XCTAssertFalse(updated.hasError)
+        XCTAssertEqual(try Data(contentsOf: plugin), Data("// native v8".utf8))
+        // An edited file is never replaced.
+        let edited = Data("// native v8\n// mine".utf8)
+        try edited.write(to: plugin)
+        OpenCodeObserverSetup(defaults: defaults, access: access, bundled: { self.files("// native v9") }).localReceiverChanged(port: 49152)
+        XCTAssertEqual(try Data(contentsOf: plugin), edited)
+    }
 }
 #endif

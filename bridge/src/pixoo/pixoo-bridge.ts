@@ -1,6 +1,6 @@
 import { PixooBakedRenderer } from './pixoo-baked.js';
 import { PIXOO_LOOP_POLICY as LOOP_POLICY } from './pixoo-loop-policy.generated.js';
-import { paintDotPixels, TERRARIUM_RULES, DOT_HABITAT_RULES, type DotDeckSnapshot } from '@agentdeck/shared';
+import { paintDotPixels, TERRARIUM_RULES, DOT_HABITAT_RULES, DOT_APPEARANCE_RULES, type DotDeckSnapshot } from '@agentdeck/shared';
 /**
  * Pixoo64 Bridge — safe adaptive HTTP animation driver.
  *
@@ -584,8 +584,11 @@ function doStateCheckAndPush(): void {
 
 function paintBakedDot(frame: Uint8Array, now: number): Uint8Array {
   const bottom = 64 - getUsageProviderCount(lastUsageEvent) * TERRARIUM_RULES.pixooUsageRowHeight;
+  // A beacon, as in Tide: at 64 px the habitat shell is one pixel per row and
+  // read as a saucer, and an off-duty Dot showed nothing else.
+  const size = DOT_APPEARANCE_RULES.pixelMinSize + 3;
   return paintDotPixels(frame, 64, lastDot, now, { x: 64 * DOT_HABITAT_RULES.homeX,
-    y: Math.min(64 * DOT_HABITAT_RULES.homeY, bottom - 3) });
+    y: Math.min(64 * DOT_HABITAT_RULES.homeY, bottom - 2 - Math.ceil(size / 2)), size, beacon: true });
 }
 
 /**

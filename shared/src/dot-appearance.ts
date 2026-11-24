@@ -13,6 +13,8 @@ export const DOT_HABITAT_RULES = Object.freeze({
   periodSeconds: 12, sizeFraction: 0.055, minSize: 28, maxSize: 44,
   nativeX: -0.9, nativeY: 1.30, nativeZ: 1.4,
   pixelPeerTurnMs: 4000, microGlyphSize: 9,
+  // Opacity of an off-duty pearl in a one-cell beacon slot (Pixoo/matrix).
+  restingBeaconAlpha: 0.45,
   nativeTravelX: 0.35, nativeTravelY: 0.12,
   // Authored pearl geometry, consumed by RealityKit and the Blender glTF export.
   pearlRadius: 0.28, pearlEyeX: 0.09, pearlEyeY: 0.025, pearlEyeZ: 0.265,

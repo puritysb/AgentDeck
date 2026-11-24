@@ -111,6 +111,29 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### npm 2.1.5 and macOS 2.2.3 release decision (2026-11-25)
+
+| Target / routes | Last verified public version | Proposed version | Class and user-visible reason |
+| --- | --- | --- | --- |
+| CLI and Node daemon / npm | 2.1.4 for bridge, hooks, shared and setup | 2.1.5 | Patch: observe OpenCode 2.x again (#832); count OpenCode 2.x and Antigravity background work (#832); name Antigravity conversations by workspace and fix two-session deck labels (#834); color the Antigravity mark and keep an off-duty Dot pearl on pixel displays (#833); Android USB reverse ownership (#824); Vobot TLS display state (#820). |
+| macOS / Mac App Store | 2.2.2 / 12901 (`READY_FOR_SALE` at the 2026-11-25 ASC readback) | 2.2.3, next CI-assigned macOS build | Patch: the same observation fixes in the Mac daemon (#832, #833, #834), and the app upgrades an unedited OpenCode observer it installed (#836), so an update reaches OpenCode 2.x users. |
+
+Previous behavior: OpenCode 2.4 rejected the 1.x observer at load, so a 2.x
+session was never observed and the process scan showed the shared
+`opencode serve --service` as an idle session named after the home folder.
+New behavior and tests: plugin v8 exports `{id, server, setup}` and maps the
+2.x event stream (`opencode-install.test.ts`, live 2.4.1 capture in the
+2026-11-24 devlog). The Swift app's launch upgrade is covered by
+`OpenCodeObserverSetupTests`.
+
+Unchanged: iOS (no daemon), Android, ESP32, Stream Deck and Ulanzi. The deck
+label fix (#834) reaches Stream Deck and Ulanzi with their next round; the
+IPS10 color fix (#833) with the next ESP32 round.
+
+macOS 2.2.2 was recorded above as a withdrawn draft; ASC shows it public on
+build 12901 (source `2696f6915c`). Mac changes since that source are only
+#832–#834 and #836.
+
 ### macOS 2.2.2 draft decision (2026-11-21)
 
 | Target / route | Last verified public build | Draft | Proposed build | User-visible reason |

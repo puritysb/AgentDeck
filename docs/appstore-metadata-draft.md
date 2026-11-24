@@ -12,6 +12,38 @@ Copy-ready text for the App Store Connect submission form. Each field respects A
 **Content Rating**: 4+ (no user-generated content, no ads, no external links to age-restricted sites)
 **Price**: Free
 
+## Prepared macOS 2.2.3 update text
+
+For the Mac App Store update after public macOS 2.2.2. The version reuses the
+[verified macOS media](../apple/appstore-submission/macos-next/selection.json).
+
+### English — macOS What's New
+
+```text
+• OpenCode 2.x sessions appear again with their working state and approval requests. AgentDeck updates the OpenCode observer it installed; restart OpenCode once to load it.
+• Background shells and subagents in OpenCode, and background commands in Antigravity, now count as background work. A background CI watch shows as a CI wait.
+• Antigravity conversations are named after their project folder.
+• iDotMatrix and Timebox displays show the Antigravity creature in color.
+```
+
+### Korean — macOS 새로운 기능
+
+```text
+• OpenCode 2.x 세션이 다시 작업 상태와 승인 요청과 함께 표시됩니다. AgentDeck이 설치한 OpenCode 관찰 플러그인을 자동으로 업데이트하며, OpenCode를 한 번 다시 시작하면 적용됩니다.
+• OpenCode의 백그라운드 셸과 서브에이전트, Antigravity의 백그라운드 명령이 백그라운드 작업으로 집계됩니다. 백그라운드에서 CI를 지켜보는 명령은 CI 대기로 표시됩니다.
+• Antigravity 대화가 프로젝트 폴더 이름으로 표시됩니다.
+• iDotMatrix와 Timebox 디스플레이에서 Antigravity 크리처가 컬러로 표시됩니다.
+```
+
+### Japanese — macOS このバージョンの新機能
+
+```text
+• OpenCode 2.x のセッションが、作業状態と承認リクエストとともに再び表示されるようになりました。AgentDeck がインストールした OpenCode 観測プラグインは自動で更新されます。OpenCode を一度再起動すると反映されます。
+• OpenCode のバックグラウンドシェルとサブエージェント、Antigravity のバックグラウンドコマンドがバックグラウンド作業として集計されます。バックグラウンドで CI を監視するコマンドは CI 待ちとして表示されます。
+• Antigravity の会話がプロジェクトフォルダ名で表示されるようになりました。
+• iDotMatrix と Timebox のディスプレイで、Antigravity の生き物がカラーで表示されます。
+```
+
 ## Prepared macOS 2.2.2 update text
 
 For the Mac App Store draft. The localized notes cover changes since public
