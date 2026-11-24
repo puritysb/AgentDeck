@@ -14,6 +14,7 @@ enum DotHabitatRules {
     static let nativeZ: Double = 1.4
     static let pixelPeerTurnMs: Double = 4000.0
     static let microGlyphSize: Double = 9.0
+    static let restingBeaconAlpha: Double = 0.45
     static let nativeTravelX: Double = 0.35
     static let nativeTravelY: Double = 0.12
     static let pearlRadius: Double = 0.28

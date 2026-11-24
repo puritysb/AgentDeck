@@ -15,6 +15,7 @@ constexpr float nativeY = 1.3f;
 constexpr float nativeZ = 1.4f;
 constexpr float pixelPeerTurnMs = 4000.0f;
 constexpr float microGlyphSize = 9.0f;
+constexpr float restingBeaconAlpha = 0.45f;
 constexpr float nativeTravelX = 0.35f;
 constexpr float nativeTravelY = 0.12f;
 constexpr float pearlRadius = 0.28f;

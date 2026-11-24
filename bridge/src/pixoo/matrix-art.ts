@@ -30,6 +30,27 @@ function painter(buf: Uint8Array, size: number) {
     rgb(color).forEach((v, c) => { buf[(y * size + x) * 3 + c] = Math.round(v * brightness); });
   };
 }
+/**
+ * Antigravity's mark is a gradient, not a brand tint: `Brand.antigravity` is
+ * the gray wordmark color, and filling the mask with it showed a gray "A" on
+ * the iDotMatrix and Timebox while every other surface drew the colored mark
+ * (2026-11-24). Same seven bands as the Pixoo 32 slot, sampled across the mask.
+ */
+const ANTIGRAVITY_BANDS = ['#5CD64D', '#F5CB24', '#FF8410', '#FF5241', '#B75CB6', '#666FE1', '#247EFF'];
+function maskColor(glyph: string, brand: Record<string, string>, x: number, side: number): string {
+  return glyph === 'antigravity'
+    ? ANTIGRAVITY_BANDS[Math.min(ANTIGRAVITY_BANDS.length - 1, Math.floor(x * ANTIGRAVITY_BANDS.length / side))]
+    : brand[glyph];
+}
+/** Dot's own pearl in an 18–24 px cell; never the neutral stand-in face. */
+function paintPearl(out: Uint8Array, x0: number, y0: number, side: number, clipY = 32): void {
+  const pearl = defaultDotRGBA(side);
+  for (let y = 0; y < side; y++) for (let x = 0; x < side; x++) {
+    const i = (y * side + x) * 4;
+    if (!pearl[i + 3] || y0 + y < 0 || y0 + y >= clipY || x0 + x < 0 || x0 + x >= 32) continue;
+    const d = ((y0 + y) * 32 + x0 + x) * 3; out[d] = pearl[i]; out[d + 1] = pearl[i + 1]; out[d + 2] = pearl[i + 2];
+  }
+}
 export function matrixDigit(value: string): number[] {
   const temp = new Uint8Array(64 * 64 * 3);
   drawText(temp, 0, 0, value, UI.hudText);
@@ -208,13 +229,7 @@ export function renderCompanionBase(kind: MatrixCompanionKind, glyph: string, fr
   const active = ['working', 'background', 'delegating', 'asked', 'arrival', 'reply', 'done'].includes(kind);
   const bob = active ? [0,1,0,1][beat] : 0;
   const x0 = MATRIX_LAYOUT.companionX, y0 = bob, side = MATRIX_LAYOUT.companionSide;
-  if(glyph==='dot') {
-    const pearl=defaultDotRGBA(side);
-    for(let y=0;y<side;y++) for(let x=0;x<side;x++) {
-      const i=(y*side+x)*4;
-      if(pearl[i+3]) { const d=((y0+y)*32+x0+x)*3;out[d]=pearl[i];out[d+1]=pearl[i+1];out[d+2]=pearl[i+2]; }
-    }
-  }
+  if(glyph==='dot') paintPearl(out,x0,y0,side);
   const mask = OFFICIAL_DOT_GLYPHS[glyph as OfficialDotGlyphName];
   if (mask) {
     const brand: Record<string, string> = { claudeCode: Brand.claudeCode, codex: Brand.codex,
@@ -222,7 +237,7 @@ export function renderCompanionBase(kind: MatrixCompanionKind, glyph: string, fr
       kiro: Brand.kiro, hermes: Brand.hermesOnDark, zai: Brand.zai };
     for (let y=0;y<side;y++) for (let x=0;x<side;x++) {
       const alpha=mask[y*24+x]/255;
-      if (alpha>0) put(x0+x,y0+y,brand[glyph],alpha);
+      if (alpha>0) put(x0+x,y0+y,maskColor(glyph,brand,x,side),alpha);
     }
     paintOfficialFeatures(out,32,glyph as OfficialDotGlyphName,x0,y0,side);
   } else if(glyph!=='dot') {
@@ -296,9 +311,11 @@ export function renderMatrixBase(size: 11 | 32, kind: MatrixKind, glyph: string,
     for (let y = 0; y < side; y++) for (let x = 0; x < side; x++) {
       const a = mask[Math.floor(y * 24 / side) * 24 + Math.floor(x * 24 / side)];
       if (a < 40 || y0 + y >= 27) continue;
-      put(x0 + x, y0 + y, brand[glyph], Math.min(1, a / 255 * 1.15));
+      put(x0 + x, y0 + y, maskColor(glyph, brand, x, side), Math.min(1, a / 255 * 1.15));
     }
     paintOfficialFeatures(out, size, glyph as OfficialDotGlyphName, x0, y0, side);
+  } else if (glyph === 'dot') {
+    paintPearl(out, x0, y0, side, 27);
   } else {
     // Neutral resident for future/unknown agents, never somebody else's logo.
     for (let y = 12; y <= 21; y++) for (let x = 10; x <= 21; x++) {

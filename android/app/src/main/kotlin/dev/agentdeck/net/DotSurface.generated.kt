@@ -15,6 +15,7 @@ object DotHabitatRules {
     const val nativeZ = 1.4
     const val pixelPeerTurnMs = 4000.0
     const val microGlyphSize = 9.0
+    const val restingBeaconAlpha = 0.45
     const val nativeTravelX = 0.35
     const val nativeTravelY = 0.12
     const val pearlRadius = 0.28

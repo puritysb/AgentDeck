@@ -52,17 +52,20 @@ enum DotPixelOverlay {
         }
         let rows=out ? TerrariumRules.hermesShellOpen : TerrariumRules.hermesShellClosed
         let unit=max(1,size/7),tint=colors[phase]
-        if shell && (!beacon || !out) { for (y,row) in rows.enumerated() { for (x,bit) in row.enumerated() where bit=="#" {
+        // Mirrors shared/src/dot-pixels.ts: a one-cell beacon keeps a dimmed
+        // pearl off duty; only habitat surfaces draw the shell.
+        let resting=beacon && !out
+        if shell && !beacon { for (y,row) in rows.enumerated() { for (x,bit) in row.enumerated() where bit=="#" {
             for dy in 0..<unit { for dx in 0..<unit { pixel(hx+(x-3)*unit+dx,hy+(y-rows.count+1)*unit+dy,tint) } }
         } }
         }
-        guard out else { return Data(rgb) }
+        guard out || resting else { return Data(rgb) }
         let rgba=dot.appearance?.glyph.map { [UInt8]($0) } ?? glyphs[size] ?? defaultRgba
         let sourceSize=Int(Double(rgba.count/4).squareRoot())
         let x0=hx-size/2,y0=beacon ? hy-size/2 : hy-rows.count*unit-Int(floor(Double(size)*0.7))
         for y in 0..<size { for x in 0..<size {
             let i=((y*sourceSize/size)*sourceSize+x*sourceSize/size)*4
-            pixel(x0+x,y0+y,Array(rgba[i..<i+3]),Int(rgba[i+3]))
+            pixel(x0+x,y0+y,Array(rgba[i..<i+3]),resting ? Int((Double(rgba[i+3])*DotHabitatRules.restingBeaconAlpha).rounded()) : Int(rgba[i+3]))
         } }
         return Data(rgb)
     }

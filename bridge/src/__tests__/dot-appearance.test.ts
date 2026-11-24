@@ -79,3 +79,18 @@ it('keeps the pearl and closed shell in the resident band with both eyes readabl
     expect(paintDotPixels(plain.slice(),width,working,now+60001,home)).toEqual(stopped);
   }
 });
+
+it('keeps an off-duty pearl in a beacon slot, dimmed, instead of a lone shell', () => {
+  const now=1800000000000, width=32, size=12;
+  const quiet={configured:true,hosting:false,reportState:null,reportedAt:null,expiresAt:null};
+  const working={...quiet,hosting:true,reportState:'working',reportedAt:now,expiresAt:now+60000};
+  const plain=new Uint8Array(width*width*3);
+  const slot={x:16,y:16,size,beacon:true};
+  const resting=paintDotPixels(plain.slice(),width,quiet,now,slot);
+  const active=paintDotPixels(plain.slice(),width,working,now,slot);
+  const lit=(b:Uint8Array)=>{ let n=0; for(let i=0;i<b.length;i+=3) if(b[i]||b[i+1]||b[i+2]) n++; return n; };
+  expect(lit(resting)).toBe(lit(active)); // same pearl silhouette, no saucer
+  const centre=(16*width+16)*3;
+  expect(resting[centre]).toBeGreaterThan(0);
+  expect(resting[centre]).toBeLessThan(active[centre]);
+});

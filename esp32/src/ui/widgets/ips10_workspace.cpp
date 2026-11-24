@@ -208,6 +208,12 @@ static const lv_image_dsc_t* residentGlyph(const char* agent) {
     if (!strcmp(agent,"dot")) return dotArt && dotArt->present ? &dotArt->image : nullptr;
     return glyphFor ? glyphFor(agent) : nullptr;
 }
+// Only an alpha mask takes the brand tint. A full-color glyph (Antigravity's
+// gradient mark, Dot's pearl, a baked relief) carries its own colors, and a
+// COVER recolor flattens it to one gray (2026-11-24, sim ips10).
+static lv_opa_t tintFor(const lv_image_dsc_t* glyph) {
+    return glyph && glyph->header.cf == LV_COLOR_FORMAT_A8 ? LV_OPA_COVER : LV_OPA_TRANSP;
+}
 static uint32_t brandColor(const char* agent) {
     if(!strcmp(agent,"claude-code") || !strcmp(agent,"claude")) return Theme::ClaudeBody;
     if(!strcmp(agent,"codex") || !strcmp(agent,"codex-cli") || !strcmp(agent,"codex-app")) return Theme::CloudBody;
@@ -799,8 +805,8 @@ void update() {
         // One aligned agent row: illustration left, state and work right.
         lv_obj_set_pos(seats[i],rowX,rowY);lv_obj_set_size(seats[i],cellW,rowHeight-8);
         const auto* relief=reliefFor(rows[i].agent);const auto* glyph=relief?relief:residentGlyph(rows[i].agent);visible(creatures[i],glyph);
-        lv_obj_set_style_image_recolor_opa(creatures[i],relief?LV_OPA_TRANSP:LV_OPA_COVER,0);
-        if(glyph){lv_obj_set_style_image_recolor_opa(creatures[i],(relief || !strcmp(rows[i].agent,"dot"))?LV_OPA_TRANSP:LV_OPA_COVER,0);if(!strcmp(rows[i].agent,"dot"))lv_obj_invalidate(creatures[i]);if(lv_image_get_src(creatures[i])!=glyph)lv_image_set_src(creatures[i],glyph);lv_image_set_scale(creatures[i],!strcmp(rows[i].agent,"dot")?768:relief?128:192);lv_obj_set_style_image_opa(creatures[i],cat==3?LV_OPA_60:LV_OPA_COVER,0);lv_obj_set_style_image_recolor(creatures[i],lv_color_hex(brandColor(rows[i].agent)),0);}
+        lv_obj_set_style_image_recolor_opa(creatures[i],tintFor(glyph),0);
+        if(glyph){if(!strcmp(rows[i].agent,"dot"))lv_obj_invalidate(creatures[i]);if(lv_image_get_src(creatures[i])!=glyph)lv_image_set_src(creatures[i],glyph);lv_image_set_scale(creatures[i],!strcmp(rows[i].agent,"dot")?768:relief?128:192);lv_obj_set_style_image_opa(creatures[i],cat==3?LV_OPA_60:LV_OPA_COVER,0);lv_obj_set_style_image_recolor(creatures[i],lv_color_hex(brandColor(rows[i].agent)),0);}
         lv_obj_set_pos(creatures[i],0,cat==1 && overviewMode && connected?((now/300+i)%2?0:4):4);
         snprintf(text,sizeof(text),"#%d %s",memberSlot[i]+1,cat==1?"! Attention":cat==2?"Working":"Idle");seatState[i].set(text);
         lv_obj_set_pos(seatState[i].obj,64,4);lv_obj_set_width(seatState[i].obj,cellW-64);
@@ -853,7 +859,7 @@ void update() {
         lv_obj_set_style_text_color(rowState[i].obj,lv_color_hex(colorFor(cat)),0);
         rowTool[i].set(r.tool[0]?r.tool:"No active tool");
         const auto* glyph=residentGlyph(r.agent);visible(marks[i],glyph);
-        if(glyph) {lv_obj_set_style_image_recolor_opa(marks[i],!strcmp(r.agent,"dot")?LV_OPA_TRANSP:LV_OPA_COVER,0);lv_image_set_scale(marks[i],!strcmp(r.agent,"dot")?512:128);if(!strcmp(r.agent,"dot"))lv_obj_invalidate(marks[i]);if(lv_image_get_src(marks[i])!=glyph)lv_image_set_src(marks[i],glyph);lv_obj_set_style_image_recolor(marks[i],lv_color_hex(brandColor(r.agent)),0);}
+        if(glyph) {lv_obj_set_style_image_recolor_opa(marks[i],tintFor(glyph),0);lv_image_set_scale(marks[i],!strcmp(r.agent,"dot")?512:128);if(!strcmp(r.agent,"dot"))lv_obj_invalidate(marks[i]);if(lv_image_get_src(marks[i])!=glyph)lv_image_set_src(marks[i],glyph);lv_obj_set_style_image_recolor(marks[i],lv_color_hex(brandColor(r.agent)),0);}
     }
     visible(empty.obj,!shown);empty.set(count?"No matching sessions":"Waiting for agents");
     // Keep known quotas beside every view. Detail prioritizes actual content.
@@ -883,7 +889,7 @@ void update() {
         snprintf(text,sizeof(text),"%s  /  %s  /  %lus",selected.agentType,selected.modelName[0]?selected.modelName:"Model unavailable",static_cast<unsigned long>(selected.elapsedSec));identity.set(text);
         const int cat=category(selected.state);
         const auto* fg=residentGlyph(selected.agentType);visible(focusGlyph,fg);
-        if(fg){if(lv_image_get_src(focusGlyph)!=fg)lv_image_set_src(focusGlyph,fg);lv_obj_set_style_image_recolor(focusGlyph,lv_color_hex(brandColor(selected.agentType)),0);}
+        if(fg){lv_obj_set_style_image_recolor_opa(focusGlyph,tintFor(fg),0);if(lv_image_get_src(focusGlyph)!=fg)lv_image_set_src(focusGlyph,fg);lv_obj_set_style_image_recolor(focusGlyph,lv_color_hex(brandColor(selected.agentType)),0);}
         int knownNodes=0;
         for(int i=0;i<4;++i)knownNodes+=(i<2?selected.childrenKnown:selected.coordinationKnown);
         int shownNodes=0;
