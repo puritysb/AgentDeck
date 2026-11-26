@@ -11,7 +11,7 @@ export interface AntigravityObservation {
   conversationId: string;
   status: 'known' | 'unknown' | 'stale';
   reason: string;
-  state?: 'idle' | 'processing';
+  state?: 'idle' | 'processing' | 'awaiting_permission';
   goal?: string;
   model?: string;
   currentTask?: string;

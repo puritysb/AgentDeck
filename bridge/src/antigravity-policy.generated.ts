@@ -29,11 +29,17 @@ export const ANTIGRAVITY_POLICY = {
   "activityMetadataBytes": 16384,
   "activityUserStepType": 14,
   "activityWorkingStatuses": [
+    1,
     2,
     8
   ],
+  "activityWaitingStatuses": [
+    9
+  ],
   "activityIdleStatuses": [
-    3
+    3,
+    6,
+    7
   ],
   "activityCreatedAtField": 1,
   "activityProtoFields": 128,
