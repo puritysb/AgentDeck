@@ -8237,7 +8237,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       () => connectGatewayAdapter(),
       () => { if (gatewayAdapter && !gatewayAdapter.isAlive()) disconnectGatewayAdapter(); },
     );
-    core.startGatewayHealthCheck();
+    core.startGatewayHealthCheck(300_000, 5000, () => gatewayAdapter?.fetchHealth() ?? Promise.resolve(null));
   }
   core.startUsageTick();
   core.startApiUsagePolling(60_000, () => fetchUsageRelayed(port));

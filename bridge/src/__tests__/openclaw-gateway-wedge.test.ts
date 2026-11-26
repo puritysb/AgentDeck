@@ -21,6 +21,7 @@ vi.mock('../gateway-probe.js', () => ({
 
 import { OpenClawAdapter } from '../adapters/openclaw.js';
 import { BridgeCore } from '../bridge-core.js';
+import { checkGatewayHealth } from '../gateway-probe.js';
 
 const closers: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -83,5 +84,121 @@ describe('BridgeCore Gateway probe', () => {
     core.startGatewayProbe(20, onAvailable, onDisappeared);
     await vi.waitFor(() => expect(onAvailable.mock.calls.length).toBeGreaterThanOrEqual(3));
     expect(onDisappeared).not.toHaveBeenCalled();
+  });
+
+  it('prefers the live Gateway health RPC and clears a latched gatewayHasError without spawning the CLI', async () => {
+    const cliMock = vi.mocked(checkGatewayHealth);
+    cliMock.mockClear();
+
+    const httpServer = createServer();
+    await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', () => resolve()));
+    const addr = httpServer.address();
+    const core = new BridgeCore({
+      port: typeof addr === 'object' && addr ? addr.port : 0,
+      projectName: 'Test',
+      httpServer,
+    });
+    closers.push(async () => {
+      for (const iv of (core as unknown as { intervals: NodeJS.Timeout[] }).intervals) clearInterval(iv);
+      for (const t of (core as unknown as { timeouts: NodeJS.Timeout[] }).timeouts) clearTimeout(t);
+      core.wsServer.close();
+      await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    });
+
+    core.cachedGatewayAvailable = true;
+    core.cachedGatewayHasError = true;
+    const preferred = vi.fn(async () => ({ known: true, hasError: false, reason: 'ok_field' as const }));
+    core.startGatewayHealthCheck(60_000, 10, preferred);
+    await vi.waitFor(() => expect(core.cachedGatewayHasError).toBe(false));
+    expect(preferred).toHaveBeenCalled();
+    expect(cliMock).not.toHaveBeenCalled();
+  });
+
+  it('retains gatewayHasError and skips the CLI fallback when the live health RPC returns unknown', async () => {
+    const cliMock = vi.mocked(checkGatewayHealth);
+    cliMock.mockClear();
+
+    const httpServer = createServer();
+    await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', () => resolve()));
+    const addr = httpServer.address();
+    const core = new BridgeCore({
+      port: typeof addr === 'object' && addr ? addr.port : 0,
+      projectName: 'Test',
+      httpServer,
+    });
+    closers.push(async () => {
+      for (const iv of (core as unknown as { intervals: NodeJS.Timeout[] }).intervals) clearInterval(iv);
+      for (const t of (core as unknown as { timeouts: NodeJS.Timeout[] }).timeouts) clearTimeout(t);
+      core.wsServer.close();
+      await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    });
+
+    core.cachedGatewayAvailable = true;
+    core.cachedGatewayHasError = true;
+    const preferred = vi.fn(async () => ({ known: false, hasError: false, reason: 'rpc_error' as const }));
+    core.startGatewayHealthCheck(60_000, 10, preferred);
+    await vi.waitFor(() => expect(preferred).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 30));
+    expect(core.cachedGatewayHasError).toBe(true);
+    expect(cliMock).not.toHaveBeenCalled();
+  });
+
+  it('falls back to CLI checkGatewayHealth only when no live Gateway health RPC is available', async () => {
+    const cliMock = vi.mocked(checkGatewayHealth);
+    cliMock.mockClear();
+    cliMock.mockResolvedValueOnce({ known: true, hasError: false, reason: 'ok_field' });
+
+    const httpServer = createServer();
+    await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', () => resolve()));
+    const addr = httpServer.address();
+    const core = new BridgeCore({
+      port: typeof addr === 'object' && addr ? addr.port : 0,
+      projectName: 'Test',
+      httpServer,
+    });
+    closers.push(async () => {
+      for (const iv of (core as unknown as { intervals: NodeJS.Timeout[] }).intervals) clearInterval(iv);
+      for (const t of (core as unknown as { timeouts: NodeJS.Timeout[] }).timeouts) clearTimeout(t);
+      core.wsServer.close();
+      await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    });
+
+    core.cachedGatewayAvailable = true;
+    core.cachedGatewayHasError = true;
+    core.startGatewayHealthCheck(60_000, 10, async () => null);
+    await vi.waitFor(() => expect(core.cachedGatewayHasError).toBe(false));
+    expect(cliMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('OpenClawAdapter health RPC', () => {
+  it('resolves health payloads via the Gateway WS RPC and returns null when health is not advertised', async () => {
+    const adapter = new OpenClawAdapter({ autoReconnect: false });
+    const priv = adapter as unknown as {
+      alive: boolean;
+      gatewayMethods: Set<string> | null;
+      rpcCall: (method: string, params: unknown) => Promise<unknown>;
+    };
+
+    // Disconnected adapter signals fallback (null).
+    expect(await adapter.fetchHealth()).toBeNull();
+
+    priv.alive = true;
+    priv.gatewayMethods = new Set(['health', 'models.list']);
+    priv.rpcCall = vi.fn(async (method: string) => {
+      expect(method).toBe('health');
+      return { ok: true, durationMs: 2 };
+    });
+    expect(await adapter.fetchHealth()).toEqual({ known: true, hasError: false, reason: 'ok_field' });
+
+    // Transient RPC error returns known:false (do not fall back to CLI subprocess).
+    priv.rpcCall = vi.fn(async () => { throw new Error('RPC timeout: health'); });
+    expect(await adapter.fetchHealth()).toMatchObject({ known: false, hasError: false, reason: 'rpc_error' });
+
+    // Gateway explicitly omitting health from features.methods signals fallback (null).
+    priv.gatewayMethods = new Set(['models.list']);
+    priv.rpcCall = vi.fn();
+    expect(await adapter.fetchHealth()).toBeNull();
+    expect(priv.rpcCall).not.toHaveBeenCalled();
   });
 });
