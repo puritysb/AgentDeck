@@ -2197,19 +2197,8 @@ actor OpenClawAdapter {
             return nil
         }
         _onEvent?(["type": "gateway_health", "payload": payload])
-        if let ok = payload["ok"] as? Bool {
-            return !ok
-        }
-        if let checks = payload["checks"] as? [[String: Any]] {
-            return checks.contains {
-                let status = ($0["status"] as? String)?.lowercased()
-                return status == "error" || status == "warn" || status == "degraded"
-            }
-        }
-        if let status = (payload["status"] as? String)?.lowercased() {
-            return status == "error" || status == "warn" || status == "degraded" || status == "unhealthy"
-        }
-        return false
+        let verdict = GatewayHealthRules.resolve(payload)
+        return verdict.known ? verdict.hasError : nil
     }
 
     private func requestInitialLogTail() async {
