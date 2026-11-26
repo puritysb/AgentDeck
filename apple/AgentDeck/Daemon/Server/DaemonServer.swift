@@ -10683,15 +10683,13 @@ final class DaemonServer {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(30))
                 guard let self else { break }
-                let adapterHealth = await self.gatewayAdapter?.fetchHealthHasError()
-                let hasError: Bool
-                if let adapterHealth {
-                    hasError = adapterHealth
-                } else {
-                    hasError = await self.gatewayProbe.hasErrorSnapshot()
-                }
-                if hasError != self.cachedGatewayHasError {
-                    self.cachedGatewayHasError = hasError
+                if let adapterHealth = await self.gatewayAdapter?.fetchHealthHasError() {
+                    if adapterHealth != self.cachedGatewayHasError {
+                        self.cachedGatewayHasError = adapterHealth
+                        self.broadcastStateUpdate()
+                    }
+                } else if !self.cachedGatewayAvailable && self.cachedGatewayHasError {
+                    self.cachedGatewayHasError = false
                     self.broadcastStateUpdate()
                 }
             }

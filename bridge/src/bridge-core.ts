@@ -33,7 +33,7 @@ import {
   type ClaudeStatuslineReading,
   type ClaudeUsageSource,
 } from '@agentdeck/shared';
-import { probeGateway, checkGatewayHealth } from './gateway-probe.js';
+import { probeGateway, checkGatewayHealth, type GatewayDoctorVerdict } from './gateway-probe.js';
 import { fetchUsageFromApi, hasOAuthToken, getTokenStatus, type ApiUsageData, type UsageFetchResult } from './usage-api.js';
 import { fetchZaiQuota, type ZaiUsageFetchResult } from './zai-usage.js';
 import { buildEnrichedSessionsList } from './session-aggregator.js';
@@ -972,28 +972,32 @@ export class BridgeCore {
   }
 
   /**
-   * `openclaw doctor` costs 8-9 s per run and opens its own Gateway connection,
-   * so the old 30 s cadence left the CLI running ~30% of the time and made this
-   * one check 99.5% of all Gateway RPC traffic (measured 2026-09-12: 9,958
-   * `channels.status` calls over four days, each on a fresh connection).
-   * OpenClaw's own health monitor runs on 300 s; match it.
+   * Poll OpenClaw Gateway health. Prefer an already-connected Gateway WS
+   * `health` RPC (`preferredCheck`, ~2–5 ms, zero subprocesses); fall back to
+   * `openclaw health --json` only when no live socket/RPC is available.
+   * Matches OpenClaw's own 300 s health monitor cadence by default.
    */
-  startGatewayHealthCheck(intervalMs = 300_000, delayMs = 5000): void {
-    const check = () => {
+  startGatewayHealthCheck(
+    intervalMs = 300_000,
+    delayMs = 5000,
+    preferredCheck?: () => Promise<GatewayDoctorVerdict | null>,
+  ): void {
+    const check = async () => {
       if (!this.cachedGatewayAvailable) return;
-      checkGatewayHealth().then((verdict) => {
-        // "I could not look" is neither healthy nor broken — retain.
-        if (!verdict.known) return;
-        const changed = verdict.hasError !== this.cachedGatewayHasError;
-        this.cachedGatewayHasError = verdict.hasError;
-        if (changed) {
-          debug('BridgeCore', `gatewayHasError -> ${verdict.hasError} (${verdict.reason}${verdict.detail ? `: ${verdict.detail}` : ''})`);
-          this.stateMachine.emit('state_changed', this.stateMachine.getSnapshot());
-        }
-      }).catch(() => {});
+      const preferred = preferredCheck ? await preferredCheck().catch(() => null) : null;
+      const verdict = preferred ?? await checkGatewayHealth();
+      // "I could not look" is neither healthy nor broken — retain.
+      if (!verdict.known) return;
+      const changed = verdict.hasError !== this.cachedGatewayHasError;
+      this.cachedGatewayHasError = verdict.hasError;
+      if (changed) {
+        log(`OpenClaw gateway health: ${verdict.hasError ? 'ERROR' : 'ok'}`
+          + ` (via ${verdict.reason}${verdict.detail ? `: ${verdict.detail}` : ''})`);
+        this.stateMachine.emit('state_changed', this.stateMachine.getSnapshot());
+      }
     };
-    this.addTimeout(setTimeout(check, delayMs));
-    this.addInterval(setInterval(check, intervalMs));
+    this.addTimeout(setTimeout(() => { check().catch(() => {}); }, delayMs));
+    this.addInterval(setInterval(() => { check().catch(() => {}); }, intervalMs));
   }
 
   // ===== Polling =====

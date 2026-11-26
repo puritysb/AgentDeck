@@ -18,6 +18,7 @@ import {
   GATEWAY_PROTOCOL_VERSION,
   GatewayLiveActivity,
   GATEWAY_LIVE_RULES,
+  resolveGatewayHealth,
 } from '@agentdeck/shared';
 import type {
   AgentAdapter,
@@ -58,6 +59,7 @@ import { OPENCLAW_CAPABILITIES, OPENCLAW_GATEWAY_PORT } from '../types.js';
 import { SURFACE_SERVER_VERSION } from '../surface-protocol.js';
 import { fetchModelCatalog, getDefaultModelName, invalidateModelCache } from '../model-catalog.js';
 import { catalogFromModelsList, catalogRetryDelayMs, type ResolvedModelCatalog } from '../openclaw-model-catalog.js';
+import type { GatewayDoctorVerdict } from '../gateway-probe.js';
 import { getApme } from '../apme/index.js';
 import { ApmeCollector } from '../apme/collector.js';
 import {
@@ -2333,6 +2335,10 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
         // Fetch model catalog (async, non-blocking)
         this.emitModelCatalog().catch(err => debug('adapter:openclaw', `emitModelCatalog error: ${err}`));
 
+        // Fetch Gateway health immediately over the open socket (~2-5 ms) so
+        // `gatewayHasError` does not depend on push events or subprocess probes.
+        this.emitInitialHealth().catch(err => debug('adapter:openclaw', `emitInitialHealth error: ${err}`));
+
         // Subscribe to the session event stream. Without this call the
         // Gateway puts us in NEITHER `sessionEventSubscribers` nor
         // `sessionMessageSubscribers`, and those two sets are the entire
@@ -2498,6 +2504,61 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
     this.catalogGeneration += 1;
     this.gatewayMethods = null;
     this.clearCatalogRetry();
+  }
+
+  /**
+   * Query the Gateway's own `health` RPC over the socket we already hold
+   * (~2–5 ms, zero subprocesses, zero extra connections — mirrors Swift
+   * `OpenClawAdapter.fetchHealthHasError` and Node `fetchCatalogViaGateway`).
+   *
+   * Returns `null` only when the socket is not connected or the Gateway
+   * explicitly omitted `health` from `hello-ok.features.methods` (signalling
+   * the caller may fall back to the CLI probe). A transient RPC error returns
+   * `{ known: false }` so the caller retains its previous verdict without
+   * spawning a subprocess.
+   */
+  async fetchHealth(timeoutMs = OpenClawAdapter.RPC_TIMEOUT): Promise<GatewayDoctorVerdict | null> {
+    const result = await this.fetchHealthViaGateway(timeoutMs);
+    return result ? result.verdict : null;
+  }
+
+  private async fetchHealthViaGateway(
+    timeoutMs = OpenClawAdapter.RPC_TIMEOUT,
+  ): Promise<{ payload: Record<string, unknown> | null; verdict: GatewayDoctorVerdict } | null> {
+    if (!this.alive || (this.ws && this.ws.readyState !== WebSocket.OPEN)) {
+      return null;
+    }
+    if (this.gatewayMethods && !this.gatewayMethods.has('health')) {
+      debug('adapter:openclaw', 'Gateway does not advertise health — falling back to CLI health probe');
+      return null;
+    }
+    try {
+      const result = await this.rpcCall('health', {}, timeoutMs);
+      const payload = result && typeof result === 'object' ? (result as Record<string, unknown>) : null;
+      return { payload, verdict: resolveGatewayHealth(result) };
+    } catch (err) {
+      debug('adapter:openclaw', `health RPC failed: ${err}`);
+      return {
+        payload: null,
+        verdict: {
+          known: false,
+          hasError: false,
+          reason: 'rpc_error',
+          detail: err instanceof Error ? err.message : String(err),
+        },
+      };
+    }
+  }
+
+  private async emitInitialHealth(): Promise<void> {
+    const generation = this.catalogGeneration;
+    const res = await this.fetchHealthViaGateway();
+    if (!res?.payload || generation !== this.catalogGeneration || !this.alive || this.shutdownRequested) return;
+    this.emitAdapterEvent({
+      source: 'metadata',
+      event: 'gateway_health',
+      data: { ok: res.payload.ok as boolean | undefined, payload: res.payload },
+    });
   }
 
   /** The Gateway's own `models.list` — the socket we already hold, no subprocess. */
