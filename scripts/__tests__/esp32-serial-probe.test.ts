@@ -14,7 +14,13 @@ function fixture() {
   const dir = mkdtempSync(join(tmpdir(), 'agentdeck-serial-probe-'));
   temporary.push(dir);
   writeFileSync(join(dir, 'serial.py'), `
+import sys
 import time
+
+# A healthy child can start more slowly than the fault-only timeout below.
+if sys.argv[-1] == 'healthy-after-hangs':
+    time.sleep(0.65)
+
 class Serial:
     def __init__(self, port, **kwargs):
         self.port = port
@@ -48,8 +54,8 @@ describe('ESP32 serial identity probe', () => {
 import importlib.util,json,sys
 spec=importlib.util.spec_from_file_location('probe',sys.argv[1])
 probe=importlib.util.module_from_spec(spec);spec.loader.exec_module(probe)
-print(json.dumps([probe.probe_port(port,timeout=0.5) for port in
-                 ['hang-open','hang-read','hang-close','healthy']]))
+stuck = [probe.probe_port(port, timeout=0.5) for port in ['hang-open','hang-read','hang-close']]
+print(json.dumps([*stuck, probe.probe_port('healthy-after-hangs')]))
 `;
     const result = execFileSync('python3', ['-c', program, probe], {
       env: fixture(), encoding: 'utf8', timeout: 8000, stdio: ['ignore', 'pipe', 'pipe'],
