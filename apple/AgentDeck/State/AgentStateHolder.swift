@@ -960,7 +960,9 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
                     // Do not post a queued frame after a disconnect/host switch.
                     guard self?.attentionSessionSnapshot?.receivedAt == snapshot.receivedAt,
                           self?.attentionSessionSnapshot?.endpoint == snapshot.endpoint else { return }
-                    AttentionNotifier.sync(snapshot: snapshot)
+                    AttentionNotifier.shared.sync(
+                        snapshot: snapshot,
+                        playPermissionWaitSound: AppPreferences.shared.playPermissionWaitSound)
                 }
             }
             #endif

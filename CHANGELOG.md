@@ -45,6 +45,11 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- **macOS permission sound.** Turn on **Play a separate sound for permission
+  requests** in Settings to hear the Mac's alert sound when AgentDeck sees a
+  new permission wait. This also works for normally launched Claude Code
+  sessions when Claude reports that a permission prompt is waiting. [#841](https://github.com/puritysb/AgentDeck/issues/841)
+
 - **Terminal dashboard.** The session list now leads with sessions that need
   you, then working, then idle, with a caption per group, as the Work screen
   does. It opens on the first request, and `n` jumps to the next one with its

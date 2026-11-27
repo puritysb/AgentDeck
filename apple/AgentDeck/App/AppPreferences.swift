@@ -107,6 +107,11 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
     @Published var openDashboardOnLaunch: Bool {
         didSet { defaults.set(openDashboardOnLaunch, forKey: Keys.openDashboardOnLaunch) }
     }
+    #if os(macOS)
+    @Published var playPermissionWaitSound: Bool {
+        didSet { defaults.set(playPermissionWaitSound, forKey: Keys.playPermissionWaitSound) }
+    }
+    #endif
     @Published var menuBarIconStyle: MenuBarIconStyle {
         didSet { defaults.set(menuBarIconStyle.rawValue, forKey: Keys.menuBarIconStyle) }
     }
@@ -367,6 +372,9 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
         self.daemonLoopbackOnly = defaults.object(forKey: Keys.daemonLoopbackOnly) as? Bool ?? false
         self.daemonNoDeviceModules = defaults.object(forKey: Keys.daemonNoDeviceModules) as? Bool ?? false
         self.openDashboardOnLaunch = defaults.object(forKey: Keys.openDashboardOnLaunch) as? Bool ?? true
+        #if os(macOS)
+        self.playPermissionWaitSound = defaults.bool(forKey: Keys.playPermissionWaitSound)
+        #endif
         self.menuBarIconStyle = MenuBarIconStyle(rawValue: defaults.string(forKey: Keys.menuBarIconStyle) ?? "") ?? .status
         self.menuBarOnlyMode = defaults.object(forKey: Keys.menuBarOnlyMode) as? Bool ?? false
         self.showSessionList = defaults.object(forKey: Keys.showSessionList) as? Bool ?? true
@@ -985,6 +993,9 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
         static let daemonLoopbackOnly = "prefs.daemonLoopbackOnly"
         static let daemonNoDeviceModules = "prefs.daemonNoDeviceModules"
         static let openDashboardOnLaunch = "prefs.openDashboardOnLaunch"
+        #if os(macOS)
+        static let playPermissionWaitSound = "prefs.playPermissionWaitSound"
+        #endif
         static let menuBarIconStyle = "prefs.menuBarIconStyle"
         static let menuBarOnlyMode = "prefs.menuBarOnlyMode"
         static let showSessionList = "prefs.showSessionList"
