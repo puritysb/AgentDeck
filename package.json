@@ -99,6 +99,7 @@
     "generate-pocket-vectors": "pnpm build && node scripts/generate-pocket-vectors.mjs",
     "security:audit": "node scripts/security-audit.mjs"
   },
+  "packageManager": "pnpm@11.5.0",
   "engines": {
     "node": "22.x || 24.x || 26.x",
     "pnpm": ">=11.5.0 <12"
