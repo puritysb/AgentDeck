@@ -17,62 +17,91 @@
 // gating here).
 
 #if os(macOS)
+import AppKit
 import Foundation
 import UserNotifications
 
 @MainActor
-enum AttentionNotifier {
+final class AttentionNotifier {
+    static let shared = AttentionNotifier()
     nonisolated static let referenceKey = "agentdeck.attentionSession"
-    /// Endpoint-scoped session reference → question we last notified for. Repeated sessions_list
-    /// frames with the same awaiting state must not re-fire the banner.
-    private static var notified: [String: String] = [:]
+
+    private struct Wait {
+        let state: AgentConnectionState
+        let question: String
+        let requestID: String?
+    }
+
+    private var notified: [String: Wait] = [:]
+    private let playSound: @MainActor () -> Void
+    private let post: @MainActor (String, UNNotificationContent) -> Void
+    private let clear: @MainActor (String) -> Void
+
+    init(playSound: @escaping @MainActor () -> Void = { NSSound.beep() },
+         post: @escaping @MainActor (String, UNNotificationContent) -> Void = AttentionNotifier.post,
+         clear: @escaping @MainActor (String) -> Void = AttentionNotifier.clear) {
+        self.playSound = playSound
+        self.post = post
+        self.clear = clear
+    }
 
     /// Diff the latest sessions_list against what we've notified:
     /// newly-awaiting sessions post, no-longer-awaiting (or vanished)
     /// sessions clear.
-    static func sync(snapshot: AttentionSessionSnapshot) {
+    func sync(snapshot: AttentionSessionSnapshot, playPermissionWaitSound: Bool) {
         var stillAwaiting: Set<String> = []
 
         for session in snapshot.sessions {
             guard session.alive, let stateRaw = session.state,
-                  AgentConnectionState(rawValue: stateRaw)?.isAwaiting == true,
+                  let state = AgentConnectionState(rawValue: stateRaw), state.isAwaiting,
                   let question = session.question?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !question.isEmpty
             else { continue }
 
             let reference = AttentionSessionReference(endpoint: snapshot.endpoint, sessionID: session.id)
             stillAwaiting.insert(reference.id)
-            if notified[reference.id] != question {
-                notified[reference.id] = question
-                post(reference: reference,
-                     projectName: session.projectName ?? session.agentType ?? "Agent",
-                     question: question)
+            let previous = notified[reference.id]
+            // Older daemons can omit the ID. Keep the last one during the same wait.
+            let requestID = session.requestId ?? (previous?.state == state ? previous?.requestID : nil)
+            let replacedRequest = previous?.requestID != nil && requestID != previous?.requestID
+            let startedWait = previous?.state != state || replacedRequest
+            let useDedicatedSound = playPermissionWaitSound && state == .awaitingPermission
+            notified[reference.id] = Wait(state: state, question: question, requestID: requestID)
+            if useDedicatedSound && startedWait {
+                playSound()
+            }
+            if startedWait || previous?.question != question {
+                post(reference.id, Self.content(
+                    reference: reference,
+                    projectName: session.projectName ?? session.agentType ?? "Agent",
+                    question: question,
+                    notificationSound: !useDedicatedSound))
             }
         }
 
         for sessionId in notified.keys where !stillAwaiting.contains(sessionId) {
             notified.removeValue(forKey: sessionId)
-            clear(sessionId: sessionId)
+            clear(sessionId)
         }
     }
 
-    static func content(reference: AttentionSessionReference, projectName: String, question: String) -> UNMutableNotificationContent {
+    static func content(reference: AttentionSessionReference, projectName: String, question: String,
+                        notificationSound: Bool = true) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = "\(projectName) needs your response"
         content.body = question
-        content.sound = .default
+        content.sound = notificationSound ? .default : nil
         content.threadIdentifier = reference.id
         content.userInfo = [referenceKey: reference.id]
         return content
     }
 
-    private static func post(reference: AttentionSessionReference, projectName: String, question: String) {
-
+    private static func post(sessionID: String, content: UNNotificationContent) {
         // Endpoint-scoped identity means a re-post (question changed) replaces the
         // delivered notification instead of stacking a second banner.
         let request = UNNotificationRequest(
-            identifier: reference.id,
-            content: content(reference: reference, projectName: projectName, question: question),
+            identifier: sessionID,
+            content: content,
             trigger: nil
         )
         UNUserNotificationCenter.current().add(request) { error in

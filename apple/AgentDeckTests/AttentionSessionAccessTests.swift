@@ -74,6 +74,59 @@ final class AttentionSessionAccessTests: XCTestCase {
         XCTAssertFalse(decoded.endpoint.contains("token="))
     }
 
+    @MainActor
+    func testPermissionSoundForObservedClaudePlaysOncePerWait() {
+        var soundCount = 0
+        var notificationHasSound: [Bool] = []
+        var cleared: [String] = []
+        let notifier = AttentionNotifier(
+            playSound: { soundCount += 1 },
+            post: { _, content in notificationHasSound.append(content.sound != nil) },
+            clear: { cleared.append($0) })
+        var row = attentionRow("observed:claude:session", state: "awaiting_permission", question: "Allow Bash?")
+        row.controlMode = "observed"
+
+        notifier.sync(snapshot: attentionSnapshot([row]), playPermissionWaitSound: true)
+        notifier.sync(snapshot: attentionSnapshot([row]), playPermissionWaitSound: true)
+        row.question = "Claude needs your permission"
+        notifier.sync(snapshot: attentionSnapshot([row]), playPermissionWaitSound: true)
+        XCTAssertEqual(soundCount, 1)
+        XCTAssertEqual(notificationHasSound, [false, false])
+
+        row.state = "processing"
+        notifier.sync(snapshot: attentionSnapshot([row]), playPermissionWaitSound: true)
+        XCTAssertEqual(cleared, [attentionReference(row.id).id])
+
+        row.state = "awaiting_permission"
+        notifier.sync(snapshot: attentionSnapshot([row]), playPermissionWaitSound: true)
+        XCTAssertEqual(soundCount, 2)
+        XCTAssertEqual(notificationHasSound, [false, false, false])
+    }
+
+    @MainActor
+    func testPermissionSoundKeepsRegularNotificationsAndRecognizesNewRequestIDs() {
+        var soundCount = 0
+        var notificationHasSound: [Bool] = []
+        let notifier = AttentionNotifier(
+            playSound: { soundCount += 1 },
+            post: { _, content in notificationHasSound.append(content.sound != nil) },
+            clear: { _ in })
+
+        var row = attentionRow("session", state: "awaiting_option", question: "Continue?")
+        notifier.sync(snapshot: attentionSnapshot([row]), playPermissionWaitSound: true)
+        row.state = "awaiting_permission"
+        row.requestId = "first"
+        notifier.sync(snapshot: attentionSnapshot([row]), playPermissionWaitSound: false)
+        notifier.sync(snapshot: attentionSnapshot([row]), playPermissionWaitSound: true)
+        XCTAssertEqual(soundCount, 0)
+        XCTAssertEqual(notificationHasSound, [true, true])
+
+        row.requestId = "second"
+        notifier.sync(snapshot: attentionSnapshot([row]), playPermissionWaitSound: true)
+        XCTAssertEqual(soundCount, 1)
+        XCTAssertEqual(notificationHasSound, [true, true, false])
+    }
+
     func testResolutionUsesExactIdentityAndDeclaredFoldMembershipOnly() throws {
         let now = Date()
         var folded = attentionRow("folded", state: "awaiting_option")
