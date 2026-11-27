@@ -26,7 +26,11 @@ export function workflowHealth(workflow, runs, scheduled, now = Date.now(), curr
   const limit = policy.hours * 3_600_000;
   if (!completed || completed.conclusion !== 'success') fail('No successful latest completed scan');
   else if (age(completed.updated_at) > limit) fail('Latest scan is overdue');
-  if (latest && latest.status !== 'completed' && age(latest.created_at) > 90 * 60_000) fail('Scan has been pending for over 90 minutes');
+  if (latest && latest.status !== 'completed') {
+    // GitHub retains created_at from the first run when starting a new attempt.
+    const pendingSince = latest.run_attempt > 1 ? latest.run_started_at ?? latest.created_at : latest.created_at;
+    if (age(pendingSince) > 90 * 60_000) fail('Scan has been pending for over 90 minutes');
+  }
   const lastScheduled = scheduled.find(r => r.id !== currentRunId && r.status === 'completed' && r.conclusion !== 'cancelled');
   if (!lastScheduled) {
     if (age(workflow.created_at) > limit) fail('No scheduled execution within the startup deadline');
