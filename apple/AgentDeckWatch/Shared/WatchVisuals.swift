@@ -79,18 +79,12 @@ extension RemoteSessionDetail.Phase {
 extension RemoteUsageWindow {
     var providerName: String { provider == .codex ? "Codex" : "z.ai" }
     var providerWire: String { provider == .codex ? "codex-cli" : "zai" }
+    var windowLabel: String { compactDurationLabel }
 
-    var windowLabel: String {
-        if durationMinutes % 10_080 == 0 { return "\(durationMinutes / 10_080)w" }
-        if durationMinutes % 1_440 == 0 { return "\(durationMinutes / 1_440)d" }
-        if durationMinutes % 60 == 0 { return "\(durationMinutes / 60)h" }
-        return "\(durationMinutes)m"
-    }
-
-    /// Remaining allowance colour: plenty reads calm, scarce reads as attention.
-    var color: Color {
-        remainingPercent <= 15 ? DesignTokens.Session.error
-            : (remainingPercent <= 40 ? WatchTheme.waiting : DesignTokens.UI.ok)
+    /// Remaining allowance colour from the shared `UsageSeverity` SSOT,
+    /// dimming aged Codex snapshots to neutral rather than presenting them live.
+    func color(at now: Date = .now) -> Color {
+        Color(rgb: UsageSeverity.colorHex(severityUsedPercent(at: now)))
     }
 }
 
@@ -117,6 +111,7 @@ struct AgentBadge: View {
 /// The session roster as arcs: waiting, working, then everything else.
 /// With no observed counts the ring is a faint dashed outline, never a zero.
 struct AttentionRing: View {
+    @Environment(\.isLuminanceReduced) private var isLuminanceReduced
     let glance: WatchGlance
     var lineWidth: CGFloat = 10
     var pulse = false
@@ -125,7 +120,8 @@ struct AttentionRing: View {
         let waiting = Double(glance.waiting ?? 0)
         let working = Double(glance.working ?? 0)
         let total = max(Double(glance.total ?? 0), waiting + working, 1)
-        let gap = total > 1 ? 0.012 : 0
+        let gap = glance.activeArcCount > 1 ? 0.012 : 0
+        let shouldPulse = pulse && !isLuminanceReduced
         ZStack {
             Circle().stroke(WatchTheme.faint.opacity(0.35),
                             style: StrokeStyle(lineWidth: lineWidth, dash: glance.hasCounts ? [] : [2, 5]))
@@ -137,7 +133,7 @@ struct AttentionRing: View {
             }
         }
         .rotationEffect(.degrees(-90))
-        .phaseAnimator(pulse ? [false, true] : [false]) { view, lit in
+        .phaseAnimator(shouldPulse ? [false, true] : [false]) { view, lit in
             view.shadow(color: WatchTheme.waiting.opacity(lit ? 0.75 : 0.15), radius: lit ? lineWidth : lineWidth * 0.3)
         } animation: { _ in .easeInOut(duration: 1.1) }
     }
@@ -153,6 +149,7 @@ struct AttentionRing: View {
 
 /// "How old is this" as a coloured capsule — recent is a live dot, historical is a clock.
 struct FreshnessChip: View {
+    @Environment(\.isLuminanceReduced) private var isLuminanceReduced
     let glance: WatchGlance
 
     var body: some View {
@@ -161,7 +158,7 @@ struct FreshnessChip: View {
                 Image(systemName: glance.historical ? "clock.arrow.circlepath" : "circle.fill")
                     .font(.system(size: glance.historical ? 10 : 6))
                     .foregroundStyle(glance.historical ? WatchTheme.offline : DesignTokens.UI.ok)
-                if glance.historical {
+                if glance.historical || isLuminanceReduced {
                     Text("Last seen \(observedAt, style: .time)")
                 } else {
                     Text(observedAt, format: .relative(presentation: .numeric, unitsStyle: .abbreviated))
@@ -176,27 +173,36 @@ struct FreshnessChip: View {
     }
 }
 
-/// A remaining-allowance ring with the provider mark inside.
+/// A remaining-allowance ring with `%` and duration inside.
 struct UsageDial: View {
     let window: RemoteUsageWindow
+    var now: Date = .now
     var size: CGFloat = 52
 
     var body: some View {
+        let aged = window.isAged(at: now)
+        let pct = Int(window.remainingPercent.rounded())
         ZStack {
             Circle().stroke(WatchTheme.faint.opacity(0.35), lineWidth: size * 0.11)
             Circle().trim(from: 0, to: window.remainingPercent / 100)
-                .stroke(window.color, style: StrokeStyle(lineWidth: size * 0.11, lineCap: .round))
+                .stroke(window.color(at: now), style: StrokeStyle(lineWidth: size * 0.11, lineCap: .round))
                 .rotationEffect(.degrees(-90))
             VStack(spacing: 0) {
-                Text("\(Int(window.remainingPercent.rounded()))")
-                    .font(.system(size: size * 0.3, weight: .bold, design: .rounded)).monospacedDigit()
-                    .foregroundStyle(WatchTheme.text)
-                Text(window.windowLabel).font(.system(size: size * 0.17, weight: .semibold)).foregroundStyle(WatchTheme.subtext)
+                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                    Text("\(pct)")
+                        .font(.system(size: size * 0.28, weight: .bold, design: .rounded)).monospacedDigit()
+                    Text("%")
+                        .font(.system(size: size * 0.15, weight: .semibold, design: .rounded))
+                }
+                .foregroundStyle(aged ? WatchTheme.subtext : WatchTheme.text)
+                Text(window.compactDurationLabel)
+                    .font(.system(size: size * 0.17, weight: .semibold))
+                    .foregroundStyle(WatchTheme.subtext)
             }
         }
         .frame(width: size, height: size)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(window.providerName) \(window.windowLabel) \(Int(window.remainingPercent.rounded())) percent left")
+        .accessibilityLabel("\(window.providerName) \(window.quantityDurationLabel) \(pct) percent left\(aged ? ", aged reading" : "")")
     }
 }
 

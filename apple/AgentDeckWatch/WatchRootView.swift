@@ -27,7 +27,6 @@ struct WatchRootView: View {
         switch UserDefaults.standard.string(forKey: "AgentDeckWatchPage") {
         case "notification":
             AttentionNotificationView(glance: WatchGlance.make(model.snapshot, at: .now))
-                .containerBackground(WatchTheme.background(for: .needsYou), for: .navigation)
         case "complications":
             ComplicationGallery()
         default:
@@ -42,27 +41,48 @@ struct WatchRootView: View {
         TimelineView(.periodic(from: .now, by: 15)) { context in
             let glance = WatchGlance.make(model.snapshot, at: context.date)
             NavigationStack {
-            TabView(selection: $page) {
-                GlancePage(glance: glance, model: model)
-                    .containerBackground(WatchTheme.background(for: glance.mode), for: .tabView)
-                    .tag(Page.glance)
-                if !glance.sessions.isEmpty {
-                    SessionsPage(glance: glance, now: context.date)
+                TabView(selection: $page) {
+                    GlancePage(glance: glance, model: model)
                         .containerBackground(WatchTheme.background(for: glance.mode), for: .tabView)
-                        .tag(Page.sessions)
+                        .tag(Page.glance)
+                    if !glance.sessions.isEmpty {
+                        SessionsPage(glance: glance, model: model, now: context.date)
+                            .containerBackground(WatchTheme.background(for: glance.mode), for: .tabView)
+                            .tag(Page.sessions)
+                    }
+                    if !glance.usage.isEmpty {
+                        UsagePage(glance: glance, model: model, now: context.date)
+                            .containerBackground(WatchTheme.background(for: glance.mode), for: .tabView)
+                            .tag(Page.usage)
+                    }
                 }
-                if !glance.usage.isEmpty {
-                    UsagePage(glance: glance)
-                        .containerBackground(WatchTheme.background(for: glance.mode), for: .tabView)
-                        .tag(Page.usage)
+                .tabViewStyle(.verticalPage)
+                .onChange(of: glance.sessions.isEmpty) { _, isEmpty in
+                    if isEmpty && page == .sessions { page = .glance }
                 }
-            }
-            .tabViewStyle(.verticalPage)
+                .onChange(of: glance.usage.isEmpty) { _, isEmpty in
+                    if isEmpty && page == .usage { page = .glance }
+                }
+                .onOpenURL { url in
+                    handleDeepLink(url, glance: glance)
+                }
             }
         }
         #if DEBUG
         .task { await playDemoIfPinned() }
         #endif
+    }
+
+    private func handleDeepLink(_ url: URL, glance: WatchGlance) {
+        guard url.scheme == "agentdeckwatch" else { return }
+        switch url.host {
+        case "sessions" where !glance.sessions.isEmpty:
+            page = .sessions
+        case "usage" where !glance.usage.isEmpty:
+            page = .usage
+        default:
+            page = .glance
+        }
     }
 
     #if DEBUG
@@ -85,20 +105,47 @@ struct WatchRootView: View {
     #endif
 }
 
+private struct RefreshToolbarItem: ToolbarContent {
+    @ObservedObject var model: WatchObservationModel
+
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Button { Task { await model.refresh() } } label: {
+                if model.busy { ProgressView() } else { Image(systemName: "arrow.clockwise") }
+            }
+            .disabled(model.busy)
+            .accessibilityLabel("Refresh")
+        }
+    }
+}
+
 private struct GlancePage: View {
     let glance: WatchGlance
     @ObservedObject var model: WatchObservationModel
 
     var body: some View {
-            VStack(spacing: 6) {
+        GeometryReader { geo in
+            let ringSize = max(96, min(geo.size.width * 0.66, geo.size.height * 0.64, 122))
+            let lineWidth = max(8, ringSize * 0.088)
+            VStack(spacing: 5) {
                 ZStack {
-                    AttentionRing(glance: glance, lineWidth: 11, pulse: glance.mode == .needsYou && !glance.historical)
-                    center
+                    AttentionRing(glance: glance, lineWidth: lineWidth, pulse: glance.mode == .needsYou && !glance.historical)
+                    center(ringSize: ringSize)
                 }
-                .frame(width: 128, height: 128)
+                .frame(width: ringSize, height: ringSize)
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("watch.headline")
-                if glance.hasCounts { FreshnessChip(glance: glance) }
+                if glance.hasCounts {
+                    HStack(spacing: 4) {
+                        FreshnessChip(glance: glance)
+                        if glance.mode == .needsYou, !glance.waitingAgents.isEmpty, let working = glance.working, working > 0 {
+                            Text("+\(working) working")
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(glance.historical ? WatchTheme.offline : WatchTheme.working)
+                                .lineLimit(1)
+                        }
+                    }
+                }
                 if let status = model.status ?? emptyHint {
                     Text(status)
                         .font(.caption2).multilineTextAlignment(.center)
@@ -109,17 +156,11 @@ private struct GlancePage: View {
                         .accessibilityIdentifier("watch.status")
                 }
             }
+            .padding(.top, 4)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { Task { await model.refresh() } } label: {
-                        if model.busy { ProgressView() } else { Image(systemName: "arrow.clockwise") }
-                    }
-                    .disabled(model.busy)
-                    .accessibilityLabel("Refresh")
-                }
-            }
-            .navigationTitle("AgentDeck")
+        }
+        .toolbar { RefreshToolbarItem(model: model) }
+        .navigationTitle("AgentDeck")
     }
 
     private var emptyHint: String? {
@@ -127,26 +168,32 @@ private struct GlancePage: View {
         case .unavailable: return String(localized: "Turn on Remote observation in AgentDeck on your Mac.")
         case .sourceUnavailable: return String(localized: "Your Mac can't see its sessions right now.")
         case .sharingStopped: return String(localized: "Sharing is turned off on your Mac.")
-        default: return nil
+        default:
+            if glance.detailsSharingLikelyOff {
+                return String(localized: "Turn on detailed sharing on your Mac for sessions and allowance.")
+            }
+            return nil
         }
     }
 
     @ViewBuilder
-    private var center: some View {
+    private func center(ringSize: CGFloat) -> some View {
         let tint = WatchTheme.tint(glance)
+        let numberSize = ringSize * 0.34
         switch glance.mode {
         case .needsYou, .working:
             VStack(spacing: 0) {
                 Text("\(glance.mode == .needsYou ? glance.waiting ?? 0 : glance.working ?? 0)")
-                    .font(.system(size: 44, weight: .bold, design: .rounded)).monospacedDigit()
+                    .font(.system(size: numberSize, weight: .bold, design: .rounded)).monospacedDigit()
                     .foregroundStyle(tint)
                     .contentTransition(.numericText())
-                Text(glance.mode == .needsYou ? "need you" : "working")
+                Text(glance.glanceStatusLabel)
                     .font(.footnote.weight(.semibold)).foregroundStyle(tint)
+                    .minimumScaleFactor(0.8).lineLimit(1)
                 if glance.mode == .needsYou, !glance.waitingAgents.isEmpty {
                     HStack(spacing: -4) {
                         ForEach(Array(glance.waitingAgents.prefix(3).enumerated()), id: \.offset) { _, agent in
-                            AgentBadge(agent: agent, size: 20)
+                            AgentBadge(agent: agent, size: 18)
                         }
                     }
                     .padding(.top, 2)
@@ -156,35 +203,43 @@ private struct GlancePage: View {
             }
         case .allClear:
             VStack(spacing: 2) {
-                Image(systemName: "checkmark.seal.fill").font(.system(size: 34)).foregroundStyle(DesignTokens.UI.ok)
+                Image(systemName: "checkmark.seal.fill").font(.system(size: ringSize * 0.27)).foregroundStyle(DesignTokens.UI.ok)
                 Text("All clear").font(.headline).foregroundStyle(WatchTheme.text)
             }
         case .sharingStopped:
-            Image(systemName: "pause.circle").font(.system(size: 40)).foregroundStyle(tint)
+            Image(systemName: "pause.circle").font(.system(size: ringSize * 0.31)).foregroundStyle(tint)
         case .sourceUnavailable:
-            Image(systemName: "desktopcomputer.trianglebadge.exclamationmark").font(.system(size: 34)).foregroundStyle(tint)
+            Image(systemName: "desktopcomputer.trianglebadge.exclamationmark").font(.system(size: ringSize * 0.27)).foregroundStyle(tint)
         case .unavailable:
-            Image(systemName: "icloud.slash").font(.system(size: 34)).foregroundStyle(tint)
+            Image(systemName: "icloud.slash").font(.system(size: ringSize * 0.27)).foregroundStyle(tint)
         }
     }
 }
 
 private struct SessionsPage: View {
     let glance: WatchGlance
+    @ObservedObject var model: WatchObservationModel
     let now: Date
 
     var body: some View {
-            List {
-                ForEach(Array(glance.orderedSessions.enumerated()), id: \.offset) { _, row in
-                    SessionRow(row: row, now: now, historical: glance.historical)
-                        .listRowBackground(RoundedRectangle(cornerRadius: 14).fill(row.phase.color.opacity(row.phase == .response ? 0.18 : 0.08)))
-                }
-                if let total = glance.total, total > glance.sessions.count {
-                    Text("+\(total - glance.sessions.count) more on your Mac").font(.caption2).foregroundStyle(WatchTheme.subtext)
-                        .listRowBackground(Color.clear)
-                }
+        List {
+            if let status = model.status {
+                Text(status)
+                    .font(.caption2)
+                    .foregroundStyle(WatchTheme.subtext)
+                    .listRowBackground(Color.clear)
             }
-            .navigationTitle("Sessions")
+            ForEach(Array(glance.orderedSessions.enumerated()), id: \.offset) { _, row in
+                SessionRow(row: row, now: now, historical: glance.historical)
+                    .listRowBackground(RoundedRectangle(cornerRadius: 14).fill(row.phase.color.opacity(row.phase == .response ? 0.18 : 0.08)))
+            }
+            if let total = glance.total, total > glance.sessions.count {
+                Text("+\(total - glance.sessions.count) more on your Mac").font(.caption2).foregroundStyle(WatchTheme.subtext)
+                    .listRowBackground(Color.clear)
+            }
+        }
+        .toolbar { RefreshToolbarItem(model: model) }
+        .navigationTitle("Sessions")
     }
 }
 
@@ -240,41 +295,67 @@ private struct CompactLabelStyle: LabelStyle {
 
 private struct UsagePage: View {
     let glance: WatchGlance
+    @ObservedObject var model: WatchObservationModel
+    let now: Date
 
     var body: some View {
-            ScrollView {
-                VStack(spacing: 6) {
-                    ForEach(Array(stride(from: 0, to: glance.usage.count, by: 2)), id: \.self) { start in
-                        HStack(alignment: .top, spacing: 6) {
-                            ForEach(start..<min(start + 2, glance.usage.count), id: \.self) { index in
-                                UsageCell(window: glance.usage[index]).frame(maxWidth: .infinity)
-                            }
-                        }
-                    }
-                    Text("Allowance left, as last read by your Mac.").font(.system(size: 10)).foregroundStyle(WatchTheme.faint)
+        ScrollView {
+            VStack(spacing: 8) {
+                if let status = model.status {
+                    Text(status)
+                        .font(.caption2)
+                        .foregroundStyle(WatchTheme.subtext)
                         .multilineTextAlignment(.center)
                 }
+                ForEach(Array(stride(from: 0, to: glance.usage.count, by: 2)), id: \.self) { start in
+                    HStack(alignment: .top, spacing: 6) {
+                        ForEach(start..<min(start + 2, glance.usage.count), id: \.self) { index in
+                            UsageCell(window: glance.usage[index], now: now).frame(maxWidth: .infinity)
+                        }
+                    }
+                }
+                Text("Allowance left, as last read by your Mac.").font(.system(size: 10)).foregroundStyle(WatchTheme.faint)
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 2)
+                    .padding(.bottom, 12)
             }
-            .navigationTitle("Allowance")
+            .padding(.horizontal, 2)
+        }
+        .toolbar { RefreshToolbarItem(model: model) }
+        .navigationTitle("Allowance")
     }
 }
 
 private struct UsageCell: View {
     let window: RemoteUsageWindow
+    let now: Date
 
     var body: some View {
+        let agedLabel = window.agedLabel(at: now)
         VStack(spacing: 2) {
-            UsageDial(window: window, size: 50)
+            UsageDial(window: window, now: now, size: 50)
             HStack(spacing: 3) {
                 AgentBrandIcon(agentType: window.providerWire, tint: SessionBrand.color(for: window.providerWire), size: 11)
-                Text(window.providerName).font(.caption2.weight(.semibold)).foregroundStyle(WatchTheme.text)
+                Text(window.quantity == .mcp ? "\(window.providerName) MCP" : window.providerName)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(agedLabel == nil ? WatchTheme.text : WatchTheme.subtext)
+                    .lineLimit(1).minimumScaleFactor(0.8)
             }
-            HStack(spacing: 2) {
-                Image(systemName: "arrow.counterclockwise")
-                Text(window.resetsAt, format: .relative(presentation: .numeric, unitsStyle: .narrow))
+            if let agedLabel {
+                HStack(spacing: 2) {
+                    Image(systemName: "clock")
+                    Text(agedLabel)
+                }
+                .font(.system(size: 10)).foregroundStyle(WatchTheme.offline).lineLimit(1)
+                .accessibilityLabel("Last read \(agedLabel)")
+            } else {
+                HStack(spacing: 2) {
+                    Image(systemName: "arrow.counterclockwise")
+                    Text(window.resetsAt, format: .relative(presentation: .numeric, unitsStyle: .narrow))
+                }
+                .font(.system(size: 10)).foregroundStyle(WatchTheme.subtext).lineLimit(1)
+                .accessibilityLabel("Resets")
             }
-            .font(.system(size: 10)).foregroundStyle(WatchTheme.subtext).lineLimit(1)
-            .accessibilityLabel("Resets")
         }
         .accessibilityElement(children: .combine)
     }
@@ -290,7 +371,7 @@ private struct ComplicationGallery: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
-                ForEach(["busy", "working", "clear"], id: \.self) { name in
+                ForEach(["busy", "working", "clear", "stopped"], id: \.self) { name in
                     let glance = WatchGlance.make(WatchFixture.named(name), at: .now)
                     Text(name).font(.caption2).foregroundStyle(WatchTheme.faint)
                     HStack(spacing: 8) {

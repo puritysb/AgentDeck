@@ -65,6 +65,7 @@ final class WatchObservationModel: ObservableObject {
     private let localIdentity: () -> String?
     let cache: WatchSnapshotCache
     private var generation = 0
+    private var verifiedAccount: String?
     private var accountObserver: NSObjectProtocol?
     private var fixture = false
 
@@ -85,6 +86,11 @@ final class WatchObservationModel: ObservableObject {
         accountObserver = NotificationCenter.default.addObserver(forName: .CKAccountChangedNotificationName, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in await self?.accountDidChange() }
         }
+        #if os(watchOS)
+        WatchCompanionBridge.shared.activate { [weak self] data, account in
+            Task { @MainActor in await self?.receiveCompanionSnapshot(data: data, account: account) }
+        }
+        #endif
     }
 
     #if DEBUG
@@ -97,12 +103,44 @@ final class WatchObservationModel: ObservableObject {
 
     func accountDidChange() async {
         generation += 1
+        verifiedAccount = nil
         lastFetch = nil
         snapshot = nil
         try? cache.clear()
         busy = false
         status = String(localized: "iCloud account changed.")
         await source.invalidate()
+        Self.reloadComplications()
+    }
+
+    /// Accepts a snapshot forwarded from the paired iPhone via WatchConnectivity
+    /// only after confirming it is valid, unexpired, newer, and belongs to the
+    /// same verified iCloud account.
+    func receiveCompanionSnapshot(data: Data, account: String, now: Date = Date()) async {
+        guard !fixture else { return }
+        guard let incoming = try? RemoteObservationContract.decode(RemoteObservationSnapshot.self, from: data),
+              (try? incoming.validate()) != nil,
+              now < incoming.expiresAt else { return }
+        let token = generation
+        let owner: String
+        if let verifiedAccount {
+            owner = verifiedAccount
+        } else if let resolved = try? await source.account() {
+            guard token == generation else { return }
+            verifiedAccount = resolved.identity
+            owner = resolved.identity
+        } else {
+            return
+        }
+        guard owner == account else { return }
+        if let current = snapshot,
+           current.installationID == incoming.installationID,
+           incoming.revision <= current.revision {
+            return
+        }
+        snapshot = incoming
+        status = nil
+        try? cache.save(incoming, account: owner, localIdentity: localIdentity())
         Self.reloadComplications()
     }
 
@@ -120,6 +158,7 @@ final class WatchObservationModel: ObservableObject {
         do {
             let account = try await source.account()
             guard token == generation else { return }
+            verifiedAccount = account.identity
             // Recheck even a restored/in-memory snapshot before the fetch:
             // a missed account notification must not retain another account's counts.
             snapshot = cache.load(localIdentity: localIdentity(), verifiedAccount: account.identity)
@@ -161,6 +200,7 @@ final class WatchObservationModel: ObservableObject {
     private func describe(_ error: Error) -> String {
         switch error {
         case RemoteObservationError.noAccount, RemoteObservationError.accountChanged:
+            verifiedAccount = nil
             snapshot = nil
             try? cache.clear()
             Self.reloadComplications()

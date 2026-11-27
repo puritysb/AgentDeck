@@ -535,6 +535,9 @@ final class RemoteObservationController: ObservableObject {
                 }
                 try disk.write(RemoteObservationCache(account: account.identity, localIdentity: localIdentity(),
                     snapshot: fetched, event: attentionEvent), to: "reader.json")
+                #if os(iOS)
+                WatchCompanionBridge.shared.push(snapshot: fetched, account: account.identity)
+                #endif
                 try persistReader()
                 status = "Fetched the Mac's original observation."
             } else {

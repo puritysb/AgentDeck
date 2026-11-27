@@ -74,4 +74,80 @@ final class WatchGlanceTests: XCTestCase {
         XCTAssertEqual(WatchGlance.make(snap, at: points.last!), .unavailable)
         XCTAssertTrue(WatchGlance.transitions(for: nil, after: now).isEmpty)
     }
+
+    func testUnavailableModesNeverUseCheckmarkSymbols() {
+        let nonClear: [WatchGlance] = [
+            .unavailable,
+            WatchGlance.make(snapshot(state: .disabled), at: now),
+            WatchGlance.make(snapshot(state: .unavailable), at: now),
+        ]
+        for glance in nonClear {
+            XCTAssertFalse(glance.inlineSymbol.contains("checkmark"), "mode \(glance.mode) must not look all-clear")
+            XCTAssertFalse(glance.compactSymbol.contains("checkmark"), "mode \(glance.mode) must not look all-clear")
+            XCTAssertEqual(glance.headlineNumber, "—")
+        }
+        let clear = WatchGlance.make(snapshot(working: 0, waiting: 0), at: now)
+        XCTAssertEqual(clear.inlineSymbol, "checkmark.circle")
+        XCTAssertEqual(clear.compactSymbol, "checkmark")
+    }
+
+    func testSingularPluralAndActiveArcCount() {
+        let oneWait = WatchGlance.make(snapshot(working: 0, waiting: 1), at: now)
+        XCTAssertEqual(oneWait.glanceStatusLabel, "needs you")
+        XCTAssertEqual(oneWait.headlineText, "1 needs you")
+        XCTAssertEqual(oneWait.activeArcCount, 1)
+
+        let twoWait = WatchGlance.make(snapshot(working: 2, waiting: 2), at: now)
+        XCTAssertEqual(twoWait.glanceStatusLabel, "need you")
+        XCTAssertEqual(twoWait.headlineText, "2 need you")
+        XCTAssertEqual(twoWait.activeArcCount, 2)
+
+        let idleClear = WatchGlance.make(snapshot(working: 0, waiting: 0, rows: [row(.claude, .idle), row(.codexCLI, .idle)]), at: now)
+        XCTAssertEqual(idleClear.mode, .allClear)
+        XCTAssertEqual(idleClear.activeArcCount, 1, "single-segment All clear ring must not draw a seam gap")
+    }
+
+    func testCodexAgedUsageDimsAndSchedulesTransition() {
+        let fresh = RemoteUsageWindow(provider: .codex, quantity: .allowance, durationMinutes: 300, remainingPercent: 25,
+                                      observedAt: now.addingTimeInterval(-60), resetsAt: now.addingTimeInterval(7_200), validUntil: nil)
+        XCTAssertFalse(fresh.isAged(at: now))
+        XCTAssertNil(fresh.agedLabel(at: now))
+        XCTAssertEqual(fresh.severityUsedPercent(at: now), 75, accuracy: 0.01)
+
+        let agedTime = now.addingTimeInterval(CodexUsageFreshness.snapshotStaleInterval + 120)
+        XCTAssertTrue(fresh.isAged(at: agedTime))
+        XCTAssertNotNil(fresh.agedLabel(at: agedTime))
+        XCTAssertEqual(fresh.severityUsedPercent(at: agedTime), -1, "aged Codex reading must dim to neutral severity")
+
+        let snap = snapshot(usage: [fresh], expiresIn: 7_200)
+        let expectedBoundary = fresh.observedAt.addingTimeInterval(CodexUsageFreshness.snapshotStaleInterval)
+        XCTAssertTrue(WatchGlance.transitions(for: snap, after: now).contains(expectedBoundary))
+    }
+
+    func testMcpQuantityLabelAndSmartStackRelevanceAndDeepLinks() {
+        let mcp = RemoteUsageWindow(provider: .zai, quantity: .mcp, durationMinutes: 300, remainingPercent: 80,
+                                    observedAt: now.addingTimeInterval(-10), resetsAt: now.addingTimeInterval(600), validUntil: nil)
+        XCTAssertEqual(mcp.quantityDurationLabel, "MCP · 5h")
+
+        let waiting = WatchGlance.make(snapshot(working: 1, waiting: 1, rows: [row(.claude, .response)], usage: [mcp]), at: now)
+        let working = WatchGlance.make(snapshot(working: 2, waiting: 0), at: now)
+        let clear = WatchGlance.make(snapshot(working: 0, waiting: 0), at: now)
+        let historical = WatchGlance.make(snapshot(age: RemoteObservationPolicy.historicalAfter + 10, working: 0, waiting: 2), at: now)
+
+        XCTAssertGreaterThan(waiting.smartStackRelevanceScore, working.smartStackRelevanceScore)
+        XCTAssertGreaterThan(working.smartStackRelevanceScore, clear.smartStackRelevanceScore)
+        XCTAssertGreaterThan(clear.smartStackRelevanceScore, historical.smartStackRelevanceScore)
+        XCTAssertEqual(waiting.deepLinkURL().absoluteString, "agentdeckwatch://sessions")
+        XCTAssertEqual(waiting.deepLinkURL(preferUsage: true).absoluteString, "agentdeckwatch://usage")
+        XCTAssertEqual(clear.deepLinkURL().absoluteString, "agentdeckwatch://glance")
+    }
+
+    func testDetailsSharingLikelyOffDistinguishesCountsOnlyFromObservedEmpty() {
+        let observedAt = now.addingTimeInterval(-20)
+        let countsOnly = RemoteObservationSnapshot(installationID: UUID(), revision: 1, sourceState: .observed,
+            observedAt: observedAt, publishedAt: observedAt, expiresAt: now.addingTimeInterval(3_600),
+            workingCount: 2, waitingCount: 0, activeEventIDs: [], details: nil)
+        XCTAssertTrue(WatchGlance.make(countsOnly, at: now).detailsSharingLikelyOff)
+        XCTAssertFalse(WatchGlance.make(snapshot(working: 0, waiting: 0), at: now).detailsSharingLikelyOff)
+    }
 }
