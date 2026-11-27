@@ -30,6 +30,14 @@ Both are described in [install.md § What `npx @agentdeck/setup` does](install.m
 > (Ctrl-C, Shift+Tab, cursor), typing into the terminal on Windows, or terminal-only
 > telemetry. Those have no daemon-first equivalent.
 
+For a normally launched `claude` session, Attention shows a tool permission
+request when Claude reports that it is waiting. Answer that request in Claude's
+terminal. To respond to a managed Claude Code tool prompt on iPhone or iPad,
+start `agentdeck claude` on the host, pair the mobile app with that CLI daemon
+on the same network, then choose from the options in Attention. The iCloud
+Remote tab provides read-only monitoring. AgentDeck Dashboard requires iOS 17
+or iPadOS 17 or later.
+
 Lifecycle compatibility: Claude Code `>=2.1.50` and Codex CLI `>=0.141.0` are
 the supported hook baselines. All same-major AgentDeck clients remain wire-compatible;
 older agent CLIs can still run in the managed terminal, but their lifecycle
