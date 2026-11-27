@@ -1000,6 +1000,7 @@ struct SettingsScreen: View {
             Button("Choose Notifications…") {
                 Task { await NotificationPermission.chooseFromUserAction() }
             }
+            Toggle("Play a separate sound for permission requests", isOn: $preferences.playPermissionWaitSound)
 
             Toggle("Open dashboard on launch", isOn: $preferences.openDashboardOnLaunch)
 

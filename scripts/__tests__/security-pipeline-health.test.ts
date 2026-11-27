@@ -26,4 +26,11 @@ describe('security pipeline freshness', () => {
     expect(() => workflowHealth(workflow, [success], [{ ...success, updated_at: 'invalid' }], now)).toThrow();
     expect(workflowHealth(workflow, [{ ...success, id: 2, status: 'in_progress', created_at: date(2) }, success], [success], now).status).toBe('failed');
   });
+  it('measures a retry from its own start without extending the original queue deadline', () => {
+    const retry = { ...success, id: 2, status: 'in_progress', run_attempt: 2, created_at: date(10) };
+    expect(workflowHealth(workflow, [{ ...retry, run_started_at: date(0.5) }, success], [success], now).status).toBe('healthy');
+    expect(workflowHealth(workflow, [{ ...retry, run_started_at: date(2) }, success], [success], now).status).toBe('failed');
+    expect(workflowHealth(workflow, [retry, success], [success], now).status).toBe('failed');
+    expect(workflowHealth(workflow, [{ ...retry, run_attempt: 1, run_started_at: date(0.5) }, success], [success], now).status).toBe('failed');
+  });
 });
