@@ -227,10 +227,13 @@ targets:
           - Resources/Info.plist
       - path: AgentDeck/RemoteObservation/WatchObservationModel.swift
       - path: AgentDeck/RemoteObservation/WatchGlance.swift
+      - path: AgentDeck/RemoteObservation/WatchCompanionBridge.swift
       - path: AgentDeck/RemoteObservation/RemoteObservationModels.swift
       - path: AgentDeck/RemoteObservation/RemoteObservationCloudStore.swift
       - path: AgentDeck/RemoteObservation/RemoteObservationProjection.swift
       - path: AgentDeck/RemoteObservation/RemoteObservationPersistence.swift
+      - path: AgentDeck/Model/CodexFreshnessRules.generated.swift
+      - path: AgentDeck/Model/UsageSeverity.generated.swift
       - path: AgentDeck/UI/Common/DesignTokens.swift
       - path: AgentDeck/UI/Common/SessionBrand.swift
       - path: AgentDeck/Rendering/StateColors.swift
@@ -271,10 +274,13 @@ targets:
       - path: AgentDeckWatch/Shared
       - path: AgentDeck/RemoteObservation/WatchObservationModel.swift
       - path: AgentDeck/RemoteObservation/WatchGlance.swift
+      - path: AgentDeck/RemoteObservation/WatchCompanionBridge.swift
       - path: AgentDeck/RemoteObservation/RemoteObservationModels.swift
       - path: AgentDeck/RemoteObservation/RemoteObservationCloudStore.swift
       - path: AgentDeck/RemoteObservation/RemoteObservationProjection.swift
       - path: AgentDeck/RemoteObservation/RemoteObservationPersistence.swift
+      - path: AgentDeck/Model/CodexFreshnessRules.generated.swift
+      - path: AgentDeck/Model/UsageSeverity.generated.swift
       - path: AgentDeck/UI/Common/DesignTokens.swift
       - path: AgentDeck/UI/Common/SessionBrand.swift
       - path: AgentDeck/Rendering/StateColors.swift

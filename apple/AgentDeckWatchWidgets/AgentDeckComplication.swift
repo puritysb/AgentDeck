@@ -5,12 +5,16 @@ struct GlanceEntry: TimelineEntry {
     let date: Date
     let snapshot: RemoteObservationSnapshot?
     var glance: WatchGlance { WatchGlance.make(snapshot, at: date) }
+    var relevance: TimelineEntryRelevance? {
+        TimelineEntryRelevance(score: glance.smartStackRelevanceScore, duration: 15 * 60)
+    }
 }
 
 /// Fetches the Remote V1 snapshot itself (the extension has its own container
-/// and no App Group). Entries at the snapshot's freshness and allowance
-/// boundaries let the face age without another fetch; a failed fetch shows no
-/// count rather than a guessed one.
+/// and no App Group), keeping a widget-local `WatchSnapshotCache` so transient
+/// offline errors retain the last verified observation instead of blanking the
+/// watch face. Entries at freshness, expiry and Codex-age boundaries let the
+/// face age without another fetch.
 struct GlanceProvider: TimelineProvider {
     func placeholder(in context: Context) -> GlanceEntry {
         GlanceEntry(date: .now, snapshot: Self.sample)
@@ -29,17 +33,43 @@ struct GlanceProvider: TimelineProvider {
             let now = Date()
             let entries = ([now] + WatchGlance.transitions(for: snapshot, after: now))
                 .map { GlanceEntry(date: $0, snapshot: snapshot) }
-            done.call(Timeline(entries: entries, policy: .after(now.addingTimeInterval(15 * 60))))
+            // Retry sooner when no snapshot is available (e.g. brief offline); normal cadence is 15 min.
+            let refreshInterval: TimeInterval = snapshot == nil ? 5 * 60 : 15 * 60
+            done.call(Timeline(entries: entries, policy: .after(now.addingTimeInterval(refreshInterval))))
         }
     }
 
-    static func fetch() async -> RemoteObservationSnapshot? {
+    static func fetch(
+        source: any WatchObservationSource = RemoteObservationCloudStore(),
+        cache: WatchSnapshotCache = WatchSnapshotCache(),
+        localIdentity: () -> String? = RemoteLocalIdentity.current,
+        now: Date = Date()
+    ) async -> RemoteObservationSnapshot? {
         #if DEBUG
-        if let pinned = WatchFixture.fromLaunchArguments() { return pinned }
+        if let pinned = WatchFixture.fromLaunchArguments(now: now) { return pinned }
         #endif
-        let store = RemoteObservationCloudStore()
-        guard let account = try? await store.account() else { return nil }
-        return try? await store.snapshot(account: account)
+        let localID = localIdentity()
+        do {
+            let account = try await source.account()
+            let cached = cache.load(localIdentity: localID, verifiedAccount: account.identity, now: now)
+            do {
+                guard let live = try await source.snapshot(account: account) else {
+                    try? cache.clear()
+                    return nil
+                }
+                try? cache.save(live, account: account.identity, localIdentity: localID)
+                return live
+            } catch {
+                // Transient CloudKit read failure: keep the verified same-account cache.
+                return cached
+            }
+        } catch RemoteObservationError.noAccount, RemoteObservationError.accountChanged {
+            try? cache.clear()
+            return nil
+        } catch {
+            // Offline or unverified account check: restore only if local iCloud token matches.
+            return cache.load(localIdentity: localID, now: now)
+        }
     }
 
     /// Gallery preview only; never shown as a live reading.
@@ -65,7 +95,7 @@ private struct CompletionBox<T>: @unchecked Sendable {
 struct AgentDeckComplication: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "AgentDeckGlance", provider: GlanceProvider()) { entry in
-            GlanceComplicationView(glance: entry.glance)
+            GlanceComplicationView(glance: entry.glance, now: entry.date)
                 .containerBackground(.clear, for: .widget)
         }
         .configurationDisplayName("AgentDeck")

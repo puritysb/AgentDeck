@@ -10,6 +10,8 @@ import WatchKit
 /// `AttentionNotificationView`.
 @main
 struct AgentDeckWatchApp: App {
+    private static let backgroundRefreshTaskID = "bound.serendipity.agent.deck.watchkitapp.refresh"
+
     @StateObject private var model = WatchObservationModel()
     @Environment(\.scenePhase) private var scenePhase
 
@@ -19,6 +21,10 @@ struct AgentDeckWatchApp: App {
                 .task(id: scenePhase) {
                     // Opening the app, or tapping a forwarded alert, reads the current
                     // snapshot; while active, poll at the publish cadence.
+                    if scenePhase == .background {
+                        Self.scheduleNextBackgroundRefresh()
+                        return
+                    }
                     guard scenePhase == .active else { return }
                     await model.refreshIfStale()
                     while !Task.isCancelled {
@@ -28,7 +34,19 @@ struct AgentDeckWatchApp: App {
                     }
                 }
         }
+        .backgroundTask(.appRefresh(Self.backgroundRefreshTaskID)) {
+            await model.refresh()
+            await Self.scheduleNextBackgroundRefresh()
+        }
         WKNotificationScene(controller: AttentionNotificationController.self,
                             category: RemoteObservationContract.attentionCategory)
+    }
+
+    private static func scheduleNextBackgroundRefresh() {
+        let nextDate = Date().addingTimeInterval(15 * 60)
+        WKApplication.shared().scheduleBackgroundRefresh(
+            withPreferredDate: nextDate,
+            userInfo: Self.backgroundRefreshTaskID as NSString
+        ) { _ in }
     }
 }

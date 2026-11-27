@@ -47,6 +47,7 @@ struct AttentionNotificationView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, 4)
+        .containerBackground(WatchTheme.background(for: .needsYou), for: .navigation)
     }
 
     /// Up to three waiting agents from a recent cache; otherwise a generic mark.
@@ -56,9 +57,9 @@ struct AttentionNotificationView: View {
         if shown.isEmpty {
             Image(systemName: "hand.raised.fill").font(.system(size: 34)).foregroundStyle(WatchTheme.waiting)
         } else {
-            HStack(spacing: -6) {
+            HStack(spacing: shown.count == 1 ? 0 : 4) {
                 ForEach(Array(shown.enumerated()), id: \.offset) { _, agent in
-                    AgentBadge(agent: agent, size: shown.count == 1 ? 46 : 32, ring: WatchTheme.waiting)
+                    AgentBadge(agent: agent, size: shown.count == 1 ? 46 : 28, ring: shown.count == 1 ? WatchTheme.waiting : nil)
                 }
             }
         }

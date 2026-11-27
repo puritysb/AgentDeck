@@ -137,4 +137,39 @@ final class WatchObservationModelTests: XCTestCase {
             XCTAssertFalse(model.busy)
         }
     }
+
+    func testCompanionSnapshotAcceptsNewerSameAccountAndRejectsMismatchOrOlderRevision() async throws {
+        try await withCache { cache in
+            let installID = UUID()
+            let now = Date()
+            let rev3 = RemoteObservationSnapshot(installationID: installID, revision: 3, sourceState: .observed,
+                observedAt: now.addingTimeInterval(-30), publishedAt: now.addingTimeInterval(-30),
+                expiresAt: now.addingTimeInterval(3_600), workingCount: 1, waitingCount: 0, activeEventIDs: [], details: nil)
+            let rev4 = RemoteObservationSnapshot(installationID: installID, revision: 4, sourceState: .observed,
+                observedAt: now.addingTimeInterval(-5), publishedAt: now.addingTimeInterval(-5),
+                expiresAt: now.addingTimeInterval(3_600), workingCount: 1, waitingCount: 2, activeEventIDs: [], details: nil)
+            let rev2 = RemoteObservationSnapshot(installationID: installID, revision: 2, sourceState: .observed,
+                observedAt: now.addingTimeInterval(-60), publishedAt: now.addingTimeInterval(-60),
+                expiresAt: now.addingTimeInterval(3_600), workingCount: 0, waitingCount: 0, activeEventIDs: [], details: nil)
+
+            let model = WatchObservationModel(source: WatchSourceFixture(owner: "owner", result: rev3), cache: cache,
+                                              localIdentity: { "local" })
+            await model.refresh()
+            XCTAssertEqual(model.snapshot?.revision, 3)
+
+            // Different iCloud account is rejected even with a higher revision.
+            try await model.receiveCompanionSnapshot(data: RemoteObservationContract.encode(rev4), account: "other-account", now: now)
+            XCTAssertEqual(model.snapshot?.revision, 3)
+
+            // Older revision for the same installation is ignored.
+            try await model.receiveCompanionSnapshot(data: RemoteObservationContract.encode(rev2), account: "owner", now: now)
+            XCTAssertEqual(model.snapshot?.revision, 3)
+
+            // Newer valid revision for the same verified account updates state and cache.
+            try await model.receiveCompanionSnapshot(data: RemoteObservationContract.encode(rev4), account: "owner", now: now)
+            XCTAssertEqual(model.snapshot?.revision, 4)
+            XCTAssertEqual(model.snapshot?.waitingCount, 2)
+            XCTAssertEqual(saved(cache)?.revision, 4)
+        }
+    }
 }
