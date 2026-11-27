@@ -22,8 +22,9 @@ enum AntigravityPolicy {
     static let activityStepWindow = 4096
     static let activityMetadataBytes = 16384
     static let activityUserStepType = 14
-    static let activityWorkingStatuses = [2,8]
-    static let activityIdleStatuses = [3]
+    static let activityWorkingStatuses = [1,2,8]
+    static let activityWaitingStatuses = [9]
+    static let activityIdleStatuses = [3,6,7]
     static let activityCreatedAtField = 1
     static let activityProtoFields = 128
     static let activityTimestampPrecisionMs = 1000

@@ -230,11 +230,14 @@ enum AntigravityActivity {
             let updated = try createdAt(latestMetadata)
             guard updated >= userTime, updated <= nowMs + Int64(AntigravityPolicy.futureSkewMs), modified <= nowMs + Int64(AntigravityPolicy.futureSkewMs) else { return unknown("invalid_activity_time") }
             let working = AntigravityPolicy.activityWorkingStatuses.contains(Int(status))
-            guard working || AntigravityPolicy.activityIdleStatuses.contains(Int(status)) else { return unknown("unknown_activity_status") }
+            let waiting = !working && AntigravityPolicy.activityWaitingStatuses.contains(Int(status))
+            let idle = !working && !waiting && AntigravityPolicy.activityIdleStatuses.contains(Int(status))
+            guard working || waiting || idle else { return unknown("unknown_activity_status") }
             if cold {
                 guard try fingerprint(sqlitePath) == before else { return unknown("activity_changed_during_read") }
             }
-            var out = base; out.status = "known"; out.reason = "database_step_evidence"; out.state = working ? "processing" : "idle"
+            var out = base; out.status = "known"; out.reason = "database_step_evidence"
+            out.state = working ? "processing" : (waiting ? "awaiting_permission" : "idle")
             out.updatedAtMs = updated; out.modifiedAtMs = modified; out.latestStepIndex = Int(step)
             let ttl = working ? AntigravityPolicy.activeWindowMs : AntigravityPolicy.rosterWindowMs
             if nowMs - min(updated, modified) > ttl { out.status = "stale"; out.reason = working ? "unconfirmed_work" : "history"; out.state = nil }

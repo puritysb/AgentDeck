@@ -76,9 +76,18 @@ describe('Antigravity evidence contract', () => {
       expect(scanAntigravityRoot(dir, v.nowMs).observations[0].state).toBe('processing');
       expect(readFileSync(fixture.path)).toEqual(before);
       expect((await collectAntigravitySessions([dir], v.nowMs))[0].state).toBe('processing');
+      fixture.db.prepare('UPDATE steps SET status=1 WHERE idx=2').run(); fixture.stamp();
+      expect(scanAntigravityRoot(dir, v.nowMs).observations[0].state).toBe('processing');
       fixture.db.prepare('UPDATE steps SET status=3 WHERE idx=2').run(); fixture.stamp();
       expect(scanAntigravityRoot(dir, v.nowMs).observations[0].state).toBe('idle');
+      fixture.db.prepare('UPDATE steps SET status=6 WHERE idx=2').run(); fixture.stamp();
+      expect(scanAntigravityRoot(dir, v.nowMs).observations[0].state).toBe('idle');
+      fixture.db.prepare('UPDATE steps SET status=7 WHERE idx=2').run(); fixture.stamp();
+      expect(scanAntigravityRoot(dir, v.nowMs).observations[0].state).toBe('idle');
       fixture.db.prepare('UPDATE steps SET status=9 WHERE idx=2').run(); fixture.stamp();
+      expect(scanAntigravityRoot(dir, v.nowMs).observations[0].state).toBe('awaiting_permission');
+      expect((await collectAntigravitySessions([dir], v.nowMs))[0].state).toBe('awaiting_permission');
+      fixture.db.prepare('UPDATE steps SET status=99 WHERE idx=2').run(); fixture.stamp();
       expect(scanAntigravityRoot(dir, v.nowMs).observations[0].status).toBe('unknown');
       expect(await collectAntigravitySessions([dir], v.nowMs)).toEqual([]);
     } finally { fixture.db.close(); rmSync(dir, { recursive: true, force: true }); }
@@ -203,9 +212,20 @@ describe('Antigravity evidence contract', () => {
         fixture.db.prepare('UPDATE steps SET metadata=? WHERE idx=2').run(timestamp(v.nowMs));
         compare('processing', 'database_step_evidence');
         compare('stale', 'unconfirmed_work', v.nowMs + P.activeWindowMs + 1);
+        fixture.db.prepare('UPDATE steps SET status=1 WHERE idx=2').run();
+        compare('processing', 'database_step_evidence');
         fixture.db.prepare('UPDATE steps SET status=3 WHERE idx=2').run();
         compare('idle', 'database_step_evidence');
+        fixture.db.prepare('UPDATE steps SET status=6 WHERE idx=2').run();
+        compare('idle', 'database_step_evidence');
+        fixture.db.prepare('UPDATE steps SET status=7 WHERE idx=2').run();
+        compare('idle', 'database_step_evidence');
         fixture.db.prepare('UPDATE steps SET status=9 WHERE idx=2').run();
+        compare('awaiting_permission', 'database_step_evidence');
+        // Waiting for human approval stays visible past activeWindowMs until rosterWindowMs.
+        compare('awaiting_permission', 'database_step_evidence', v.nowMs + P.activeWindowMs + 1);
+        compare('stale', 'history', v.nowMs + P.rosterWindowMs + 1);
+        fixture.db.prepare('UPDATE steps SET status=99 WHERE idx=2').run();
         compare('unknown', 'unknown_activity_status');
         fixture.db.prepare('UPDATE steps SET status=8 WHERE idx=2').run();
         fixture.db.prepare('UPDATE trajectory_meta SET cascade_id=?').run('other-conversation');

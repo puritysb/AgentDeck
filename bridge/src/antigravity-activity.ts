@@ -167,9 +167,12 @@ export function observeAntigravityActivity(
     const updated = antigravityStepCreatedAt(latest.metadata);
     if (updated < userTime || updated > now + P.futureSkewMs || modified > now + P.futureSkewMs) return unknown('invalid_activity_time');
     const working = (P.activityWorkingStatuses as readonly number[]).includes(status);
-    if (!working && !(P.activityIdleStatuses as readonly number[]).includes(status)) return unknown('unknown_activity_status');
+    const waiting = !working && (P.activityWaitingStatuses as readonly number[]).includes(status);
+    const idle = !working && !waiting && (P.activityIdleStatuses as readonly number[]).includes(status);
+    if (!working && !waiting && !idle) return unknown('unknown_activity_status');
     if (cold && fingerprint(path) !== before) return unknown('activity_changed_during_read');
-    const out: AntigravityObservation = { ...base, status: 'known', reason: 'database_step_evidence', state: working ? 'processing' : 'idle', updatedAtMs: updated, modifiedAtMs: modified, latestStepIndex: step };
+    const state: AntigravityObservation['state'] = working ? 'processing' : waiting ? 'awaiting_permission' : 'idle';
+    const out: AntigravityObservation = { ...base, status: 'known', reason: 'database_step_evidence', state, updatedAtMs: updated, modifiedAtMs: modified, latestStepIndex: step };
     const ttl = working ? P.activeWindowMs : P.rosterWindowMs;
     if (now - Math.min(updated, modified) > ttl) return { ...out, status: 'stale', reason: working ? 'unconfirmed_work' : 'history', state: undefined };
     return out;
