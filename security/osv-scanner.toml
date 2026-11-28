@@ -1,17 +1,21 @@
 # Maintenance advisories, not confirmed vulnerabilities. These dependencies
 # belong to the renderer revision shared with the JS/WASM rasterizers; migrating
-# only Rust would break the pixel-parity promise. Review the whole stack together.
+# only Rust would break the pixel-parity promise. Reviewed 2026-11-28.
+# Owner: puritysb. Next review: 2026-12-21. Expires 2026-12-31.
+# Rust resvg 0.50.0 is available; JS and WASM stable releases remain at 2.6.2.
+# Remove after a synchronized migration passes parity and OSV no longer reports
+# these advisories on the resolved lockfile. See docs/security-scanning.md.
 [[IgnoredVulns]]
 id = "RUSTSEC-2025-0056"
-ignoreUntil = 2026-12-01
+ignoreUntil = 2026-12-31
 reason = "adler unmaintained; pinned resvg renderer dependency. Owner puritysb; docs/security-scanning.md#remaining-findings"
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0206"
-ignoreUntil = 2026-12-01
+ignoreUntil = 2026-12-31
 reason = "rustybuzz unmaintained; synchronized renderer migration required. Owner puritysb; docs/security-scanning.md#remaining-findings"
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0192"
-ignoreUntil = 2026-12-01
+ignoreUntil = 2026-12-31
 reason = "ttf-parser unmaintained; synchronized renderer migration required. Owner puritysb; docs/security-scanning.md#remaining-findings"

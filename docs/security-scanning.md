@@ -313,9 +313,18 @@ first.
 
 | Item | What to do | When |
 |---|---|---|
-| resvg 2.6.2 maintenance notices (RUSTSEC-2025-0056, RUSTSEC-2026-0206, RUSTSEC-2026-0192) | When upstream releases, move the Rust, JS and WASM renderers to one revision together and rerun the pixel, wire and native gates. | The OSV exceptions expire 2026-12-01 |
+| resvg 2.6.2 maintenance notices (RUSTSEC-2025-0056, RUSTSEC-2026-0206, RUSTSEC-2026-0192) | Move the Rust, JS and WASM renderers to one revision. Remove the exceptions once pixel, wire and native checks pass and the lockfile scan clears these three notices. | puritysb reviews by 2026-12-21. The exceptions expire 2026-12-31. |
 | Deferred majors: Bleak 3 (#691), Anthropic SDK 1.x (#696), TypeScript 7 (#697), Android Kotlin/AGP 9/serialization/Robolectric (#699, #701–#703), Rust 1.120 (#708) | Treat as normal compatibility upgrades, each with its own build and device checks. They are not security fixes. | Next maintenance pass |
 | CodeQL exception review | Re-review the recorded per-alert decisions when an authentication or trust-boundary file changes. | When those files change |
+
+On November 28, the [Rust renderer](https://github.com/linebender/resvg/releases/tag/v0.50.0)
+had reached 0.50.0. The [JS and WASM packages](https://github.com/thx/resvg-js/releases)
+still used 2.6.2 as their stable release, with 2.7.0 in prerelease. The three
+RustSec notices report unmaintained dependencies. The pinned renderer shares
+its engine revision across Rust, JS and WASM, so updating Rust alone can
+change rendered output. The December extension gives the maintainer time to
+evaluate a shared revision. Review sooner if a compatible stable release or
+a new applicable advisory appears.
 
 The weekly CodeQL follow-up was verified on November 13, 2026:
 [the November 10 scheduled run](https://github.com/puritysb/AgentDeck/actions/runs/42810271838)
